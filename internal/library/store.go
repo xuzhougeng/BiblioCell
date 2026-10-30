@@ -135,6 +135,7 @@ func healColumns(db *sql.DB) error {
 type Store struct {
 	db           *sql.DB
 	path         string
+	integrity    string // PRAGMA integrity_check result from Open; Open fails unless it is "ok"
 	sourceSyncMu sync.Mutex
 }
 
@@ -216,17 +217,20 @@ func Open(path string) (*Store, error) {
 	if integrity != "ok" {
 		return nil, fmt.Errorf("database integrity check failed: %s", integrity)
 	}
+	store.integrity = integrity
 
 	initialized = true
 	return store, nil
 }
 
-// Status returns current database metadata and record counts.
+// Status returns current database metadata and record counts. Integrity is
+// the result of the full PRAGMA integrity_check run once in Open; a full
+// scan on every status call is too slow for larger libraries.
 func (s *Store) Status() (Status, error) {
 	if s == nil || s.db == nil {
 		return Status{}, errors.New("library database is not ready")
 	}
-	status := Status{DatabasePath: s.path, SchemaVersion: SchemaVersion}
+	status := Status{DatabasePath: s.path, SchemaVersion: SchemaVersion, Integrity: s.integrity}
 	queries := []struct {
 		query  string
 		target *int
@@ -239,9 +243,6 @@ func (s *Store) Status() (Status, error) {
 		if err := s.db.QueryRow(query.query).Scan(query.target); err != nil {
 			return Status{}, fmt.Errorf("read database status: %w", err)
 		}
-	}
-	if err := s.db.QueryRow("PRAGMA integrity_check").Scan(&status.Integrity); err != nil {
-		return Status{}, fmt.Errorf("read database status: %w", err)
 	}
 	return status, nil
 }

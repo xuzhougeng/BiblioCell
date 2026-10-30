@@ -81,9 +81,9 @@ var ErrPaperNotFound = errors.New("paper not found")
 
 var doiPattern = regexp.MustCompile(`^10\.\d{4,9}/\S+$`)
 
-// ListPapers returns all real papers, newest first. Demo records are never read.
-func (s *Store) ListPapers(ctx context.Context) ([]Paper, error) {
-	rows, err := s.db.QueryContext(ctx, `
+// paperSelect is the shared projection for ListPapers and GetPaper; callers
+// append their own WHERE / ORDER BY clause.
+const paperSelect = `
 		SELECT id, title, coalesce(abstract, ''), authors_json, coalesce(journal, ''),
 		       coalesce(issue_year, 0), publication_state, article_types_json,
 		       coalesce(species_json, '[]'),
@@ -92,8 +92,11 @@ func (s *Store) ListPapers(ctx context.Context) ([]Paper, error) {
 		       reading_status, starred, tags_json, notes, fulltext_status,
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'doi'), ''),
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'pmid'), '')
-		FROM v_paper_overview
-		ORDER BY first_seen_at DESC, id`)
+		FROM v_paper_overview`
+
+// ListPapers returns all real papers, newest first. Demo records are never read.
+func (s *Store) ListPapers(ctx context.Context) ([]Paper, error) {
+	rows, err := s.db.QueryContext(ctx, paperSelect+` ORDER BY first_seen_at DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list papers: %w", err)
 	}
@@ -101,39 +104,48 @@ func (s *Store) ListPapers(ctx context.Context) ([]Paper, error) {
 
 	papers := []Paper{}
 	for rows.Next() {
-		var p Paper
-		var authors, species, organs, modalities, platforms, articleTypes, tags string
-		var year, starred int
-		if err := rows.Scan(
-			&p.ID, &p.Title, &p.Abstract, &authors, &p.Journal,
-			&year, &p.PublicationStatus, &articleTypes,
-			&species, &organs, &modalities, &platforms, &p.Source,
-			&p.AddedAt, &p.UpdatedAt, &p.Screening, &p.ScreeningReason,
-			&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext, &p.DOI, &p.PMID,
-		); err != nil {
-			return nil, fmt.Errorf("read paper: %w", err)
+		p, err := scanPaper(rows)
+		if err != nil {
+			return nil, err
 		}
-		if year != 0 {
-			p.Year = &year
-		}
-		p.Authors = strings.Join(jsonStrings(authors), "; ")
-		p.Species = speciesEntries(species)
-		p.Organs = jsonStrings(organs)
-		p.Modalities = jsonStrings(modalities)
-		p.Platforms = jsonStrings(platforms)
-		p.ArticleTypes = displayArticleTypes(articleTypes)
-		p.Tags = jsonStrings(tags)
-		p.Starred = starred == 1
-		if p.Fulltext != "linked" && p.Fulltext != "stored" {
-			p.Fulltext = "missing"
-		}
-		p.IsDemo = false
 		papers = append(papers, p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list papers: %w", err)
 	}
 	return papers, nil
+}
+
+// scanPaper reads one paperSelect row into the frontend representation.
+func scanPaper(rows *sql.Rows) (Paper, error) {
+	var p Paper
+	var authors, species, organs, modalities, platforms, articleTypes, tags string
+	var year, starred int
+	if err := rows.Scan(
+		&p.ID, &p.Title, &p.Abstract, &authors, &p.Journal,
+		&year, &p.PublicationStatus, &articleTypes,
+		&species, &organs, &modalities, &platforms, &p.Source,
+		&p.AddedAt, &p.UpdatedAt, &p.Screening, &p.ScreeningReason,
+		&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext, &p.DOI, &p.PMID,
+	); err != nil {
+		return Paper{}, fmt.Errorf("read paper: %w", err)
+	}
+	if year != 0 {
+		p.Year = &year
+	}
+	p.Authors = strings.Join(jsonStrings(authors), "; ")
+	p.Species = speciesEntries(species)
+	p.Organs = jsonStrings(organs)
+	p.Modalities = jsonStrings(modalities)
+	p.Platforms = jsonStrings(platforms)
+	p.ArticleTypes = displayArticleTypes(articleTypes)
+	p.Tags = jsonStrings(tags)
+	p.Starred = starred == 1
+	if p.Fulltext != "linked" && p.Fulltext != "stored" {
+		p.Fulltext = "missing"
+	}
+	p.IsDemo = false
+	return p, nil
 }
 
 // SavePapers upserts frontend papers without deleting records added by MCP or another window.
@@ -224,16 +236,18 @@ func (s *Store) AddPaper(ctx context.Context, p Paper) (Paper, error) {
 // GetPaper returns one real paper by its stable ID.
 func (s *Store) GetPaper(ctx context.Context, id string) (Paper, error) {
 	id = strings.TrimSpace(id)
-	papers, err := s.ListPapers(ctx)
+	rows, err := s.db.QueryContext(ctx, paperSelect+` WHERE id = ?`, id)
 	if err != nil {
-		return Paper{}, err
+		return Paper{}, fmt.Errorf("get paper: %w", err)
 	}
-	for _, paper := range papers {
-		if paper.ID == id {
-			return paper, nil
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return Paper{}, fmt.Errorf("get paper: %w", err)
 		}
+		return Paper{}, fmt.Errorf("%w: %s", ErrPaperNotFound, id)
 	}
-	return Paper{}, fmt.Errorf("%w: %s", ErrPaperNotFound, id)
+	return scanPaper(rows)
 }
 
 // UpdatePaper applies a partial metadata patch without replacing omitted fields.

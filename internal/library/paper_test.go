@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 )
 
@@ -164,5 +165,8 @@ func TestUpdatePaperReplacesMultiValueLists(t *testing.T) {
 	}
 	if len(reread.ArticleTypes) != 1 || reread.ArticleTypes[0] != "综述" {
 		t.Errorf("reread ArticleTypes = %+v", reread.ArticleTypes)
+	}
+	if _, err := store.GetPaper(ctx, "P-missing"); !errors.Is(err, ErrPaperNotFound) {
+		t.Errorf("GetPaper(missing) error = %v, want ErrPaperNotFound", err)
 	}
 }
