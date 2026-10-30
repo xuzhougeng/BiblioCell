@@ -148,6 +148,32 @@ func scanPaper(rows *sql.Rows) (Paper, error) {
 	return p, nil
 }
 
+// FilterPapers keeps papers whose metadata contains query, case-insensitively,
+// and at most limit of them when limit is positive. Shared by MCP and the CLI.
+func FilterPapers(papers []Paper, query string, limit int) []Paper {
+	query = strings.ToLower(strings.TrimSpace(query))
+	matches := make([]Paper, 0, len(papers))
+	for _, paper := range papers {
+		if limit > 0 && len(matches) >= limit {
+			break
+		}
+		speciesTexts := make([]string, 0, len(paper.Species)*2)
+		for _, entry := range paper.Species {
+			speciesTexts = append(speciesTexts, entry.Name, entry.Label)
+		}
+		haystack := strings.ToLower(strings.Join([]string{
+			paper.Title, paper.DOI, paper.PMID, paper.Authors,
+			strings.Join(speciesTexts, " "), strings.Join(paper.Organs, " "),
+			strings.Join(paper.Modalities, " "), strings.Join(paper.Platforms, " "),
+			strings.Join(paper.ArticleTypes, " "), strings.Join(paper.Tags, " "),
+		}, " "))
+		if query == "" || strings.Contains(haystack, query) {
+			matches = append(matches, paper)
+		}
+	}
+	return matches
+}
+
 // SavePapers upserts frontend papers without deleting records added by MCP or another window.
 func (s *Store) SavePapers(ctx context.Context, papers []Paper) error {
 	tx, err := s.db.BeginTx(ctx, nil)

@@ -107,12 +107,40 @@ AI 客户端可以通过标准 MCP 能力发现接口，不需要在提示词里
 
 MCP 始终操作正式数据库，与界面是否开启 Demo 无关。MCP 新增或编辑的文献在重新加载真实模式后可见。服务仅监听 `127.0.0.1`，不要将端口转发到局域网或公网。
 
+## 命令行
+
+同一个可执行文件也可以当命令行工具用，不开窗口，直接读写正式 SQLite 数据库和 `settings.json`。第一个参数是已知子命令时走命令行，否则照常启动桌面应用。输出一律是 JSON，方便接 `jq`。
+
+```bash
+./BiblioCell status
+./BiblioCell papers list -q "Arabidopsis" -limit 20
+./BiblioCell papers get P-xxxx
+echo '{"title":"...","doi":"10.1000/x"}' | ./BiblioCell papers add
+./BiblioCell papers import -f papers.json -dry-run
+echo '{"journal":"Cell"}' | ./BiblioCell papers update P-xxxx
+./BiblioCell datasets list
+./BiblioCell sources list
+./BiblioCell sources set pubmed -enabled -query "plant single cell" -max 50
+./BiblioCell sources sync pubmed
+./BiblioCell settings get
+./BiblioCell settings set -font-size 16 -db /abs/path/bibliocell.sqlite -mcp-token <TOKEN>
+./BiblioCell mcp
+./BiblioCell sql "select id, title from papers order by added_at desc limit 5"
+```
+
+- `papers add` / `import` / `update` 使用与 MCP 相同的字段和校验规则；`import` 一批原子提交，`-dry-run` 只校验不写入。
+- `sql` 直接执行任意语句：`SELECT` / `WITH` / `PRAGMA` 打印行，其他语句打印受影响行数。它绕过应用层校验，改数据前先备份。
+- 数据目录按 `-data-dir`、`$BIBLIOCELL_DATA_DIR`、应用默认用户数据目录的顺序确定；在 macOS 上 `.app` 包内和 `go run` 的默认目录名相同，命令行与桌面应用看到的是同一个库。
+- `settings set` 修改的数据库路径和 MCP Token 在下次启动桌面应用后生效。
+- 桌面应用运行中也可以同时使用命令行，SQLite 自带锁，忙等 5 秒后报错。
+
 ## 目录
 
 ```text
 BiblioCell/
 ├── main.go                  # mygo 应用、窗口、SQLite 与 MCP 生命周期
 ├── service.go               # 暴露给前端的 Library 服务
+├── cli.go                   # 命令行子命令：文献、来源、设置、原始 SQL
 ├── internal/library/
 │   ├── store.go             # 数据库打开、迁移与完整性检查
 │   ├── auth.go              # MCP 写权限 Token 的生成与持久化

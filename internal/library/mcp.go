@@ -215,24 +215,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 		if err != nil {
 			return nil, listPapersOutput{}, err
 		}
-		query := strings.ToLower(strings.TrimSpace(input.Query))
-		matches := make([]Paper, 0, len(papers))
-		for _, paper := range papers {
-			speciesTexts := make([]string, 0, len(paper.Species)*2)
-			for _, entry := range paper.Species {
-				speciesTexts = append(speciesTexts, entry.Name, entry.Label)
-			}
-			haystack := strings.ToLower(strings.Join([]string{
-				paper.Title, paper.DOI, paper.PMID, paper.Authors,
-				strings.Join(speciesTexts, " "), strings.Join(paper.Organs, " "),
-				strings.Join(paper.Modalities, " "), strings.Join(paper.Platforms, " "),
-				strings.Join(paper.ArticleTypes, " "), strings.Join(paper.Tags, " "),
-			}, " "))
-			if query == "" || strings.Contains(haystack, query) {
-				matches = append(matches, paper)
-			}
-		}
-		output := listPapersOutput{Total: len(matches), Papers: []Paper{}}
+		matches := FilterPapers(papers, input.Query, 0)
 		limit := input.Limit
 		if limit <= 0 {
 			limit = 100
@@ -240,11 +223,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 		if limit > 500 {
 			limit = 500
 		}
-		if len(matches) > limit {
-			matches = matches[:limit]
-		}
-		output.Papers = append(output.Papers, matches...)
-		return nil, output, nil
+		return nil, listPapersOutput{Total: len(matches), Papers: FilterPapers(matches, "", limit)}, nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{

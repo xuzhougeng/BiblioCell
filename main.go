@@ -16,6 +16,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && isCLICommand(os.Args[1]) {
+		os.Exit(runCLI(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	}
+
 	libraryService := &Library{}
 	mygo.Bind(libraryService)
 
@@ -26,19 +30,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("locate application data directory: %v", err)
 		}
-		migrateLegacyData(dataDir)
-		mcpToken, tokenErr := library.LoadOrCreateMCPToken(dataDir)
-		if tokenErr != nil {
-			log.Printf("MCP token file unavailable: %v", tokenErr)
-		}
-		settingsStore, settingsErr := settings.Open(
-			filepath.Join(dataDir, "settings.json"),
-			filepath.Join(dataDir, "bibliocell.sqlite"),
-			mcpToken,
-		)
+		settingsStore, err := openSettings(dataDir)
 		libraryService.settings = settingsStore
-		if settingsErr != nil {
-			log.Printf("Using default settings: %v", settingsErr)
+		if err != nil {
+			log.Printf("Using default settings: %v", err)
 		}
 		store, err = library.Open(settingsStore.Get().DatabasePath)
 		if err != nil {
@@ -88,6 +83,22 @@ func main() {
 	if runErr != nil {
 		log.Fatal(runErr)
 	}
+}
+
+// openSettings migrates legacy data under dataDir and loads settings.json.
+// The returned store is always usable: on a missing or invalid file it holds
+// defaults, and the error says why.
+func openSettings(dataDir string) (*settings.Store, error) {
+	migrateLegacyData(dataDir)
+	mcpToken, err := library.LoadOrCreateMCPToken(dataDir)
+	if err != nil {
+		log.Printf("MCP token file unavailable: %v", err)
+	}
+	return settings.Open(
+		filepath.Join(dataDir, "settings.json"),
+		filepath.Join(dataDir, "bibliocell.sqlite"),
+		mcpToken,
+	)
 }
 
 // Names of the data files written before the BiblioCell rename.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -253,4 +254,51 @@ func (s *Store) Close() error {
 		return nil
 	}
 	return s.db.Close()
+}
+
+// SQL runs one raw statement against the real database. SELECT, WITH, PRAGMA
+// and EXPLAIN statements yield their rows; any other statement yields the
+// number of rows it changed. It is meant for the command line, not the frontend.
+func (s *Store) SQL(ctx context.Context, statement string) (rows []map[string]any, affected int64, err error) {
+	if s == nil || s.db == nil {
+		return nil, 0, errors.New("library database is not ready")
+	}
+	head := strings.ToUpper(strings.Fields(strings.TrimSpace(statement) + " ")[0])
+	if head != "SELECT" && head != "WITH" && head != "PRAGMA" && head != "EXPLAIN" {
+		exec, err := s.db.ExecContext(ctx, statement)
+		if err != nil {
+			return nil, 0, err
+		}
+		affected, _ = exec.RowsAffected()
+		return nil, affected, nil
+	}
+	result, err := s.db.QueryContext(ctx, statement)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer result.Close()
+	columns, err := result.Columns()
+	if err != nil {
+		return nil, 0, err
+	}
+	rows = []map[string]any{}
+	for result.Next() {
+		values := make([]any, len(columns))
+		targets := make([]any, len(columns))
+		for i := range values {
+			targets[i] = &values[i]
+		}
+		if err := result.Scan(targets...); err != nil {
+			return nil, 0, err
+		}
+		row := make(map[string]any, len(columns))
+		for i, column := range columns {
+			if b, ok := values[i].([]byte); ok {
+				values[i] = string(b)
+			}
+			row[column] = values[i]
+		}
+		rows = append(rows, row)
+	}
+	return rows, 0, result.Err()
 }
