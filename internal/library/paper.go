@@ -379,13 +379,8 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 	modalities := jsonArray(p.Modalities)
 	platforms := jsonArray(p.Platforms)
 	tags := jsonArray(p.Tags)
-	// Legacy single-value columns stay populated with the first list entry so
-	// hand-written SQL against the published schema keeps working.
-	firstSpeciesName, firstSpeciesLabel := firstSpecies(p.Species)
-	firstArticleType := "unknown"
-	if len(articleTypes) > 0 {
-		firstArticleType = articleTypes[0]
-	}
+	// The legacy single-value columns (species_text, species_label,
+	// article_type) are no longer written; the *_json arrays are authoritative.
 	var year any
 	if p.Year != nil {
 		year = *p.Year
@@ -395,23 +390,20 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 		INSERT INTO papers(
 			id, title, abstract, authors_json, journal, organs_json, modalities_json,
 			platforms_json, issue_year, publication_state,
-			article_type, article_types_json, species_json, species_text, species_label,
-			source, first_seen_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			article_types_json, species_json, source, first_seen_at, updated_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title, abstract = excluded.abstract,
 			authors_json = excluded.authors_json, journal = excluded.journal,
 			organs_json = excluded.organs_json, modalities_json = excluded.modalities_json,
 			platforms_json = excluded.platforms_json, issue_year = excluded.issue_year,
 			publication_state = excluded.publication_state,
-			article_type = excluded.article_type, article_types_json = excluded.article_types_json,
-			species_json = excluded.species_json, species_text = excluded.species_text,
-			species_label = excluded.species_label, source = excluded.source,
+			article_types_json = excluded.article_types_json,
+			species_json = excluded.species_json, source = excluded.source,
 			updated_at = excluded.updated_at`,
 		p.ID, p.Title, p.Abstract, authors, p.Journal, organs, modalities,
 		platforms, year, p.PublicationStatus,
-		firstArticleType, jsonArray(articleTypes), species, firstSpeciesName, firstSpeciesLabel,
-		p.Source, p.AddedAt, p.UpdatedAt)
+		jsonArray(articleTypes), species, p.Source, p.AddedAt, p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save paper %s: %w", p.ID, err)
 	}
@@ -571,14 +563,6 @@ func speciesEntries(value string) []SpeciesEntry {
 		return []SpeciesEntry{}
 	}
 	return cleanSpecies(entries)
-}
-
-func firstSpecies(entries []SpeciesEntry) (name, label string) {
-	clean := cleanSpecies(entries)
-	if len(clean) == 0 {
-		return "", ""
-	}
-	return clean[0].Name, clean[0].Label
 }
 
 // articleTypeLabels maps every accepted article type spelling, canonical or
