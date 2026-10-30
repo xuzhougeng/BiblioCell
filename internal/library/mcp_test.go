@@ -57,7 +57,7 @@ func TestMCPAddAndListPapers(t *testing.T) {
 			"title": "Paper added through MCP", "doi": "10.1000/mcp",
 			"species": []map[string]any{{"name": "Oryza sativa", "label": "水稻"}},
 			"organs":  []string{"root", "leaf"}, "year": 2026,
-			"platforms": []string{"10x Genomics Chromium", "BD Rhapsody"},
+			"platforms":    []string{"10x Genomics Chromium", "BD Rhapsody"},
 			"modalities":   []string{"scRNA-seq"},
 			"articleTypes": []string{"original", "review"},
 		},

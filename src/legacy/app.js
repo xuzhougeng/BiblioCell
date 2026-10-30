@@ -650,7 +650,7 @@
       return;
     }
     if(e.target.id==='demo-mode'){
-      localStorage.setItem('plantcell-demo-mode',String(e.target.checked));
+      localStorage.setItem('bibliocell-demo-mode',String(e.target.checked));
       location.reload();return;
     }
     if(e.target.matches('[data-filter]')){filters[e.target.dataset.filter]=e.target.value;render();}
