@@ -7,10 +7,27 @@ import {
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
 
-export function taskRows(items: TaskRow[], compact = false): string {
+export function taskRows(items: TaskRow[]): string {
   return items.map((t) =>
-    `<button class="task-item${compact ? " compact" : ""}" data-action="open-paper" data-id="${esc(t.paper.id)}"><span class="icon-wrap ${t.color}">${I(t.icon, 18)}</span><span class="task-content"><span class="task-title">${esc(t.title)}</span><span class="task-paper">${esc(t.paper.title)}</span>${compact ? "" : `<span class="task-subtitle muted">${esc(t.subtitle)}</span>`}</span>${I("chevron-right", 16)}</button>`,
+    `<button class="task-item" data-action="open-paper" data-id="${esc(t.paper.id)}"><span class="icon-wrap ${t.color}">${I(t.icon, 18)}</span><span class="task-content"><span class="task-title">${esc(t.title)}</span><span class="task-paper">${esc(t.paper.title)}</span><span class="task-subtitle muted">${esc(t.subtitle)}</span></span>${I("chevron-right", 16)}</button>`,
   ).join("");
+}
+
+const TASK_GROUPS: [TaskType, string][] = [["screen", "确认收录范围"], ["fulltext", "待补全文"], ["data", "待核实数据关联"]];
+const TASK_GROUP_LIMIT = 3;
+
+/** taskGroups lists upcoming tasks grouped by type: the task name once, then only paper titles. */
+export function taskGroups(ts: TaskRow[]): string {
+  const groups = TASK_GROUPS.map(([type, label]) => {
+    const items = ts.filter((t) => t.type === type);
+    if (!items.length) return "";
+    const rows = items.slice(0, TASK_GROUP_LIMIT).map((t) =>
+      `<button class="task-row" data-action="open-paper" data-id="${esc(t.paper.id)}"><span>${esc(t.paper.title)}</span>${I("chevron-right", 14)}</button>`,
+    ).join("");
+    const more = items.length > TASK_GROUP_LIMIT ? `<span class="task-more muted">还有 ${items.length - TASK_GROUP_LIMIT} 篇</span>` : "";
+    return `<div class="task-group"><div class="task-group-title"><span>${label}</span><span class="count-pill">${items.length}</span></div>${rows}${more}</div>`;
+  }).join("");
+  return groups || '<p class="muted task-empty">暂无待补事项。</p>';
 }
 
 export function paperTable(items: Paper[], compact = false): string {
@@ -51,18 +68,15 @@ export function renderOverview(app: App): string {
     ["全文待补", missing, "已有入口，也可继续补正文", "file", "fulltext"],
     ["收录待判断", pending, "保留不确定项，减少遗漏", "check", "screen"],
   ];
-  const today = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
   const statCards = stats.map((s, i) =>
     `<button class="stat-card" data-action="stat-nav" data-target="${s[4]}"><div class="stat-top"><span class="stat-label">${s[0]}</span><span class="stat-icon">${I(s[3], 18)}</span></div><div class="stat-value">${s[1]}<span class="stat-unit">${i === 1 ? "组" : "篇"}</span></div><div class="stat-meta">${s[2]}${I("arrow-right", 14)}</div></button>`,
   ).join("");
-  const upcoming = ts.filter((t) => t.type === "screen").concat(ts.filter((t) => t.type === "data"), ts.filter((t) => t.type === "fulltext")).slice(0, 4);
   const speciesBars = species.map(([label, count]) =>
     `<button class="species-bar-row" data-action="species-filter" data-label="${esc(label)}"><span>${esc(label)}</span><div class="species-bar-track"><div style="width:${Math.round((count / maxCount) * 100)}%"></div></div><strong>${count}</strong></button>`,
   ).join("");
-  return `<div class="overview-kicker"><span class="eyebrow">YOUR RESEARCH, IN ONE PLACE</span><span class="muted overview-date">${I("calendar", 15)} ${today}</span></div>`
-    + `<div class="stat-grid">${statCards}</div>`
+  return `<div class="stat-grid">${statCards}</div>`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>最近收录</h2><p class="muted">新线索先留下，整理慢慢来</p></div><button class="text-link" data-page="papers">查看全部 ${I("arrow-right", 16)}</button></div>${paperTable(recent, true)}<div class="panel-footnote">${I("info", 14)} 当前条目为原型示例，可通过新增或导入建立自己的目录。</div></section>`
-    + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>接下来整理</h2><p class="muted">按需要补齐信息</p></div><span class="count-pill">${ts.length}</span></div><div class="task-list">${taskRows(upcoming, true)}</div><button class="panel-bottom-link" data-page="tasks">查看全部待补事项 ${I("arrow-right", 16)}</button></section></div>`
+    + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>接下来整理</h2><p class="muted">按需要补齐信息</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">查看全部待补事项 ${I("arrow-right", 16)}</button></section></div>`
     + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><div><h2>整理覆盖</h2><p class="muted">收录与完善，各自向前一步</p></div>${I("grid", 18)}</div><div class="panel-body progress-list">${progressRow("收录范围已判断", total - pending, total)}${progressRow("已关联数据集", withData, total, "blue")}${progressRow("已记录全文入口", withFulltext, total, "gold")}</div></section>`
     + `<section class="panel"><div class="panel-header"><div><h2>研究物种</h2><p class="muted">当前目录中的文献分布</p></div><span class="muted">${uniqueValues(papers, "species").length} 个分类</span></div><div class="panel-body species-bars">${speciesBars}</div></section></div>`;
 }

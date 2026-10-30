@@ -125,7 +125,7 @@ export class App {
     const actions = $(".heading-actions");
     if (actions) actions.hidden = this.page === "settings";
     const [title, subtitle] = PAGES[this.page];
-    for (const [selector, value] of [["#page-title", title], ["#page-subtitle", subtitle], ["#breadcrumb-current", title]] as const) {
+    for (const [selector, value] of [["#page-title", title], ["#page-subtitle", subtitle]] as const) {
       const el = $(selector);
       if (el) el.textContent = value;
     }

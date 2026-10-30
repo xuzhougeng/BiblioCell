@@ -44,15 +44,14 @@ async function boot(): Promise<void> {
   const realMode = localStorage.getItem("bibliocell-demo-mode") === "false";
   try {
     const [status, mcp, settings, sources] = await Promise.all([Library.status(), Library.mcpInfo(), Library.getSettings(), Library.listSources()]);
-    const mcpText = mcp.enabled ? `MCP ${mcp.endpoint}` : "MCP 未启动";
     applyFontSize(settings.fontSize);
     const env: Env = { desktop: true, real: realMode, settings, mcp, status, sources };
     if (realMode) {
       const initial = await sqliteStore.load();
-      setRuntime("真实数据库", `SQLite 中的 ${initial.papers.length} 篇文献、${initial.datasets.length} 组数据集 · ${mcpText} · 附件暂仅在 Demo 中开放。`);
+      setRuntime("真实数据库", `SQLite 中的 ${initial.papers.length} 篇文献、${initial.datasets.length} 组数据集；附件暂仅在 Demo 中开放，MCP 连接信息见设置页。`);
       new App({ store: sqliteStore, env, initial }).start();
     } else {
-      setRuntime("Demo 模式", `虚构示例仅保存在浏览器，不会写入正式库（现有 ${status.paperCount} 篇）· ${mcpText}`);
+      setRuntime("Demo 模式", `虚构示例仅保存在浏览器，不会写入正式库（现有 ${status.paperCount} 篇）。`);
       await startDemo(env);
     }
   } catch (error) {
