@@ -1,0 +1,207 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/egoist/mygo"
+
+	"bibliocell/internal/library"
+	"bibliocell/internal/settings"
+)
+
+func main() {
+	libraryService := &Library{}
+	mygo.Bind(libraryService)
+
+	var store *library.Store
+	var mcpServer *library.MCPServer
+	mygo.App.WhenReady(func() {
+		dataDir, err := mygo.App.Path(mygo.PathUserData)
+		if err != nil {
+			log.Fatalf("locate application data directory: %v", err)
+		}
+		migrateLegacyData(dataDir)
+		mcpToken, tokenErr := library.LoadOrCreateMCPToken(dataDir)
+		if tokenErr != nil {
+			log.Printf("MCP token file unavailable: %v", tokenErr)
+		}
+		settingsStore, settingsErr := settings.Open(
+			filepath.Join(dataDir, "settings.json"),
+			filepath.Join(dataDir, "bibliocell.sqlite"),
+			mcpToken,
+		)
+		libraryService.settings = settingsStore
+		if settingsErr != nil {
+			log.Printf("Using default settings: %v", settingsErr)
+		}
+		store, err = library.Open(settingsStore.Get().DatabasePath)
+		if err != nil {
+			log.Fatalf("initialize BiblioCell: %v", err)
+		}
+		libraryService.store = store
+
+		configuredToken := settingsStore.Get().MCPToken
+		if configuredToken == "" {
+			log.Printf("MCP authentication unavailable: no bearer token")
+		} else {
+			mcpServer, err = library.StartMCP(store, configuredToken)
+			if err != nil {
+				log.Printf("MCP server unavailable on %s: %v", library.MCPAddress, err)
+			} else {
+				libraryService.mcpEndpoint = mcpServer.Endpoint
+				libraryService.mcpToken = configuredToken
+				log.Printf("MCP server listening on %s (read-only without bearer token)", mcpServer.Endpoint)
+			}
+		}
+
+		mygo.NewWindow(mygo.WindowOptions{
+			Title:           "BiblioCell",
+			Width:           1440,
+			Height:          900,
+			MinWidth:        960,
+			MinHeight:       600,
+			BackgroundColor: "#f7f8f5",
+			StateKey:        "main",
+			URL:             "/",
+		})
+	})
+
+	runErr := mygo.App.Run()
+	if mcpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := mcpServer.Close(ctx); err != nil {
+			log.Printf("close MCP server: %v", err)
+		}
+		cancel()
+	}
+	if store != nil {
+		if err := store.Close(); err != nil {
+			log.Printf("close database: %v", err)
+		}
+	}
+	if runErr != nil {
+		log.Fatal(runErr)
+	}
+}
+
+// Names of the data files written before the BiblioCell rename.
+const (
+	legacyAppName      = "PlantCell Library"
+	legacyDatabaseName = "plantcell.sqlite"
+	legacySettingsName = "settings.json"
+	legacyTokenName    = "mcp-token"
+)
+
+// migrateLegacyData carries data from the previously named PlantCell Library
+// data directory into the BiblioCell data directory. It moves missing files
+// once and rewrites a recorded database path that still points into the
+// legacy directory; a database at a custom location keeps its original path.
+func migrateLegacyData(dataDir string) {
+	if configDir, err := os.UserConfigDir(); err == nil {
+		migrateLegacyDir(filepath.Join(configDir, legacyAppName), dataDir)
+	}
+}
+
+// migrateLegacyDir moves the legacy data into dataDir. It keeps both
+// directory names as arguments so tests can exercise real directories.
+func migrateLegacyDir(legacyDir, dataDir string) {
+	if legacyDir == dataDir {
+		return
+	}
+	legacyDB := filepath.Join(legacyDir, legacyDatabaseName)
+	if _, err := os.Stat(legacyDB); err != nil {
+		return
+	}
+	// Move the whole legacy directory while the new location is unused.
+	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
+		if err := os.Rename(legacyDir, dataDir); err != nil {
+			log.Printf("move legacy data directory: %v", err)
+		} else {
+			log.Printf("moved legacy data directory into %s", dataDir)
+		}
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		log.Printf("prepare data directory: %v", err)
+		return
+	}
+	// Carry the database by file when both directories exist.
+	newDB := filepath.Join(dataDir, "bibliocell.sqlite")
+	if _, err := os.Stat(newDB); os.IsNotExist(err) {
+		for _, dir := range []string{legacyDir, dataDir} {
+			old := filepath.Join(dir, legacyDatabaseName)
+			if _, err := os.Stat(old); err != nil {
+				continue
+			}
+			if err := os.Rename(old, newDB); err != nil {
+				log.Printf("move legacy database: %v", err)
+			} else {
+				log.Printf("moved legacy database into %s", newDB)
+			}
+			break
+		}
+	}
+	// Carry settings and the MCP token so preferences survive the rename.
+	for _, name := range []string{legacySettingsName, legacyTokenName} {
+		to := filepath.Join(dataDir, name)
+		if _, err := os.Stat(to); err == nil {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(legacyDir, name))
+		if err != nil {
+			continue
+		}
+		if err := os.WriteFile(to, data, 0o600); err != nil {
+			log.Printf("carry legacy %s: %v", name, err)
+		}
+	}
+	fixLegacyDatabasePath(filepath.Join(dataDir, legacySettingsName), legacyDir, dataDir)
+}
+
+// fixLegacyDatabasePath rewrites a recorded database path that still points
+// into the legacy directory, and renames the default database file in place.
+// Paths outside the data directories are left untouched.
+func fixLegacyDatabasePath(settingsPath, legacyDir, dataDir string) {
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return
+	}
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		return
+	}
+	recorded := filepath.Clean(strings.TrimSpace(configString(config, "databasePath")))
+	if recorded == "" || recorded == "." {
+		return
+	}
+	updated := recorded
+	if recorded == legacyDir || strings.HasPrefix(recorded, legacyDir+string(os.PathSeparator)) {
+		updated = filepath.Join(dataDir, strings.TrimPrefix(strings.TrimPrefix(recorded, legacyDir), string(os.PathSeparator)))
+	}
+	if filepath.Dir(updated) == dataDir && filepath.Base(updated) == legacyDatabaseName {
+		updated = filepath.Join(dataDir, "bibliocell.sqlite")
+	}
+	if updated == recorded {
+		return
+	}
+	config["databasePath"] = updated
+	if data, err := json.MarshalIndent(config, "", "  "); err != nil {
+		log.Printf("encode settings during migration: %v", err)
+		return
+	} else if err := os.WriteFile(settingsPath, append(data, '\n'), 0o600); err != nil {
+		log.Printf("update settings database path: %v", err)
+	} else {
+		log.Printf("database path updated to %s", updated)
+	}
+}
+
+// configString reads a string field from decoded JSON settings.
+func configString(config map[string]any, key string) string {
+	value, _ := config[key].(string)
+	return value
+}

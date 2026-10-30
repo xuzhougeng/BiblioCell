@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>BiblioCell · 数据结构与网页设计</title>
+  <style>
+    :root{--ink:#223b31;--body:#3d4c45;--muted:#738078;--green:#34705a;--line:#dde4df;--paper:#fff;--wash:#f5f7f3;--pale:#eaf2ec;--amber:#986b28}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--body);font:15px/1.85 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif}a{color:var(--green);text-underline-offset:3px}header,main,footer{max-width:1100px;margin:auto;padding:0 54px}header{padding-top:62px;padding-bottom:35px;border-bottom:1px solid var(--line)}.eyebrow{font-size:12px;letter-spacing:.14em;font-weight:700;color:var(--green)}h1,h2,h3{color:var(--ink);line-height:1.35}h1{margin:16px 0 15px;font-size:36px;font-weight:650;letter-spacing:-.03em}h1 span{display:block;font-size:21px;font-weight:450;margin-top:9px;letter-spacing:0}.lead{font-size:17px;max-width:790px;margin:20px 0;color:#526358}.meta{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12px;color:var(--muted)}nav{display:flex;gap:10px 22px;flex-wrap:wrap;padding:22px 0 2px;font-size:13px}nav a{text-decoration:none;color:var(--muted)}nav a:hover{color:var(--green)}main{padding-top:14px;padding-bottom:55px}section{margin-top:42px;scroll-margin-top:20px}h2{font-size:24px;font-weight:650;margin:0 0 18px;display:flex;gap:12px;align-items:baseline}h2 b{font-size:13px;color:#99a69e;font-weight:500;letter-spacing:.06em}h3{font-size:17px;margin:24px 0 10px}p{margin:10px 0 15px}strong{font-weight:650;color:var(--ink)}.note{border-left:3px solid #74a28b;padding:14px 20px;background:var(--pale);border-radius:0 6px 6px 0;margin:22px 0}.note p:last-child{margin-bottom:0}.caption{font-size:12px;color:var(--muted);margin-top:10px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:24px 0}.card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:22px}.card h3{margin:0 0 9px;font-size:16px}.card p{font-size:14px;margin:0}.pill{display:inline-block;padding:2px 9px;border-radius:4px;background:var(--pale);color:var(--green);font-size:12px;line-height:1.8}.tag-amber{background:#f4eddf;color:var(--amber)}.table-scroll{overflow:auto;margin:17px 0 20px;border:1px solid var(--line);border-radius:7px;background:white}table{width:100%;border-collapse:collapse;text-align:left;font-size:13px}th{background:#eef3ee;color:#52665a;font-weight:600;font-size:12px;letter-spacing:.02em}th,td{padding:12px 15px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}td:first-child{color:var(--ink)}code{font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef2ee;padding:2px 5px;border-radius:3px;overflow-wrap:anywhere}pre{background:#243e33;color:#e5eee8;padding:24px;border-radius:8px;overflow:auto;line-height:1.7;font-size:12px}pre code{background:transparent;color:inherit;padding:0;white-space:pre}ul,ol{padding-left:23px;margin:12px 0 20px}li{margin:8px 0}.compact li{margin:5px 0}.diagram{background:white;border:1px solid var(--line);border-radius:8px;padding:20px;margin:24px 0}.diagram svg{display:block;width:100%;height:auto}.split{display:grid;grid-template-columns:1fr 1fr;gap:22px}.split .card{padding:22px}.split h3{margin-top:0}.rail{border-left:1px solid #becfc3;padding-left:23px;margin:22px 0}.rail h3{font-size:15px;margin:23px 0 7px}.rail p{font-size:14px}.small{font-size:13px;color:var(--muted)}footer{padding-top:26px;padding-bottom:50px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}.sources{font-size:13px;overflow-wrap:anywhere}.sources li{margin:10px 0}.status-example{display:flex;flex-wrap:wrap;gap:8px;padding:15px 0}.stage{font-size:12px;font-weight:650;color:var(--green);margin-bottom:10px}.rule{font-size:14px;padding:12px 0;border-bottom:1px solid var(--line)}.rule:last-child{border:0}.sr-only{position:absolute;clip:rect(0,0,0,0);width:1px;height:1px;overflow:hidden}
+    @media(max-width:760px){header,main,footer{padding-left:22px;padding-right:22px}header{padding-top:35px}h1{font-size:28px}h1 span{font-size:18px}.grid,.split{grid-template-columns:1fr}.diagram{padding:9px}.table-scroll{border-radius:5px}th,td{padding:10px}h2{font-size:21px}nav{gap:9px 16px}}
+    @media print{@page{size:A4;margin:17mm 16mm}body{background:white;font-size:10pt;line-height:1.65}header,main,footer{max-width:none;padding-left:0;padding-right:0}header{padding-top:0;padding-bottom:17px}h1{font-size:24pt}h1 span{font-size:15pt}.lead{font-size:11pt}nav{display:none}section{margin-top:25px}h2{font-size:17pt;break-after:avoid}h3{font-size:12pt;break-after:avoid}.card,.diagram,.note,tr{break-inside:avoid}.table-scroll{overflow:visible}table{font-size:9pt}th,td{padding:7px 9px}pre{white-space:pre-wrap;font-size:8pt;break-inside:avoid}pre code{white-space:pre-wrap}.caption,.small,.sources,footer{font-size:8.5pt}a{color:inherit}.grid{gap:10px}.card{padding:14px}footer{padding-bottom:0}.pill{font-size:8pt}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">BIBLIOCELL / DESIGN NOTES</div>
+  <h1>植物单细胞研究库<span>数据库结构与网页基本设计</span></h1>
+  <p class="lead">从完整的文献目录开始，把论文、数据集和资料附件连接起来。全文、样本和矩阵按实际研究需要逐步补齐，让每一次整理都能被保留和继续使用。</p>
+  <div class="meta"><span>版本 0.1</span><span>2026 年 10 月 30 日</span><span>个人研究管理</span><span>SQLite 结构 + 交互原型</span></div>
+  <nav aria-label="目录"><a href="#scope">定位与范围</a><a href="#model">数据关系</a><a href="#tables">表与字段</a><a href="#states">状态设计</a><a href="#pages">页面结构</a><a href="#ingestion">每日更新</a><a href="#delivery">交付与后续</a></nav>
+</header>
+<main>
+  <section id="scope">
+    <h2><b>01</b> 定位与收录范围</h2>
+    <p>这个库首先服务个人查找、阅读和复用植物单细胞研究。文献是否已经收录，与全文、数据编号和样本信息整理到了什么程度，是两个独立的问题。合格文献即使没有 PDF、没有公开原始文件，也应留下记录和待补状态。</p>
+    <div class="grid">
+      <div class="card"><div class="stage">先覆盖</div><h3>文献目录</h3><p>收集题目、标识符、摘要、来源和基本标签；可以在信息不完整时入库。</p></div>
+      <div class="card"><div class="stage">再连接</div><h3>数据来源</h3><p>确认论文产生或复用的数据，记录 accession、文件入口与可用性。</p></div>
+      <div class="card"><div class="stage">按需深入</div><h3>可复用资源</h3><p>补齐全文、补充材料、样本关系、矩阵和细胞注释，支持后续分析。</p></div>
+    </div>
+    <p>核心目录纳入实际产生或实质性分析植物单细胞、单核测序数据的原创研究和方法研究。scRNA-seq、snRNA-seq 优先完善；结构同时允许 scATAC-seq、单细胞多组学和长读长等类型。综述、纯空间转录组和其他相关资料可保留为参考记录，并与核心目录区分。</p>
+    <div class="note"><strong>当前网页是设计原型。</strong> 示例记录不代表真实检索结果；新增条目与整理信息仅保存在当前浏览器。SQLite 结构已独立提供，原型尚未连接数据库，也未运行每日采集。</div>
+  </section>
+
+  <section id="model">
+    <h2><b>02</b> 核心关系：文献、数据集、资料</h2>
+    <p><strong>文献是管理入口，数据集是独立对象，附件是可不断补充的资料。</strong> 一个数据集拥有稳定内部 ID，外部仓库编号作为关联记录保存。论文、预印本与数据集之间的关系需要明确角色和来源。</p>
+    <div class="diagram">
+      <svg viewBox="0 0 880 390" role="img" aria-labelledby="diagram-title diagram-desc" xmlns="http://www.w3.org/2000/svg">
+        <title id="diagram-title">文献、数据集与资料附件关系</title><desc id="diagram-desc">文献通过包含生成、复用或重新处理角色的关联连接到数据集。文献和数据集分别连接资料附件，采集来源记录支持文献发现与证据追溯。</desc>
+        <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#93ad9d"/></marker></defs>
+        <g fill="none" stroke="#93ad9d" stroke-width="1.7" marker-end="url(#arrow)">
+          <path d="M270 106H330"/><path d="M550 106H610"/>
+          <path d="M220 162V224H440V263"/><path d="M728 162V224H440V263"/>
+          <path d="M95 264V162"/>
+        </g>
+        <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif">
+          <rect x="33" y="48" width="237" height="114" rx="9" fill="#eaf2ec" stroke="#c9d9ce"/>
+          <text x="55" y="80" font-size="18" font-weight="600" fill="#244c38">文献 Paper</text>
+          <text x="55" y="107" font-size="13" fill="#597264">题目 · 标识符 · 摘要</text>
+          <text x="55" y="132" font-size="13" fill="#597264">版本关系 · 个人整理</text>
+          <rect x="330" y="67" width="220" height="77" rx="7" fill="#f8faf7" stroke="#c9d9ce" stroke-dasharray="4 3"/>
+          <text x="440" y="95" text-anchor="middle" font-size="13" fill="#597264">多对多关联</text>
+          <text x="440" y="120" text-anchor="middle" font-size="12" fill="#244c38">产生 / 复用 / 重新处理</text>
+          <rect x="610" y="48" width="237" height="114" rx="9" fill="#eaf2ec" stroke="#c9d9ce"/>
+          <text x="632" y="80" font-size="18" font-weight="600" fill="#244c38">数据集 Dataset</text>
+          <text x="632" y="107" font-size="13" fill="#597264">内部 ID · 物种 · 模态</text>
+          <text x="632" y="132" font-size="13" fill="#597264">仓库记录 · 数据可用性</text>
+          <rect x="33" y="264" width="237" height="91" rx="9" fill="#f9f7f0" stroke="#e1d9c8"/>
+          <text x="55" y="295" font-size="16" font-weight="600" fill="#6d6046">采集记录与证据</text>
+          <text x="55" y="324" font-size="12" fill="#7c725e">来源 · 原始值 · 快照 · 检查时间</text>
+          <rect x="321" y="264" width="237" height="91" rx="9" fill="#f1f4f6" stroke="#d2dce2"/>
+          <text x="343" y="295" font-size="16" font-weight="600" fill="#425e6a">资料与附件 Resource</text>
+          <text x="343" y="324" font-size="12" fill="#607984">正文 · 补充材料 · 矩阵 · 注释</text>
+          <text x="283" y="99" font-size="11" fill="#83948a">N</text><text x="583" y="99" font-size="11" fill="#83948a">M</text>
+          <text x="260" y="210" font-size="12" fill="#83948a">资料关联</text><text x="595" y="210" font-size="12" fill="#83948a">资料关联</text>
+          <text x="633" y="292" font-size="12" fill="#738078">图中只展示主要业务关系</text>
+          <text x="633" y="316" font-size="12" fill="#738078">具体约束由关联表实现</text>
+        </g>
+      </svg>
+    </div>
+    <p>GEO 的 Series、Sample 和 DataSet 具有不同含义，GSM 可以出现在多个 GSE 中；SRA 也分别组织 Study、Sample、Experiment 和 Run。外部编号不能直接作为独立数据集或生物学重复的计数单位。<sup><a href="#ref1">[1]</a><a href="#ref2">[2]</a></sup></p>
+    <div class="table-scroll"><table><thead><tr><th>关联角色</th><th>含义</th><th>计数处理</th></tr></thead><tbody>
+      <tr><td><code>generated</code></td><td>该文献新产生此数据集</td><td>确认来源后计入独立数据集</td></tr>
+      <tr><td><code>reused</code></td><td>该文献使用已有数据集</td><td>新增文献关联，不自动新增原始数据集</td></tr>
+      <tr><td><code>reprocessed</code></td><td>该文献重新处理已有数据</td><td>记录处理关系与派生资料，保留原始来源</td></tr>
+    </tbody></table></div>
+    <p>同一论文可以同时产生水稻根的数据、复用拟南芥根的数据。两条关联分别保存角色，数据集本身无需复制。预印本正式发表后，建立版本关系并继续指向已有数据来源。</p>
+  </section>
+
+  <section id="tables">
+    <h2><b>03</b> 数据表与核心字段</h2>
+    <p>SQL 使用关系表保护身份、来源和关联的一致性。业务界面仍围绕三个对象展开，用户无需操作所有底层表。完整字段类型、约束和索引以交付的 <code>schema.sql</code> 为准。</p>
+    <div class="table-scroll"><table><thead><tr><th>职责</th><th>表</th><th>设计用途</th></tr></thead><tbody>
+      <tr><td>文献身份</td><td><code>papers</code><br><code>paper_identifiers</code><br><code>paper_relations</code></td><td>主体信息；命名空间内唯一标识符；预印本、正式论文和更正等关系。</td></tr>
+      <tr><td>个人整理</td><td><code>paper_curation</code></td><td>筛选判断、阅读状态、优先级、笔记和标签，与采集字段分离。</td></tr>
+      <tr><td>数据来源</td><td><code>datasets</code><br><code>dataset_relations</code><br><code>repository_records</code><br><code>dataset_repositories</code><br><code>paper_datasets</code></td><td>内部数据集、多来源派生关系、外部登记记录、仓库映射和论文关联角色。</td></tr>
+      <tr><td>物种分类</td><td><code>taxa</code><br><code>paper_taxa</code><br><code>dataset_taxa</code></td><td>标准学名与 TaxID；允许一篇论文或一个集合涉及多个物种。</td></tr>
+      <tr><td>资料文件</td><td><code>resources</code><br><code>paper_resources</code><br><code>dataset_resources</code></td><td>正文、补充、矩阵、注释、代码等资料；独立记录链接与文件状态。</td></tr>
+      <tr><td>采集与证据</td><td><code>source_states</code><br><code>harvest_runs</code><br><code>source_records</code><br><code>field_evidence</code></td><td>来源断点、采集批次、原始记录与关键字段的证据。</td></tr>
+      <tr><td>结构演进</td><td><code>schema_migrations</code></td><td>追踪数据库结构版本，为后续迁移保留路径。</td></tr>
+    </tbody></table></div>
+    <p>当前结构包含 20 张表和 3 个视图：<code>v_paper_overview</code> 汇总文献与整理状态，<code>v_dataset_overview</code> 汇总数据来源，<code>v_work_queue</code> 自动生成待补事项。关联表和采集表承担数据约束，不增加日常使用的操作层级。</p>
+    <h3>核心字段字典</h3>
+    <div class="table-scroll"><table><thead><tr><th>对象</th><th>字段</th><th>含义与约束</th></tr></thead><tbody>
+      <tr><td>文献</td><td><code>papers.id</code><br><code>papers.title</code></td><td>稳定内部 ID 与非空题目；创建不要求 DOI 或全文。</td></tr>
+      <tr><td>时间</td><td><code>online_date</code> / <code>issue_year</code><br><code>first_seen_at</code> / <code>source_updated_at</code></td><td>在线发表、卷期、本库发现和来源更新分别保存。</td></tr>
+      <tr><td>摘要级背景</td><td><code>papers.organs_json</code><br><code>modalities_json</code> / <code>conditions_text</code></td><td>即使尚未识别数据集，也能保存组织、技术和实验条件。</td></tr>
+      <tr><td>标识符</td><td><code>paper_identifiers.namespace</code><br><code>value</code> / <code>raw_value</code></td><td>命名空间与规范值组合唯一；保留原始值，DOI 存为小写裸标识符。</td></tr>
+      <tr><td>个人整理</td><td><code>screening_status</code> / <code>reading_status</code><br><code>priority</code> / <code>starred</code> / <code>notes</code> / <code>tags_json</code></td><td>收录、阅读和优先级相互独立；排除文献必须填写理由。</td></tr>
+      <tr><td>人工覆盖</td><td><code>organs_override_json</code><br><code>modalities_override_json</code><br><code>conditions_override_text</code></td><td>NULL 表示使用来源值；人工修订独立保存。检索使用视图中的 effective 字段。</td></tr>
+      <tr><td>数据类型</td><td><code>datasets.dataset_kind</code><br><code>modality</code> / <code>tissue_text</code> / <code>conditions_text</code></td><td>区分原始、派生和集合；科学背景先保留可追溯的文本概要。</td></tr>
+      <tr><td>数据谱系</td><td><code>dataset_relations</code><br><code>source_dataset_id</code> / <code>target_dataset_id</code></td><td>多对多保存派生、子集、组成和重叠关系。A derived_from B 表示 A 派生自 B。</td></tr>
+      <tr><td>数量</td><td><code>n_cells_reported</code><br><code>cell_count_unit</code> / <code>cell_count_scope</code></td><td>报告数量非空时，必须同时提供单位和统计范围。</td></tr>
+      <tr><td>可用性</td><td><code>raw_availability</code><br><code>matrix_availability</code><br><code>annotation_availability</code></td><td>原始数据、矩阵和注释分别记录；允许未知、可用、不可用、未公开与限制访问。</td></tr>
+      <tr><td>关联</td><td><code>paper_datasets.role</code><br><code>verified</code> / <code>evidence_text</code></td><td>产生、复用、重新处理之外，也允许 benchmark 或尚不确定的关系。</td></tr>
+      <tr><td>资源</td><td><code>resource_type</code> / <code>url</code> / <code>local_path</code><br><code>access_status</code> / <code>local_state</code></td><td>远程可用性与本地保存分开；至少有 URL 或本地路径，声称本地保存时必须有路径。</td></tr>
+      <tr><td>采集断点</td><td><code>committed_watermark</code><br><code>committed_cursor</code></td><td>只能由同一来源的成功批次推进，失败不会成为新的同步起点。</td></tr>
+      <tr><td>证据</td><td><code>raw_value</code> / <code>normalized_value</code><br><code>source_location</code> / <code>review_status</code></td><td>保留原始表述、标准化结果、来源位置和核查状态；每条证据指向一个目标。</td></tr>
+    </tbody></table></div>
+    <h3>按整理深度采集字段</h3>
+    <div class="table-scroll"><table><thead><tr><th>阶段</th><th>主要信息</th><th>缺失时的处理</th></tr></thead><tbody>
+      <tr><td>发现时</td><td>题目、DOI / PMID / 预印本标识、作者、日期、摘要、来源、发现时间</td><td>允许缺少 DOI、摘要或全文；至少保留能够定位来源的记录</td></tr>
+      <tr><td>初步整理</td><td>物种、器官、组织、技术、实验处理、原始数据或复用关系</td><td>保留原文，未知单独标记；可多选的维度不压成唯一值</td></tr>
+      <tr><td>获取资料</td><td>全文、补充文件、数据页面、代码、下载地址、最近检查时间</td><td>区分未检查、找不到、未公开和链接失效</td></tr>
+      <tr><td>准备复用</td><td>样本关系、参考版本、矩阵、cell metadata、细胞注释、文件校验</td><td>由研究需求驱动；样本与文库的详细模型留待后续扩展</td></tr>
+    </tbody></table></div>
+    <h3>必须保存的语义</h3>
+    <div class="rule"><strong>数量的统计范围：</strong>作者报告的细胞数、下载矩阵中的 observations 数、重新过滤后的细胞数分开保存，并附来源和范围。未知不写为 0。</div>
+    <div class="rule"><strong>字段来源：</strong>关键字段可以同时保存原始表述、标准化结果、来源 URL、正文位置和审核信息。新值出现时保留冲突记录。</div>
+    <div class="rule"><strong>资源身份：</strong>同一文件的不同下载位置可以指向相同资料；链接存在不等于本地已保存，文件已保存不等于已解析。</div>
+    <div class="rule"><strong>人工修订：</strong>采集程序更新来源元数据，用户编辑整理信息。对已人工确认的科学字段，先保留新候选值，再决定采用哪一个。</div>
+  </section>
+
+  <section id="states">
+    <h2><b>04</b> 状态独立，缺口可见</h2>
+    <p>单一的“完成 / 未完成”无法表达实际进度。状态应围绕具体问题设计，而不是让缺少全文阻塞整个文献条目。</p>
+    <div class="table-scroll"><table><thead><tr><th>状态维度</th><th>回答的问题</th><th>示例</th></tr></thead><tbody>
+      <tr><td>收录判断</td><td>这项研究是否属于收录范围？</td><td><code>pending / included / excluded / uncertain</code></td></tr>
+      <tr><td>全文</td><td>我们找到了什么、保存了什么？</td><td><code>not_checked / missing / linked / stored / unavailable</code>，由资源推导</td></tr>
+      <tr><td>数据关联</td><td>数据来源是否已经确认？</td><td><code>not_checked / missing / linked / partial / verified</code>，由关联推导</td></tr>
+      <tr><td>个人阅读</td><td>我是否读过、是否需要重点跟进？</td><td><code>unread / skimmed / read</code>；另有优先级与收藏</td></tr>
+    </tbody></table></div>
+    <div class="status-example" aria-label="一个文献条目的合理状态组合"><span class="pill">已纳入</span><span class="pill tag-amber">全文待补</span><span class="pill">数据编号已找到</span><span class="pill">未读</span></div>
+    <p>“待补全文”“待判断”“数据待核实”等清单由记录状态自动生成。处理完一条记录后，它自然离开相应清单，避免再维护一份容易不同步的任务表。优先级可由用户决定，自动流程不强迫每一篇论文达到同样的整理深度。</p>
+    <p class="small"><code>stored</code> 表示数据库记录了本地文件路径。文件是否仍然存在、能否解析、校验和是否一致，需要后续文件服务验证。当前空数据库仅验证结构约束。</p>
+  </section>
+
+  <section id="pages">
+    <h2><b>05</b> 网页信息结构</h2>
+    <p>桌面界面以固定侧栏、顶部检索和主内容区组成。文献列表承担日常工作入口，详情在侧边抽屉中打开，保留当前搜索与筛选上下文。配色使用浅底、低饱和绿色和清晰的表格边界，状态通过文字与颜色共同表达。</p>
+    <div class="table-scroll"><table><thead><tr><th>页面</th><th>主要内容</th><th>常用操作</th></tr></thead><tbody>
+      <tr><td>总览</td><td>文献、数据集、整理缺口、最近活动</td><td>进入对应列表；新增文献</td></tr>
+      <tr><td>文献库</td><td>题目、来源、年份、物种、组织、技术与状态</td><td>组合筛选、搜索、排序、查看详情、导出</td></tr>
+      <tr><td>数据集</td><td>内部 ID、来源、物种、模态、关联文献、资源状态</td><td>查看资料和来源关系；逐步核实外部编号</td></tr>
+      <tr><td>待补事项</td><td>待判断、待补全文、数据待核实</td><td>按优先级处理；直接打开原条目</td></tr>
+      <tr><td>更新来源</td><td>来源接入状态、采集日志的位置和含义</td><td>当前展示待接入状态；后续查看成功、失败和变化</td></tr>
+      <tr><td>数据结构</td><td>主要实体、角色和设计资料</td><td>查看结构说明、下载 SQL</td></tr>
+    </tbody></table></div>
+    <div class="split">
+      <div class="card"><h3>文献详情</h3><p><strong>概览：</strong>摘要、基本元数据、物种与主题标签。</p><p><strong>数据与附件：</strong>关联数据集、正文与补充资源、数据入口。</p><p><strong>笔记：</strong>个人阅读、判断、优先级与研究记录。</p></div>
+      <div class="card"><h3>新增文献</h3><p>题目必填，其他元数据可以后补。DOI 需要规范化后检查重复；不能因为缺少 DOI 或 PDF 拒绝新增。</p><p>确认添加后立即进入列表，统计随数据更新；新增真实条目与原型示例条目保持可区分。</p></div>
+    </div>
+    <p>演示原型的筛选、详情和状态修改使用浏览器数据完成。支持当前列表 CSV 导出，以及浏览器 JSON 的导出和追加导入；导入保留已有重复记录，资料导出只包含元数据和链接。真实后端接入后，界面结构可以保留，再将原型的简化字段映射到 SQLite 的关系与状态。错误和空结果使用明确文案，不把“没有匹配结果”误显示成“数据库没有该类研究”。</p>
+  </section>
+
+  <section id="ingestion">
+    <h2><b>06</b> 每日发现与补全流程</h2>
+    <p>每日采集由独立后台任务执行。各来源维护自己的查询版本、游标和最后成功水位。新记录、旧记录修改、预印本正式发表以及数据延后公开都需要被追踪。同步时间优先使用来源的创建、更新或索引时间；发表日期用于文献展示。<sup><a href="#ref3">[3]</a></sup></p>
+    <div class="rail">
+      <h3>① 采集并保存来源记录</h3><p>先保留原始响应、来源标识、内容摘要和抓取时间。记录不完整也先存档，避免丢失发现线索。</p>
+      <h3>② 识别身份与版本</h3><p>先根据标准化 DOI、PMID 等确定性标识匹配。题目与作者相似只生成疑似重复提示；预印本与正式论文建立关系。</p>
+      <h3>③ 判断范围并提取基本字段</h3><p>规则或模型给出符合、不符合或证据不足，并保留证据。没有全文不应自动判定为不符合。</p>
+      <h3>④ 追踪数据与附件</h3><p>提取编号候选后向官方仓库验证；判断其是新产生、复用还是正文中的参考资料。可获取全文就补充，否则保留待补状态。</p>
+      <h3>⑤ 写入变化并推进断点</h3><p>整个批次成功后推进水位；失败保留已处理页和错误信息，下次补齐。同步不得覆盖用户笔记和人工确认结果。</p>
+    </div>
+    <pre><code>for each enabled source:
+    run = start(last_successful_checkpoint, fixed_end_time)
+    for each fetched page:
+        save_source_snapshots(page)
+        resolve_identifiers_and_versions(page)
+        screen_and_extract_with_evidence(page)
+        update_automatic_fields_only(page)
+        preserve_manual_edits_and_conflicts(page)
+        save_page_progress(run)
+    if all pages succeeded:
+        commit_checkpoint(run)
+    else:
+        record_failure_without_skipping_unfetched_time_range(run)</code></pre>
+    <p>可用 7–14 天重叠窗口作为起始参数，再根据观察到的延迟调整；定期比较已有社区清单和已知论文集合。覆盖率应针对有明确范围的参考集合报告，不能仅凭每日任务运行成功就声称已经找到所有研究。</p>
+    <p>每个 SQLite 连接启用 <code>PRAGMA foreign_keys = ON</code>。采集更新使用指定字段的 UPDATE 或 UPSERT；避免 <code>INSERT OR REPLACE papers</code>，其删除再插入行为可能级联删除已有个人整理。修改时显式维护 <code>updated_at</code>。</p>
+    <h3>后端接口草案</h3>
+    <div class="table-scroll"><table><thead><tr><th>接口</th><th>职责</th></tr></thead><tbody>
+      <tr><td><code>GET /api/papers</code></td><td>分页查询，支持关键词与多维筛选</td></tr>
+      <tr><td><code>POST /api/papers</code></td><td>新增记录与标识符规范化、去重检查</td></tr>
+      <tr><td><code>PATCH /api/papers/{id}/curation</code></td><td>保存个人整理信息，带版本检查</td></tr>
+      <tr><td><code>POST /api/papers/{id}/resources</code></td><td>关联附件或远程资源，保留来源和状态</td></tr>
+      <tr><td><code>GET /api/datasets</code></td><td>查询数据集及来源关系</td></tr>
+      <tr><td><code>GET /api/tasks</code></td><td>根据状态生成待办视图</td></tr>
+      <tr><td><code>GET /api/harvest-runs</code></td><td>读取同步批次、错误与变化摘要</td></tr>
+    </tbody></table></div>
+    <p class="caption">以上为下一阶段的接口契约。当前网页不发送这些请求，后台采集和 API 尚未实现。</p>
+  </section>
+
+  <section id="delivery">
+    <h2><b>07</b> 交付与下一阶段</h2>
+    <div class="split">
+      <div class="card"><h3>本次提供</h3><p>可执行 SQLite 结构、初始化工具和空数据库；带演示数据的网页原型；文献与数据关系、状态设计及后续接入说明。</p><p>网页能够用于检查页面布局和整理操作的使用方式。演示内容不应导入正式文献库作为事实。</p></div>
+      <div class="card"><h3>后续接入</h3><p>真实 SQLite 读写 API、附件文件管理、历史文献回填、文献来源增量同步、数据编号验证和后台调度。</p><p>有具体分析需求后再细化样本、捕获、文库、Run 和标准化表达对象。</p></div>
+    </div>
+    <p>下一步建议先把现有界面接到单人后端，并导入已有文献清单；随后选择一个文献来源跑通完整的同步、失败重试和人工核查链路。矩阵处理和图谱浏览可以沿已有数据集继续增加，不影响前期目录积累。</p>
+    <div class="note"><strong>验收关注点：</strong>已知文献可检索；重复标识能被阻止；缺少全文仍可入库；一篇论文可正确关联多个新旧数据集；用户笔记不被采集覆盖；失败的同步不会跳过未抓取的时间段。</div>
+  </section>
+
+  <section id="references">
+    <h2><b>08</b> 设计依据</h2>
+    <ol class="sources">
+      <li id="ref1">NCBI GEO. <a href="https://www.ncbi.nlm.nih.gov/geo/info/overview.html" target="_blank" rel="noopener noreferrer">GEO Overview — Data organization</a>。用于区分 Series、Sample、DataSet 及其关系。</li>
+      <li id="ref2">NCBI SRA. <a href="https://www.ncbi.nlm.nih.gov/sra/docs/submitmeta/" target="_blank" rel="noopener noreferrer">SRA Metadata and Submission Overview</a>。用于区分 Study、Sample、Experiment、Run。</li>
+      <li id="ref3">Crossref. <a href="https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/" target="_blank" rel="noopener noreferrer">Tips and tricks — Keep local data synced</a>。用于增量日期、水位、分页与缓存设计。</li>
+    </ol>
+    <p class="small">设计建议与上述资源文档相互参照；具体接口、字段映射和上游行为应在后续接入时核验。</p>
+  </section>
+</main>
+<footer>BiblioCell · 个人植物单细胞研究资料管理 · 设计版本 0.1<br>此说明为本次交付的一部分，数据库约束以 schema.sql 为准，实际已实现交互以网页原型为准。</footer>
+</body>
+</html>
