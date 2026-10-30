@@ -1,6 +1,4 @@
 import "./style.css";
-import "./legacy/styles.css";
-import "./legacy/components.css";
 
 import { isMyGo } from "mygo-runtime";
 import { Library } from "./mygo.ts";

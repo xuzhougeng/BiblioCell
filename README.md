@@ -133,7 +133,7 @@ BiblioCell/
 │   ├── views.ts / drawer.ts / forms.ts / sources.ts / settings.ts  # 各页面、抽屉与弹窗
 │   ├── ui.ts / icons.ts / shell.ts  # HTML 片段构造、图标与侧栏等静态外壳
 │   ├── demo-data.ts         # 明确标记的虚构演示数据
-│   ├── legacy/              # 从 v0.1 迁移的样式
+│   ├── style.css            # 单一样式表（外壳与设置页 → 基础 → 组件）
 │   └── mygo.ts              # mygo generate 生成的类型化客户端
 ├── tests/                   # node:test 纯逻辑测试（npm test）
 ├── public/                  # 图标、设计文档与可下载资料
