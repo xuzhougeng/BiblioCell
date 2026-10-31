@@ -15,13 +15,21 @@ const (
 	DefaultFontSize = 15
 	MinFontSize     = 12
 	MaxFontSize     = 20
+
+	// DatabaseFile is the SQLite file name inside the storage folder.
+	DatabaseFile = "bibliocell.sqlite"
 )
 
 // Config contains preferences that survive application restarts.
 type Config struct {
-	DatabasePath string `json:"databasePath"`
-	FontSize     int    `json:"fontSize"`
-	MCPToken     string `json:"mcpToken"`
+	StoragePath string `json:"storagePath"`
+	FontSize    int    `json:"fontSize"`
+	MCPToken    string `json:"mcpToken"`
+}
+
+// DatabasePath returns the SQLite file inside the storage folder.
+func (c Config) DatabasePath() string {
+	return filepath.Join(c.StoragePath, DatabaseFile)
 }
 
 // Store loads and atomically saves a JSON settings file.
@@ -33,8 +41,8 @@ type Store struct {
 
 // Open loads settings. On invalid or unreadable contents it returns usable
 // defaults together with the error, allowing the application to start safely.
-func Open(path, defaultDatabasePath, defaultMCPToken string) (*Store, error) {
-	defaults := Config{DatabasePath: filepath.Clean(defaultDatabasePath), FontSize: DefaultFontSize, MCPToken: defaultMCPToken}
+func Open(path, defaultStoragePath, defaultMCPToken string) (*Store, error) {
+	defaults := Config{StoragePath: filepath.Clean(defaultStoragePath), FontSize: DefaultFontSize, MCPToken: defaultMCPToken}
 	store := &Store{path: path, config: defaults}
 	if err := Validate(defaults); err != nil {
 		return store, fmt.Errorf("invalid default settings: %w", err)
@@ -51,9 +59,9 @@ func Open(path, defaultDatabasePath, defaultMCPToken string) (*Store, error) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		return store, fmt.Errorf("parse settings: %w", err)
 	}
-	config.DatabasePath = strings.TrimSpace(config.DatabasePath)
-	if config.DatabasePath == "" {
-		config.DatabasePath = defaults.DatabasePath
+	config.StoragePath = strings.TrimSpace(config.StoragePath)
+	if config.StoragePath == "" {
+		config.StoragePath = defaults.StoragePath
 	}
 	if config.FontSize == 0 {
 		config.FontSize = DefaultFontSize
@@ -77,7 +85,7 @@ func (s *Store) Get() Config {
 
 // Save validates and atomically replaces the settings file.
 func (s *Store) Save(config Config) error {
-	config.DatabasePath = filepath.Clean(strings.TrimSpace(config.DatabasePath))
+	config.StoragePath = filepath.Clean(strings.TrimSpace(config.StoragePath))
 	config.MCPToken = strings.TrimSpace(config.MCPToken)
 	if err := Validate(config); err != nil {
 		return err
@@ -123,13 +131,17 @@ func (s *Store) Save(config Config) error {
 }
 
 // Validate rejects paths that could unexpectedly resolve relative to the
-// executable and font sizes outside the supported readable range.
+// executable, an existing file where the storage folder belongs, and font
+// sizes outside the supported readable range.
 func Validate(config Config) error {
-	if strings.TrimSpace(config.DatabasePath) == "" {
-		return errors.New("database path is required")
+	if strings.TrimSpace(config.StoragePath) == "" {
+		return errors.New("storage path is required")
 	}
-	if !filepath.IsAbs(config.DatabasePath) {
-		return errors.New("database path must be absolute")
+	if !filepath.IsAbs(config.StoragePath) {
+		return errors.New("storage path must be absolute")
+	}
+	if info, err := os.Stat(config.StoragePath); err == nil && !info.IsDir() {
+		return errors.New("storage path must be a folder, not a file")
 	}
 	if config.FontSize < MinFontSize || config.FontSize > MaxFontSize {
 		return fmt.Errorf("font size must be between %d and %d pixels", MinFontSize, MaxFontSize)

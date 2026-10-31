@@ -5,7 +5,7 @@ import { call } from "mygo-runtime";
 // ---- Types ----
 
 export interface Config {
-  databasePath: string;
+  storagePath: string;
   fontSize: number;
   mcpToken: string;
 }
@@ -105,11 +105,21 @@ export interface Paper {
   isDemo: boolean;
 }
 
+export interface PaperFile {
+  id: string;
+  paperId: string;
+  type: string;
+  title: string;
+  localPath: string;
+  sizeBytes: number;
+  addedAt: string;
+}
+
 /** SettingsSaveResult tells the frontend which configuration changes need a restart. */
 export interface SettingsSaveResult {
   settings: Config;
   restartRequired: boolean;
-  databaseChanged: boolean;
+  storageChanged: boolean;
   mcpTokenChanged: boolean;
 }
 
@@ -152,6 +162,7 @@ export interface SpeciesEntry {
 }
 
 export interface Status {
+  storagePath: string;
   databasePath: string;
   schemaVersion: number;
   tableCount: number;
@@ -175,17 +186,25 @@ export interface SyncResult {
 
 /** Library exposes local library operations to the frontend. */
 export const Library = {
-  /** ChooseDatabasePath opens a native directory picker and returns a SQLite path. */
-  chooseDatabasePath(): Promise<string> {
-    return call("Library.ChooseDatabasePath");
+  /** ChooseStoragePath opens a native directory picker for the storage folder. */
+  chooseStoragePath(): Promise<string> {
+    return call("Library.ChooseStoragePath");
   },
   /** GetSettings returns persisted desktop preferences. */
   getSettings(): Promise<Config> {
     return call("Library.GetSettings");
   },
+  /** ImportPaperFiles asks for files and copies them into the storage folder. */
+  importPaperFiles(paperID: string, resourceType: string): Promise<PaperFile[]> {
+    return call("Library.ImportPaperFiles", paperID, resourceType);
+  },
   /** ListDatasets returns real datasets with repository and paper associations. */
   listDatasets(): Promise<Dataset[]> {
     return call("Library.ListDatasets");
+  },
+  /** ListPaperFiles returns the files stored for real papers. */
+  listPaperFiles(): Promise<PaperFile[]> {
+    return call("Library.ListPaperFiles");
   },
   /** ListPapers returns records from the real database, never Demo records. */
   listPapers(): Promise<Paper[]> {
@@ -199,6 +218,17 @@ export const Library = {
   mcpInfo(): Promise<MCPInfo> {
     return call("Library.MCPInfo");
   },
+  /** OpenPaperFile opens a stored file with its default application. */
+  openPaperFile(id: string): Promise<void> {
+    return call("Library.OpenPaperFile", id);
+  },
+  /**
+   * RemovePaperFile moves a stored file to the trash and deletes its record. A
+   * file that is already gone must not keep the record from being removed.
+   */
+  removePaperFile(id: string): Promise<void> {
+    return call("Library.RemovePaperFile", id);
+  },
   /** SaveDatasets persists dataset edits while preserving unrelated associations. */
   saveDatasets(datasets: Dataset[]): Promise<void> {
     return call("Library.SaveDatasets", datasets);
@@ -207,7 +237,7 @@ export const Library = {
   savePapers(papers: Paper[]): Promise<void> {
     return call("Library.SavePapers", papers);
   },
-  /** SaveSettings persists preferences without moving or reopening the database. */
+  /** SaveSettings persists preferences without moving data or reopening the database. */
   saveSettings(config: Config): Promise<SettingsSaveResult> {
     return call("Library.SaveSettings", config);
   },

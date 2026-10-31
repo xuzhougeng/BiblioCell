@@ -12,7 +12,7 @@ func TestSaveSettingsReportsRestartChanges(t *testing.T) {
 	directory := t.TempDir()
 	store, err := settings.Open(
 		filepath.Join(directory, "settings.json"),
-		filepath.Join(directory, "bibliocell.sqlite"),
+		directory,
 		strings.Repeat("a", 64),
 	)
 	if err != nil {
@@ -25,7 +25,7 @@ func TestSaveSettingsReportsRestartChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.RestartRequired || result.DatabaseChanged || result.MCPTokenChanged {
+	if result.RestartRequired || result.StorageChanged || result.MCPTokenChanged {
 		t.Errorf("unchanged settings requested restart: %+v", result)
 	}
 
@@ -34,8 +34,18 @@ func TestSaveSettingsReportsRestartChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.RestartRequired || !result.MCPTokenChanged || result.DatabaseChanged {
+	if !result.RestartRequired || !result.MCPTokenChanged || result.StorageChanged {
 		t.Errorf("token change result = %+v", result)
+	}
+
+	config = result.Settings
+	config.StoragePath = filepath.Join(directory, "research")
+	result, err = service.SaveSettings(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.RestartRequired || !result.StorageChanged || result.MCPTokenChanged {
+		t.Errorf("storage change result = %+v", result)
 	}
 
 	config = result.Settings

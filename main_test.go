@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"bibliocell/internal/settings"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -147,5 +149,68 @@ func TestFixLegacyDatabasePathPreservesUnknownFields(t *testing.T) {
 	}
 	if got := configString(config, "databasePath"); got != filepath.Join(dataDir, "bibliocell.sqlite") {
 		t.Errorf("database path = %q", got)
+	}
+}
+
+func TestMigrateDatabaseSetting(t *testing.T) {
+	root := t.TempDir()
+	settingsPath := filepath.Join(root, "settings.json")
+	readConfig := func() map[string]any {
+		t.Helper()
+		data, err := os.ReadFile(settingsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var config map[string]any
+		if err := json.Unmarshal(data, &config); err != nil {
+			t.Fatal(err)
+		}
+		return config
+	}
+
+	// A custom-named database moves to the fixed name inside its folder.
+	custom := filepath.Join(root, "custom", "plantcell.sqlite")
+	writeFile(t, custom, "custom database")
+	writeFile(t, custom+"-journal", "hot journal")
+	writeSettings(t, settingsPath, custom)
+	migrateDatabaseSetting(settingsPath)
+	migrated := filepath.Join(root, "custom", settings.DatabaseFile)
+	if data, err := os.ReadFile(migrated); err != nil || string(data) != "custom database" {
+		t.Fatalf("migrated database = %q, %v", data, err)
+	}
+	if data, err := os.ReadFile(migrated + "-journal"); err != nil || string(data) != "hot journal" {
+		t.Fatalf("migrated journal = %q, %v", data, err)
+	}
+	config := readConfig()
+	if config["storagePath"] != filepath.Dir(custom) || config["databasePath"] != nil || config["fontSize"] != float64(15) {
+		t.Fatalf("migrated settings = %+v", config)
+	}
+
+	// Running again finds nothing left to migrate.
+	migrateDatabaseSetting(settingsPath)
+	if got := readConfig()["storagePath"]; got != filepath.Dir(custom) {
+		t.Fatalf("second run storagePath = %v", got)
+	}
+
+	// An existing bibliocell.sqlite is never overwritten.
+	clash := filepath.Join(root, "clash", "my.sqlite")
+	writeFile(t, clash, "recorded")
+	writeFile(t, filepath.Join(root, "clash", settings.DatabaseFile), "other")
+	writeSettings(t, settingsPath, clash)
+	migrateDatabaseSetting(settingsPath)
+	if data, _ := os.ReadFile(filepath.Join(root, "clash", settings.DatabaseFile)); string(data) != "other" {
+		t.Fatalf("existing database overwritten: %q", data)
+	}
+	if got := readSettingsDatabasePath(t, settingsPath); got != clash {
+		t.Fatalf("clash setting = %q", got)
+	}
+
+	// The migrated settings load as a usable storage folder.
+	store, err := openSettings(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get().StoragePath; got != root {
+		t.Fatalf("clash falls back to %q, want default %q", got, root)
 	}
 }

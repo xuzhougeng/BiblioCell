@@ -140,8 +140,12 @@ type Store struct {
 	sourceSyncMu sync.Mutex
 }
 
+// PapersDir is the folder beside the database that holds paper files.
+const PapersDir = "papers"
+
 // Status summarizes the initialized local library.
 type Status struct {
+	StoragePath   string `json:"storagePath"`
 	DatabasePath  string `json:"databasePath"`
 	SchemaVersion int    `json:"schemaVersion"`
 	TableCount    int    `json:"tableCount"`
@@ -155,8 +159,8 @@ func Open(path string) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("database path is empty")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("create database directory: %w", err)
+	if err := os.MkdirAll(filepath.Join(filepath.Dir(path), PapersDir), 0o755); err != nil {
+		return nil, fmt.Errorf("create storage directories: %w", err)
 	}
 
 	db, err := sql.Open("sqlite", path)
@@ -231,7 +235,7 @@ func (s *Store) Status() (Status, error) {
 	if s == nil || s.db == nil {
 		return Status{}, errors.New("library database is not ready")
 	}
-	status := Status{DatabasePath: s.path, SchemaVersion: SchemaVersion, Integrity: s.integrity}
+	status := Status{StoragePath: filepath.Dir(s.path), DatabasePath: s.path, SchemaVersion: SchemaVersion, Integrity: s.integrity}
 	queries := []struct {
 		query  string
 		target *int

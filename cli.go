@@ -29,12 +29,14 @@ Commands:
   papers add [-f FILE]                add one paper from JSON (stdin by default)
   papers import [-f FILE] [-dry-run]  atomically import a JSON array of papers
   papers update ID [-f FILE]          apply a JSON patch (stdin by default)
+  papers attach ID [-type fulltext|supplement] FILE...
+                                      copy files into the storage folder
   datasets list                       datasets with repositories and papers
   sources list                        connector configurations and last runs
   sources set ID [-enabled=BOOL] [-query TEXT] [-max N] [-provider geo|sra|ena]
   sources sync ID                     fetch one source now
   settings get                        current settings.json
-  settings set [-db PATH] [-font-size N] [-mcp-token TOKEN]
+  settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN]
   mcp                                 MCP endpoint and bearer token
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
 
@@ -90,7 +92,7 @@ func runCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		c.dataDir = dir
 	}
-	// Settings require absolute database paths, so the directory must be too.
+	// Settings require an absolute storage path, so the directory must be too.
 	if dir, err := filepath.Abs(c.dataDir); err == nil {
 		c.dataDir = dir
 	}
@@ -110,7 +112,7 @@ func (c *cli) run(command string, args []string) error {
 		fmt.Fprintf(c.stderr, "using default settings: %v\n", err)
 	}
 	if command != "settings" {
-		if c.store, err = library.Open(c.settings.Get().DatabasePath); err != nil {
+		if c.store, err = library.Open(c.settings.Get().DatabasePath()); err != nil {
 			return err
 		}
 		defer c.store.Close()
@@ -202,8 +204,29 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 			return err
 		}
 		return c.print(c.store.UpdatePaper(ctx, rest[0], patch))
+	case "attach":
+		if len(rest) == 0 {
+			return errors.New("usage: papers attach ID [-type fulltext|supplement] FILE...")
+		}
+		flags := flag.NewFlagSet("papers attach", flag.ContinueOnError)
+		resourceType := flags.String("type", "fulltext", "fulltext or supplement")
+		if err := flags.Parse(rest[1:]); err != nil {
+			return err
+		}
+		if flags.NArg() == 0 {
+			return errors.New("usage: papers attach ID [-type fulltext|supplement] FILE...")
+		}
+		files := []library.PaperFile{}
+		for _, source := range flags.Args() {
+			file, err := c.store.ImportPaperFile(ctx, rest[0], source, *resourceType)
+			if err != nil {
+				return err
+			}
+			files = append(files, file)
+		}
+		return c.print(files, nil)
 	}
-	return errors.New("usage: papers list|get|add|import|update")
+	return errors.New("usage: papers list|get|add|import|update|attach")
 }
 
 func (c *cli) sources(ctx context.Context, args []string) error {
@@ -249,7 +272,7 @@ func (c *cli) configure(args []string) error {
 	case "set":
 		config := c.settings.Get()
 		flags := flag.NewFlagSet("settings set", flag.ContinueOnError)
-		flags.StringVar(&config.DatabasePath, "db", config.DatabasePath, "absolute SQLite path, used on next start")
+		flags.StringVar(&config.StoragePath, "storage", config.StoragePath, "absolute folder for the SQLite database and paper files, used on next start")
 		flags.IntVar(&config.FontSize, "font-size", config.FontSize, "interface font size, 12-20")
 		flags.StringVar(&config.MCPToken, "mcp-token", config.MCPToken, "MCP bearer token, used on next start")
 		if err := flags.Parse(rest); err != nil {

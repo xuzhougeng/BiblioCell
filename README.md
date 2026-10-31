@@ -18,21 +18,26 @@
 - 数据集支持真实新增、编辑、文献关联、多物种、多组织、多测序类型、多平台、仓库 accession、整理状态、可用性和备注。
 - 数据集仓库编号规范化存入 `repository_records` 和 `dataset_repositories`；文献角色存入 `paper_datasets`，保存时保留关联证据和人工核验状态。
 - Demo 与正式数据完全隔离，切换模式不会复制或清空任何一边的数据。
-- 当前版本的附件编辑仍只在 Demo 中开放，后续接入真实 SQLite。
+- 文献详情的“数据与资料”可导入全文和补充材料：文件复制到存放文件夹的 `papers/`，原文件保持不动，导入全文后文献状态自动变为“已保存文件”。文件按资源 ID 命名（如 `papers/R-3fa9….pdf`），原文件名保留为标题，这样跨系统复制不受文件名编码和非法字符影响。同一文献重复导入相同内容不会多存一份。移除时文件进废纸篓。
+- 资料链接和 JSON 导入目前只在 Demo 中开放。
 
 ## 设置
 
 左下角 **设置** 页面提供：
 
 - **Demo 演示模式**：切换 Demo 与真实数据库，切换时重新加载页面，不复制或合并数据。
-- **数据库存放位置**：可输入 SQLite 文件的绝对路径，或通过原生目录对话框选择文件夹。新路径在重启后生效；应用不会移动或覆盖旧数据库，新文件不存在时会创建空库。
+- **数据存放位置**：选择一个文件夹，SQLite 数据库（`bibliocell.sqlite`）和文献文件（`papers/`）都保存在里面。可输入绝对路径，或通过原生目录对话框选择。新路径在重启后生效；应用不会移动或覆盖旧数据，所选文件夹没有数据库时会创建空库。
 - **界面字号**：12–20px，拖动时实时预览，保存后跨重启保留。缩放覆盖导航、表格、详情抽屉和笔记等固定字号，不改变面板宽度。
 - **外部 AI · MCP**：集中显示连接地址、工具和 Schema 资源，可查看、复制、自定义或重新生成 Bearer Token。Token 修改在重启后生效。
 - 桌面左侧边栏可折叠为图标栏，折叠状态保存在本机；移动端使用抽屉式导航。
 
-设置保存在 mygo 用户数据目录的 `settings.json`。Windows 默认配置文件为 `%APPDATA%\BiblioCell\settings.json`，默认数据库为同目录下的 `bibliocell.sqlite`。页面分别显示配置路径和本次运行实际打开的数据库路径。
+设置保存在 mygo 用户数据目录的 `settings.json`。Windows 默认配置文件为 `%APPDATA%\BiblioCell\settings.json`，默认存放文件夹为同一目录。页面分别显示配置的文件夹和本次运行实际使用的文件夹。
 
-从旧版 PlantCell Library 升级时，应用会在首次启动时自动把 `%APPDATA%\PlantCell Library` 中的 `settings.json`、`mcp-token` 和 `plantcell.sqlite` 一次性迁入 `%APPDATA%\BiblioCell`，默认数据库同时更名为 `bibliocell.sqlite`。自定义的数据库路径保持原样，不会被移动或改名。
+存放文件夹可以整体迁移：退出应用后把它复制或移动到其他位置（包括其他电脑），在设置中选中新位置并重启即可继续使用。数据库内不保存文件夹位置，附件的 `resources.local_path` 只存相对存放文件夹的路径，读取时拒绝任何跳出该文件夹的路径。字号和 MCP Token 属于本机偏好，保存在 `settings.json`，不随文件夹迁移。
+
+旧版设置中的 `databasePath` 会在启动时自动转换为存放文件夹。如果数据库用了其他文件名，会在原文件夹内改名为 `bibliocell.sqlite`；同名文件已存在时不覆盖，保留旧设置并改用默认文件夹，需要手动处理。
+
+从旧版 PlantCell Library 升级时，应用会在首次启动时自动把 `%APPDATA%\PlantCell Library` 中的 `settings.json`、`mcp-token` 和 `plantcell.sqlite` 一次性迁入 `%APPDATA%\BiblioCell`，默认数据库同时更名为 `bibliocell.sqlite`。自定义位置的数据库留在原文件夹，不会被移走。
 
 ## 更新与来源
 
@@ -118,20 +123,23 @@ MCP 始终操作正式数据库，与界面是否开启 Demo 无关。MCP 新增
 echo '{"title":"...","doi":"10.1000/x"}' | ./BiblioCell papers add
 ./BiblioCell papers import -f papers.json -dry-run
 echo '{"journal":"Cell"}' | ./BiblioCell papers update P-xxxx
+./BiblioCell papers attach P-xxxx paper.pdf
+./BiblioCell papers attach P-xxxx -type supplement table-s1.xlsx
 ./BiblioCell datasets list
 ./BiblioCell sources list
 ./BiblioCell sources set pubmed -enabled -query "plant single cell" -max 50
 ./BiblioCell sources sync pubmed
 ./BiblioCell settings get
-./BiblioCell settings set -font-size 16 -db /abs/path/bibliocell.sqlite -mcp-token <TOKEN>
+./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN>
 ./BiblioCell mcp
 ./BiblioCell sql "select id, title from papers order by added_at desc limit 5"
 ```
 
 - `papers add` / `import` / `update` 使用与 MCP 相同的字段和校验规则；`import` 一批原子提交，`-dry-run` 只校验不写入。
+- `papers attach` 把文件复制进存放文件夹的 `papers/`，默认记为全文，`-type supplement` 记为补充材料。
 - `sql` 直接执行任意语句：`SELECT` / `WITH` / `PRAGMA` 打印行，其他语句打印受影响行数。它绕过应用层校验，改数据前先备份。
 - 数据目录按 `-data-dir`、`$BIBLIOCELL_DATA_DIR`、应用默认用户数据目录的顺序确定；在 macOS 上 `.app` 包内和 `go run` 的默认目录名相同，命令行与桌面应用看到的是同一个库。
-- `settings set` 修改的数据库路径和 MCP Token 在下次启动桌面应用后生效。
+- `settings set` 修改的存放文件夹和 MCP Token 在下次启动桌面应用后生效。
 - 桌面应用运行中也可以同时使用命令行，SQLite 自带锁，忙等 5 秒后报错。
 
 ## 目录

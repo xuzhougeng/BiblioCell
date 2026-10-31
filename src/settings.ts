@@ -1,4 +1,4 @@
-// Settings page: demo switch, database path, MCP token and font size.
+// Settings page: demo switch, storage folder, MCP token and font size.
 import type { App } from "./app.ts";
 import { Library, type Config } from "./mygo.ts";
 import { esc } from "./model.ts";
@@ -10,21 +10,21 @@ export function renderSettings(app: App): string {
   const preferences = env.settings;
   const mcp = env.mcp;
   const canSave = env.desktop;
-  const currentPath = env.status?.databasePath || preferences.databasePath || "桌面应用启动后显示";
+  const currentPath = env.status?.storagePath || preferences.storagePath || "桌面应用启动后显示";
   const disabled = canSave ? "" : "disabled";
-  const pendingPath = preferences.databasePath && preferences.databasePath !== currentPath;
+  const pendingPath = preferences.storagePath && preferences.storagePath !== currentPath;
   const pendingToken = preferences.mcpToken && preferences.mcpToken !== mcp.token;
   const saveStatus = canSave
-    ? pendingToken ? "MCP Token 已更改，将在下次重启后使用。" : pendingPath ? "数据库路径已更改，将在下次重启后使用。" : "设置保存在本机用户配置目录。"
+    ? pendingToken ? "MCP Token 已更改，将在下次重启后使用。" : pendingPath ? "存放文件夹已更改，将在下次重启后使用。" : "设置保存在本机用户配置目录。"
     : "浏览器预览仅用于查看；请在 mygo 桌面应用中修改设置。";
   return '<div class="settings-layout"><form class="panel settings-panel" id="settings-form">'
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("leaf", 21)}</span><div><h2>数据模式</h2><p>演示与正式研究记录分别保存。</p></div></div>`
     + `<div class="settings-mode-row"><div><label for="demo-mode">Demo 演示模式</label><p>浏览虚构示例；关闭后使用真实 SQLite 数据库。</p></div><input class="settings-switch" id="demo-mode" type="checkbox" role="switch" ${env.real ? "" : "checked"}${env.desktop ? "" : " disabled"} aria-label="Demo 演示模式"></div>`
     + `<div class="settings-inline-note">${I("info", 16)}<span>切换后立即重新加载，不会复制、合并或清空任何一边的数据。MCP 始终连接正式数据库。</span></div></section>`
-    + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("database", 21)}</span><div><h2>数据库存放位置</h2><p>选择正式文献库的 SQLite 文件。</p></div></div>`
-    + `<div class="settings-field"><label for="settings-database-path">数据库文件路径</label><div class="settings-path-row"><input class="settings-path-input" id="settings-database-path" name="databasePath" type="text" value="${esc(preferences.databasePath)}" placeholder="在桌面应用中选择数据库位置" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="choose-database" ${disabled}>${I("folder", 16)} 选择文件夹</button></div></div>`
+    + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("folder", 21)}</span><div><h2>数据存放位置</h2><p>SQLite 数据库和文献文件都保存在这个文件夹。</p></div></div>`
+    + `<div class="settings-field"><label for="settings-storage-path">存放文件夹</label><div class="settings-path-row"><input class="settings-path-input" id="settings-storage-path" name="storagePath" type="text" value="${esc(preferences.storagePath)}" placeholder="在桌面应用中选择存放文件夹" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="choose-storage" ${disabled}>${I("folder", 16)} 选择文件夹</button></div></div>`
     + `<div class="settings-active-path"><span>本次运行正在使用</span><code>${esc(currentPath)}</code></div>`
-    + `<div class="settings-inline-note">${I("info", 16)}<span>新路径在重启后生效。应用不会移动或覆盖旧数据库；如果新文件不存在，重启时会创建一个空数据库。</span></div></section>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>文件夹内是 bibliocell.sqlite 和 papers/。退出应用后可以把整个文件夹复制到别处，在这里选中新位置并重启即可继续使用。应用不会移动或覆盖旧数据；所选文件夹没有数据库时会新建空库。</span></div></section>`
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("code", 21)}</span><div><h2>外部 AI · MCP</h2><p>允许本机 AI 查询正式库；认证后可导入和编辑。</p></div>${badge(mcp.enabled ? "已启用" : "未启动", mcp.enabled ? "green" : "gray")}</div>`
     + `<div class="settings-mcp-meta"><div><span>Streamable HTTP 地址</span><code>${esc(mcp.enabled ? mcp.endpoint : "启动桌面应用后监听 127.0.0.1:37841")}</code></div><p><strong>工具</strong>${esc(mcp.tools.join(" · "))}</p><p><strong>Schema 资源</strong>${esc(mcp.resources.join(" · "))}</p></div>`
     + `<div class="settings-field"><label for="settings-mcp-token">Bearer Token</label><div class="settings-token-row"><input class="settings-path-input" id="settings-mcp-token" name="mcpToken" type="password" value="${esc(preferences.mcpToken)}" minlength="32" maxlength="256" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-mcp-token" ${disabled}>显示</button><button class="btn btn-secondary" type="button" data-action="copy-mcp-token" ${disabled}>复制</button><button class="btn btn-secondary" type="button" data-action="regenerate-mcp-token" ${disabled}>重新生成</button></div><p class="form-hint">32–256 个可见 ASCII 字符，不能包含空格。重新生成后，旧 Token 将在重启时失效。</p></div>`
@@ -33,7 +33,7 @@ export function renderSettings(app: App): string {
     + `<div class="settings-field"><div class="settings-label-row"><label for="settings-font-size">界面字号</label><output id="settings-font-size-value" for="settings-font-size">${esc(preferences.fontSize)} px</output></div><div class="settings-font-control"><span>小</span><input id="settings-font-size" name="fontSize" type="range" min="12" max="20" step="1" value="${esc(preferences.fontSize)}" ${disabled}><span>大</span><button class="text-link" type="button" data-action="reset-font-size" ${disabled}>恢复 15 px</button></div></div>`
     + '<div class="settings-font-preview"><span>阅读预览</span><p>从一片叶、一个细胞，到一篇可追溯的研究。</p><small>Plant single-cell research · 文献、数据与笔记</small></div></section>'
     + `<footer class="settings-footer"><p id="settings-save-status" role="status">${saveStatus}</p><button class="btn btn-primary" type="submit" ${disabled}>${I("check", 16)} 保存设置</button></footer></form>`
-    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>安静、清晰，<br>适合自己的阅读节奏。</h2><p>字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。</p><div class="settings-aside-rule"></div><dl><div><dt>当前模式</dt><dd>${env.real ? "真实数据库" : "Demo"}</dd></div><div><dt>正式数据</dt><dd>本地 SQLite</dd></div><div><dt>配置方式</dt><dd>自动持久化</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p><strong>数据库与 MCP 变更需要重启</strong><br>字体大小无需重启，保存前即可预览。</p></div></aside></div>`;
+    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>安静、清晰，<br>适合自己的阅读节奏。</h2><p>字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。</p><div class="settings-aside-rule"></div><dl><div><dt>当前模式</dt><dd>${env.real ? "真实数据库" : "Demo"}</dd></div><div><dt>正式数据</dt><dd>本地 SQLite</dd></div><div><dt>配置方式</dt><dd>自动持久化</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p><strong>存放文件夹与 MCP 变更需要重启</strong><br>字体大小无需重启，保存前即可预览。</p></div></aside></div>`;
 }
 
 const setStatus = (message: string): void => {
@@ -45,9 +45,9 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   if (!app.env.desktop) return;
   const data = new FormData(form);
   const button = $<HTMLButtonElement>("button[type=submit]", form);
-  const next: Config = { databasePath: text(data, "databasePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken") };
-  if (!next.databasePath) {
-    setStatus("请填写数据库文件的绝对路径。");
+  const next: Config = { storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken") };
+  if (!next.storagePath) {
+    setStatus("请填写存放文件夹的绝对路径。");
     return;
   }
   if (!/^[\x21-\x7e]{32,256}$/.test(next.mcpToken)) {
@@ -59,12 +59,12 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   Library.saveSettings(next).then((result) => {
     app.env.settings = result.settings;
     applyFontSize(result.settings.fontSize);
-    const path = $<HTMLInputElement>("#settings-database-path");
-    if (path) path.value = result.settings.databasePath;
+    const path = $<HTMLInputElement>("#settings-storage-path");
+    if (path) path.value = result.settings.storagePath;
     const token = $<HTMLInputElement>("#settings-mcp-token");
     if (token) token.value = result.settings.mcpToken;
     const restartChanges: string[] = [];
-    if (result.databaseChanged) restartChanges.push("数据库位置");
+    if (result.storageChanged) restartChanges.push("存放文件夹");
     if (result.mcpTokenChanged) restartChanges.push("MCP Token");
     setStatus(restartChanges.length ? `设置已保存。${restartChanges.join("和")}将在重启后生效。` : "设置已保存，字号已应用。");
     app.toast(restartChanges.length ? `设置已保存，${restartChanges.join("和")}将在重启后生效。` : "设置已保存。");
@@ -75,15 +75,15 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   });
 }
 
-/** settingsActions handles the data-action buttons of the settings page. */
-export const settingsActions: Record<string, (app: App, el: HTMLElement) => void> = {
-  "choose-database": (app, el) => {
+/** settingsActions builds the handlers of the settings page's data-action buttons. */
+export const settingsActions = (app: App): Record<string, (el: HTMLElement) => void> => ({
+  "choose-storage": (el) => {
     if (!app.env.desktop) return;
     const button = el as HTMLButtonElement;
     button.disabled = true;
-    Library.chooseDatabasePath().then((path) => {
+    Library.chooseStoragePath().then((path) => {
       if (!path) return;
-      const input = $<HTMLInputElement>("#settings-database-path");
+      const input = $<HTMLInputElement>("#settings-storage-path");
       if (input) input.value = path;
       setStatus("已选择新位置，保存并重启后生效。");
     }).catch((error: unknown) => {
@@ -98,14 +98,14 @@ export const settingsActions: Record<string, (app: App, el: HTMLElement) => void
     input.value = "15";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   },
-  "toggle-mcp-token": (_app, el) => {
+  "toggle-mcp-token": (el) => {
     const input = $<HTMLInputElement>("#settings-mcp-token");
     if (!input) return;
     const show = input.type === "password";
     input.type = show ? "text" : "password";
     el.textContent = show ? "隐藏" : "显示";
   },
-  "copy-mcp-token": (app) => {
+  "copy-mcp-token": () => {
     const input = $<HTMLInputElement>("#settings-mcp-token");
     if (!input || !input.value) return;
     if (navigator.clipboard?.writeText) {
@@ -129,7 +129,7 @@ export const settingsActions: Record<string, (app: App, el: HTMLElement) => void
     if (toggle) toggle.textContent = "隐藏";
     setStatus("已生成新 Token，保存并重启后生效。");
   },
-};
+});
 
 /** previewFontSize applies the slider value immediately; saving persists it. */
 export function previewFontSize(input: HTMLInputElement): void {

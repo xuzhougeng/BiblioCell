@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/egoist/mygo"
@@ -23,7 +25,7 @@ type Library struct {
 type SettingsSaveResult struct {
 	Settings        settings.Config `json:"settings"`
 	RestartRequired bool            `json:"restartRequired"`
-	DatabaseChanged bool            `json:"databaseChanged"`
+	StorageChanged  bool            `json:"storageChanged"`
 	MCPTokenChanged bool            `json:"mcpTokenChanged"`
 }
 
@@ -58,6 +60,72 @@ func (l *Library) SavePapers(papers []library.Paper) error {
 		return errors.New("library database is not ready")
 	}
 	return l.store.SavePapers(context.Background(), papers)
+}
+
+// ListPaperFiles returns the files stored for real papers.
+func (l *Library) ListPaperFiles() ([]library.PaperFile, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	return l.store.ListPaperFiles(context.Background())
+}
+
+// ImportPaperFiles asks for files and copies them into the storage folder.
+func (l *Library) ImportPaperFiles(ctx context.Context, paperID, resourceType string) ([]library.PaperFile, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+		Parent:   mygo.CallerWindow(ctx),
+		Title:    "选择要导入的文献文件",
+		Multiple: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	files := []library.PaperFile{}
+	for _, path := range paths {
+		file, err := l.store.ImportPaperFile(context.Background(), paperID, path, resourceType)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		}
+		files = append(files, file)
+	}
+	return files, nil
+}
+
+// OpenPaperFile opens a stored file with its default application.
+func (l *Library) OpenPaperFile(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	path, err := l.store.PaperFilePath(context.Background(), id)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("file is missing from the storage folder: %s", filepath.Base(path))
+	}
+	return mygo.Shell.OpenPath(path)
+}
+
+// RemovePaperFile moves a stored file to the trash and deletes its record. A
+// file that is already gone must not keep the record from being removed.
+func (l *Library) RemovePaperFile(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	ctx := context.Background()
+	path, err := l.store.PaperFilePath(ctx, id)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		if err := mygo.Shell.TrashItem(path); err != nil {
+			return fmt.Errorf("move file to trash: %w", err)
+		}
+	}
+	return l.store.RemovePaperFile(ctx, id)
 }
 
 // ListDatasets returns real datasets with repository and paper associations.
@@ -108,7 +176,7 @@ func (l *Library) GetSettings() (settings.Config, error) {
 	return l.settings.Get(), nil
 }
 
-// SaveSettings persists preferences without moving or reopening the database.
+// SaveSettings persists preferences without moving data or reopening the database.
 func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, error) {
 	if l.settings == nil {
 		return SettingsSaveResult{}, errors.New("application settings are not ready")
@@ -121,32 +189,31 @@ func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, erro
 		return SettingsSaveResult{}, err
 	}
 	saved := l.settings.Get()
-	databaseChanged := previous.DatabasePath != saved.DatabasePath
+	storageChanged := previous.StoragePath != saved.StoragePath
 	mcpTokenChanged := previous.MCPToken != saved.MCPToken
 	return SettingsSaveResult{
 		Settings:        saved,
-		RestartRequired: databaseChanged || mcpTokenChanged,
-		DatabaseChanged: databaseChanged,
+		RestartRequired: storageChanged || mcpTokenChanged,
+		StorageChanged:  storageChanged,
 		MCPTokenChanged: mcpTokenChanged,
 	}, nil
 }
 
-// ChooseDatabasePath opens a native directory picker and returns a SQLite path.
-func (l *Library) ChooseDatabasePath(ctx context.Context) (string, error) {
+// ChooseStoragePath opens a native directory picker for the storage folder.
+func (l *Library) ChooseStoragePath(ctx context.Context) (string, error) {
 	if l.settings == nil {
 		return "", errors.New("application settings are not ready")
 	}
-	current := l.settings.Get().DatabasePath
 	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 		Parent:      mygo.CallerWindow(ctx),
-		Title:       "选择数据库存放文件夹",
+		Title:       "选择数据存放文件夹",
 		Directory:   true,
-		DefaultPath: filepath.Dir(current),
+		DefaultPath: l.settings.Get().StoragePath,
 	})
 	if err != nil || len(paths) == 0 {
 		return "", err
 	}
-	return filepath.Join(paths[0], "bibliocell.sqlite"), nil
+	return paths[0], nil
 }
 
 // MCPInfo returns the loopback endpoint external AI clients can use.

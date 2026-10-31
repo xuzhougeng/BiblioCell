@@ -2,6 +2,7 @@
 import type { Config, MCPInfo, Paper, SourceStatus, Status } from "./mygo.ts";
 import { demoState } from "./demo-data.ts";
 import { renderDrawer } from "./drawer.ts";
+import { fileActions } from "./files.ts";
 import {
   datasetModal, exclusionReasonModal, importSummaryModal, linkDatasetModal, paperModal, resetDemoModal, resourceModal,
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
@@ -373,7 +374,8 @@ export class App {
     },
     "link-dataset": (_el, id) => linkDatasetModal(this, id),
     "add-resource": (el, id) => resourceModal(this, el.dataset.kind ?? "paper", id),
-    ...settingsActions,
+    ...settingsActions(this),
+    ...fileActions(this),
   };
 
   private onClick(e: MouseEvent): void {
@@ -383,7 +385,7 @@ export class App {
     if (el) {
       const action = el.dataset.action ?? "";
       if (this.env.real && DEMO_ONLY_ACTIONS.has(action)) {
-        this.toast("真实模式当前支持文献、数据集与整理记录；附件和 JSON 导入将在后续版本接入 SQLite。", true);
+        this.toast("真实模式暂不支持资料链接和 JSON 导入；文献文件可在详情的“数据与资料”中导入。", true);
         return;
       }
       const handler = this.actions[action];

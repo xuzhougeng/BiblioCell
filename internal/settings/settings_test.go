@@ -13,20 +13,23 @@ var testToken = strings.Repeat("t", 64)
 func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "settings.json")
-	defaultDatabase := filepath.Join(directory, "default.sqlite")
-	store, err := Open(path, defaultDatabase, testToken)
+	defaultStorage := filepath.Join(directory, "default")
+	store, err := Open(path, defaultStorage, testToken)
 	if err != nil {
 		t.Fatalf("Open() defaults error = %v", err)
 	}
-	if got := store.Get(); got.DatabasePath != defaultDatabase || got.FontSize != DefaultFontSize {
+	if got := store.Get(); got.StoragePath != defaultStorage || got.FontSize != DefaultFontSize {
 		t.Fatalf("defaults = %+v", got)
 	}
+	if got, want := store.Get().DatabasePath(), filepath.Join(defaultStorage, DatabaseFile); got != want {
+		t.Fatalf("DatabasePath() = %q, want %q", got, want)
+	}
 
-	want := Config{DatabasePath: filepath.Join(directory, "research", "library.sqlite"), FontSize: 18, MCPToken: testToken}
+	want := Config{StoragePath: filepath.Join(directory, "research"), FontSize: 18, MCPToken: testToken}
 	if err := store.Save(want); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	reopened, err := Open(path, defaultDatabase, testToken)
+	reopened, err := Open(path, defaultStorage, testToken)
 	if err != nil {
 		t.Fatalf("Open() saved settings error = %v", err)
 	}
@@ -45,7 +48,7 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	if err := reopened.Save(want); err != nil {
 		t.Fatalf("Save() replacement error = %v", err)
 	}
-	reopenedAgain, err := Open(path, defaultDatabase, testToken)
+	reopenedAgain, err := Open(path, defaultStorage, testToken)
 	if err != nil {
 		t.Fatalf("Open() replaced settings error = %v", err)
 	}
@@ -56,16 +59,21 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 
 func TestStoreRejectsInvalidChanges(t *testing.T) {
 	directory := t.TempDir()
-	store, err := Open(filepath.Join(directory, "settings.json"), filepath.Join(directory, "default.sqlite"), testToken)
+	store, err := Open(filepath.Join(directory, "settings.json"), directory, testToken)
 	if err != nil {
 		t.Fatal(err)
 	}
 	original := store.Get()
+	file := filepath.Join(directory, "library.sqlite")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, config := range []Config{
-		{DatabasePath: "relative.sqlite", FontSize: 15},
-		{DatabasePath: original.DatabasePath, FontSize: MinFontSize - 1},
-		{DatabasePath: original.DatabasePath, FontSize: MaxFontSize + 1},
-		{DatabasePath: original.DatabasePath, FontSize: 15, MCPToken: "too short"},
+		{StoragePath: "relative", FontSize: 15},
+		{StoragePath: file, FontSize: 15},
+		{StoragePath: original.StoragePath, FontSize: MinFontSize - 1},
+		{StoragePath: original.StoragePath, FontSize: MaxFontSize + 1},
+		{StoragePath: original.StoragePath, FontSize: 15, MCPToken: "too short"},
 	} {
 		if err := store.Save(config); err == nil {
 			t.Errorf("Save(%+v) succeeded, want validation error", config)
@@ -82,7 +90,7 @@ func TestStoreFallsBackFromInvalidFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := Open(path, filepath.Join(directory, "default.sqlite"), testToken)
+	store, err := Open(path, directory, testToken)
 	if err == nil {
 		t.Fatal("Open() invalid file succeeded, want error")
 	}

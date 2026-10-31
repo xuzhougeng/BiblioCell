@@ -243,6 +243,8 @@ CREATE INDEX IF NOT EXISTS idx_dataset_taxa_taxid ON dataset_taxa(taxid);
 
 -- 附件可以只有远程 URL，也可只有用户手动导入的本地文件。
 -- available 表示检查可访问；stored/parsed 表示本地已有文件，二者独立。
+-- local_path 必须相对存放文件夹（如 papers/xxx.pdf），用 / 分隔，不存绝对路径，
+-- 这样整个文件夹复制到别处后仍可继续使用。
 CREATE TABLE IF NOT EXISTS resources (
     id TEXT PRIMARY KEY NOT NULL,
     resource_type TEXT NOT NULL CHECK (resource_type IN

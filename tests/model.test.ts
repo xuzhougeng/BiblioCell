@@ -2,12 +2,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoState } from "../src/demo-data.ts";
-import { csvText, emptyFilters, esc, filterPapers, normalizeDOI, normalizeDataset, prepareImport, tasksFor, validDOI } from "../src/model.ts";
+import { csvText, emptyFilters, esc, fileSize, filterPapers, normalizeDOI, normalizeDataset, prepareImport, tasksFor, validDOI } from "../src/model.ts";
 
 test("esc neutralizes HTML metacharacters and tolerates null", () => {
   assert.equal(esc(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
   assert.equal(esc(null), "");
   assert.equal(esc(2026), "2026");
+});
+
+test("fileSize switches from KB to MB", () => {
+  assert.equal(fileSize(10), "1 KB");
+  assert.equal(fileSize(2048), "2 KB");
+  assert.equal(fileSize(5 * 1024 * 1024), "5.0 MB");
 });
 
 test("normalizeDOI strips resolver prefixes and lowercases", () => {

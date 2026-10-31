@@ -8,7 +8,7 @@ import {
 } from "./model.ts";
 import { I, checkboxGroup, customField, field, mergeChecked, option, options, readSpeciesRows, setFormError, speciesRow, text } from "./ui.ts";
 
-const cancelButton = '<button class="btn btn-secondary" data-action="close-modal">取消</button>';
+export const cancelButton = '<button class="btn btn-secondary" data-action="close-modal">取消</button>';
 const PUBLICATION_STATUSES: Record<string, string> = { unknown: "尚未确认", preprint: "预印本", published: "正式发表", unpublished: "未发表" };
 const REPOSITORIES: Record<string, string> = { geo: "GEO", gsa: "GSA / CNCB", sra: "SRA", ena: "ENA", bioproject: "BioProject", biosample: "BioSample", biostudies: "BioStudies", zenodo: "Zenodo", figshare: "Figshare", dryad: "Dryad", other: "其他" };
 

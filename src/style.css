@@ -271,6 +271,7 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .muted { color: var(--muted) }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px }
 .section-title h2 { font-size: calc(21px * var(--font-scale, 1)) }
+.section-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 14px }
 .workspace-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line-strong); margin-top: 34px; padding: 20px 0 26px; color: #777260; font-size: calc(12.5px * var(--font-scale, 1)); gap: 15px }
 .workspace-footer > a { display: flex; align-items: center; gap: 5px }
 .workspace-footer > a:hover { color: var(--primary) }
@@ -859,7 +860,7 @@ code { font-family: var(--mono) }
 .related-dataset small { display: block; font-size: calc(12px * var(--font-scale, 1)); color: #78725e; margin-top: 4px }
 .related-dataset > svg { color: #9a8f72 }
 .resource-content { flex: 1; min-width: 0 }
-.resource-content strong { font-size: calc(14px * var(--font-scale, 1)); font-weight: 650; display: block; color: #454d3c }
+.resource-content strong { font-size: calc(14px * var(--font-scale, 1)); font-weight: 650; display: block; color: #454d3c; overflow-wrap: anywhere }
 .resource-content > .muted { font-size: calc(12px * var(--font-scale, 1)); display: block; margin-top: 4px }
 .abstract-text { font-size: calc(14.5px * var(--font-scale, 1)); line-height: 2.05; color: #4a5142 }
 .inline-empty { background: #f8f3e3; border: 1.5px dashed #c8bda0; border-radius: var(--radius); padding: 24px; text-align: center; color: #77725f }

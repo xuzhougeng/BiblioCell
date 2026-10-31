@@ -1,5 +1,5 @@
 // Pure data logic shared by the UI and the node:test suite. No DOM access here.
-import type { Dataset, DatasetPaperLink, DatasetRepository, Paper, SpeciesEntry } from "./mygo.ts";
+import type { Dataset, DatasetPaperLink, DatasetRepository, Paper, PaperFile, SpeciesEntry } from "./mygo.ts";
 
 export interface Resource {
   id: string;
@@ -11,7 +11,15 @@ export interface Resource {
   status: string;
   isDemo: boolean;
   addedAt: string;
+  localPath?: string;
+  sizeBytes?: number;
 }
+
+/** fileResource shows a file stored in SQLite as a resource row. */
+export const fileResource = (file: PaperFile): Resource => ({ ...file, datasetId: null, url: "", status: "stored", isDemo: false });
+
+export const fileSize = (bytes = 0): string =>
+  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 export interface Activity {
   id: string;

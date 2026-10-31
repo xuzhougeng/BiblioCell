@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func main() {
 		if err != nil {
 			log.Printf("Using default settings: %v", err)
 		}
-		store, err = library.Open(settingsStore.Get().DatabasePath)
+		store, err = library.Open(settingsStore.Get().DatabasePath())
 		if err != nil {
 			log.Fatalf("initialize BiblioCell: %v", err)
 		}
@@ -90,13 +91,14 @@ func main() {
 // defaults, and the error says why.
 func openSettings(dataDir string) (*settings.Store, error) {
 	migrateLegacyData(dataDir)
+	migrateDatabaseSetting(filepath.Join(dataDir, "settings.json"))
 	mcpToken, err := library.LoadOrCreateMCPToken(dataDir)
 	if err != nil {
 		log.Printf("MCP token file unavailable: %v", err)
 	}
 	return settings.Open(
 		filepath.Join(dataDir, "settings.json"),
-		filepath.Join(dataDir, "bibliocell.sqlite"),
+		dataDir,
 		mcpToken,
 	)
 }
@@ -201,14 +203,59 @@ func fixLegacyDatabasePath(settingsPath, legacyDir, dataDir string) {
 		return
 	}
 	config["databasePath"] = updated
-	if data, err := json.MarshalIndent(config, "", "  "); err != nil {
-		log.Printf("encode settings during migration: %v", err)
-		return
-	} else if err := os.WriteFile(settingsPath, append(data, '\n'), 0o600); err != nil {
+	if err := writeConfig(settingsPath, config); err != nil {
 		log.Printf("update settings database path: %v", err)
 	} else {
 		log.Printf("database path updated to %s", updated)
 	}
+}
+
+// migrateDatabaseSetting replaces the databasePath setting of older versions
+// with the folder holding the database. The file name is now fixed, so a
+// custom-named database is renamed inside its folder; an existing
+// bibliocell.sqlite is never overwritten.
+func migrateDatabaseSetting(settingsPath string) {
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return
+	}
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		return
+	}
+	recorded := filepath.Clean(strings.TrimSpace(configString(config, "databasePath")))
+	if recorded == "." {
+		return
+	}
+	folder := filepath.Dir(recorded)
+	target := filepath.Join(folder, settings.DatabaseFile)
+	if _, err := os.Stat(recorded); err == nil && recorded != target {
+		if _, err := os.Stat(target); err == nil {
+			log.Printf("keep databasePath setting: %s already exists", target)
+			return
+		}
+		// The journal moves first so a failed rename can retry on the next start.
+		for _, suffix := range []string{"-journal", ""} {
+			if err := os.Rename(recorded+suffix, target+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Printf("rename database: %v", err)
+				return
+			}
+		}
+	}
+	delete(config, "databasePath")
+	config["storagePath"] = folder
+	if err := writeConfig(settingsPath, config); err != nil {
+		log.Printf("update settings storage path: %v", err)
+	}
+}
+
+// writeConfig replaces settings.json with decoded settings.
+func writeConfig(path string, config map[string]any) error {
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o600)
 }
 
 // configString reads a string field from decoded JSON settings.

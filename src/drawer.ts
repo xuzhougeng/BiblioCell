@@ -1,11 +1,15 @@
 // Detail drawer for one paper or one dataset.
 import type { App } from "./app.ts";
-import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, dateText, esc, joinList, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
+import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, dateText, esc, fileSize, joinList, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, options, screenBadge } from "./ui.ts";
 
-export function resourceRows(resources: Resource[]): string {
-  if (!resources.length) return `<div class="inline-empty">${I("folder", 24)}<p>还没有记录资料</p><span class="muted">可以先保存全文、补充材料或数据页面的链接。</span></div>`;
+const fileRow = (r: Resource): string =>
+  `<div class="resource-item"><span class="icon-wrap blue">${I("file", 18)}</span><div class="resource-content"><strong>${esc(r.title)}</strong><span class="muted">${r.type === "fulltext" ? "全文" : "补充材料"} · ${esc(fileSize(r.sizeBytes))}</span></div><button class="btn-icon" data-action="open-file" data-id="${esc(r.id)}" aria-label="打开 ${esc(r.title)}">${I("arrow-up-right", 18)}</button><button class="btn-icon" data-action="remove-file" data-id="${esc(r.id)}" aria-label="移除 ${esc(r.title)}">${I("x", 18)}</button></div>`;
+
+export function resourceRows(resources: Resource[], emptyHint = "可以先保存全文、补充材料或数据页面的链接。"): string {
+  if (!resources.length) return `<div class="inline-empty">${I("folder", 24)}<p>还没有记录资料</p><span class="muted">${emptyHint}</span></div>`;
   return resources.map((r) => {
+    if (r.localPath) return fileRow(r);
     const url = safeURL(r.url);
     const link = url
       ? `<a class="btn-icon" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="打开 ${esc(r.title)}">${I("arrow-up-right", 18)}</a>`
@@ -44,9 +48,12 @@ export function renderDrawer(app: App): string | null {
       const related = ds.length
         ? ds.map((d) => `<button class="related-dataset" data-action="open-dataset" data-id="${esc(d.id)}"><span class="icon-wrap green">${I("database", 18)}</span><span><strong>${esc(d.title)}</strong><small>${esc(d.accession || "仓库编号待补")}</small></span>${badge(ROLE[d.paperLinks.find((l) => l.paperId === p.id)?.role ?? ""] ?? "关联", "gray")}${I("chevron-right", 15)}</button>`).join("")
         : '<p class="muted">尚未关联数据。已有公共数据可以复用关联，无需重复创建。</p>';
+      const addResource = app.env.real
+        ? `<span class="section-actions"><button class="text-link" data-action="import-file" data-id="${esc(p.id)}" data-type="fulltext">${I("plus", 15)} 导入全文</button><button class="text-link" data-action="import-file" data-id="${esc(p.id)}" data-type="supplement">${I("plus", 15)} 导入补充材料</button></span>`
+        : `<button class="text-link" data-action="add-resource" data-id="${esc(p.id)}" data-kind="paper">${I("plus", 15)} 添加链接</button>`;
       body = `<section class="detail-section"><div class="section-title"><h3>关联数据集 <span class="count-pill">${ds.length}</span></h3><button class="text-link" data-action="link-dataset" data-id="${esc(p.id)}">${I("plus", 15)} 关联数据</button></div>${related}</section>`
-        + `<section class="detail-section"><div class="section-title"><h3>资料与附件 <span class="count-pill">${resources.length}</span></h3><button class="text-link" data-action="add-resource" data-id="${esc(p.id)}" data-kind="paper">${I("plus", 15)} 添加链接</button></div>${resourceRows(resources)}</section>`
-        + `<div class="notice-box compact">${I("info", 16)}<span>保存入口只表示链接已记录，不代表全文或数据文件已经获取。</span></div>`;
+        + `<section class="detail-section"><div class="section-title"><h3>资料与附件 <span class="count-pill">${resources.length}</span></h3>${addResource}</div>${app.env.real ? resourceRows(resources, "导入 PDF 或补充材料后，会复制到存放文件夹保存。") : resourceRows(resources)}</section>`
+        + `<div class="notice-box compact">${I("info", 16)}<span>${app.env.real ? "导入时复制到存放文件夹的 papers/，原文件保持不动。" : "保存入口只表示链接已记录，不代表全文或数据文件已经获取。"}</span></div>`;
     } else {
       body = `<section class="detail-section"><h3>研究笔记</h3><p class="muted">记录关注的问题、判断依据和下一步计划。</p><label class="form-field"><span class="sr-only">研究笔记</span><textarea class="textarea notes-textarea" id="paper-notes" rows="15" maxlength="50000" placeholder="这篇文献值得关注什么？还有哪些信息需要补齐？">${esc(p.notes || "")}</textarea></label><button class="btn btn-primary" data-action="save-notes" data-id="${esc(p.id)}">${I("check", 16)} 保存笔记</button></section>`
         + `<section class="detail-section"><h3>主题标签</h3><label class="form-field"><span class="muted">用逗号分隔，例如：根发育，跨物种，重点阅读</span><input class="input" id="paper-tags" value="${esc(arr(p.tags).join("，"))}" maxlength="1000"></label><button class="btn btn-secondary" data-action="save-tags" data-id="${esc(p.id)}">保存标签</button></section>`;

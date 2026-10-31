@@ -3,7 +3,7 @@
 // keeps everything in localStorage. Both expose the same two methods.
 import { Library } from "./mygo.ts";
 import { demoState } from "./demo-data.ts";
-import { isLibraryState, normalizeDataset, type LibraryState } from "./model.ts";
+import { fileResource, isLibraryState, normalizeDataset, type LibraryState } from "./model.ts";
 
 export interface LibraryStore {
   load(): Promise<LibraryState>;
@@ -18,11 +18,11 @@ export function enqueue<T>(operation: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/** sqliteStore persists to the Go-backed database. Resources stay in memory until SQLite supports them. */
+/** sqliteStore persists to the Go-backed database. Stored files change through their own calls, never through save. */
 export const sqliteStore: LibraryStore = {
   async load() {
-    const [papers, datasets] = await Promise.all([Library.listPapers(), Library.listDatasets()]);
-    return { schemaVersion: 2, papers, datasets: datasets.map(normalizeDataset), resources: [], activities: [] };
+    const [papers, datasets, files] = await Promise.all([Library.listPapers(), Library.listDatasets(), Library.listPaperFiles()]);
+    return { schemaVersion: 2, papers, datasets: datasets.map(normalizeDataset), resources: files.map(fileResource), activities: [] };
   },
   save(state) {
     return enqueue(async () => {
