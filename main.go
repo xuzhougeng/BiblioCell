@@ -68,21 +68,25 @@ func main() {
 		})
 	})
 
-	runErr := mygo.App.Run()
-	if mcpServer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := mcpServer.Close(ctx); err != nil {
-			log.Printf("close MCP server: %v", err)
+	// OnQuit, not after Run: a relaunch starts the next instance before Run
+	// returns, and that instance needs the MCP port.
+	mygo.App.OnQuit(func() {
+		if mcpServer != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := mcpServer.Close(ctx); err != nil {
+				log.Printf("close MCP server: %v", err)
+			}
+			cancel()
 		}
-		cancel()
-	}
-	if store != nil {
-		if err := store.Close(); err != nil {
-			log.Printf("close database: %v", err)
+		if store != nil {
+			if err := store.Close(); err != nil {
+				log.Printf("close database: %v", err)
+			}
 		}
-	}
-	if runErr != nil {
-		log.Fatal(runErr)
+	})
+
+	if err := mygo.App.Run(); err != nil {
+		log.Fatal(err)
 	}
 }
 

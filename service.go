@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/egoist/mygo"
 
@@ -210,7 +211,9 @@ func (l *Library) GetSettings() (settings.Config, error) {
 	return l.settings.Get(), nil
 }
 
-// SaveSettings persists preferences without moving data or reopening the database.
+// SaveSettings persists preferences without moving data or reopening the
+// database. A new storage folder is opened first: the app cannot start on a
+// folder it cannot open, so a bad one must never reach the settings file.
 func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, error) {
 	if l.settings == nil {
 		return SettingsSaveResult{}, errors.New("application settings are not ready")
@@ -218,6 +221,19 @@ func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, erro
 	previous := l.settings.Get()
 	if err := settings.ValidateMCPToken(config.MCPToken); err != nil {
 		return SettingsSaveResult{}, err
+	}
+	config.StoragePath = filepath.Clean(strings.TrimSpace(config.StoragePath))
+	if err := settings.Validate(config); err != nil {
+		return SettingsSaveResult{}, err
+	}
+	if config.StoragePath != previous.StoragePath {
+		candidate, err := library.Open(config.DatabasePath())
+		if err != nil {
+			return SettingsSaveResult{}, fmt.Errorf("cannot use this folder: %w", err)
+		}
+		if err := candidate.Close(); err != nil {
+			return SettingsSaveResult{}, fmt.Errorf("cannot use this folder: %w", err)
+		}
 	}
 	if err := l.settings.Save(config); err != nil {
 		return SettingsSaveResult{}, err
@@ -231,6 +247,11 @@ func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, erro
 		StorageChanged:  storageChanged,
 		MCPTokenChanged: mcpTokenChanged,
 	}, nil
+}
+
+// Restart relaunches the app, which then opens the saved storage folder.
+func (l *Library) Restart() {
+	mygo.App.Relaunch()
 }
 
 // ChooseStoragePath opens a native directory picker for the storage folder.

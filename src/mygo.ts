@@ -265,6 +265,10 @@ export const Library = {
   removePaperFile(id: string): Promise<void> {
     return call("Library.RemovePaperFile", id);
   },
+  /** Restart relaunches the app, which then opens the saved storage folder. */
+  restart(): Promise<void> {
+    return call("Library.Restart");
+  },
   /** ReviewEvidence records a person's verdict on a claim. */
   reviewEvidence(id: string, status: string): Promise<void> {
     return call("Library.ReviewEvidence", id, status);
@@ -283,7 +287,11 @@ export const Library = {
   savePaperEdits(edits: PaperEdit[]): Promise<string[]> {
     return call("Library.SavePaperEdits", edits);
   },
-  /** SaveSettings persists preferences without moving data or reopening the database. */
+  /**
+   * SaveSettings persists preferences without moving data or reopening the
+   * database. A new storage folder is opened first: the app cannot start on a
+   * folder it cannot open, so a bad one must never reach the settings file.
+   */
   saveSettings(config: Config): Promise<SettingsSaveResult> {
     return call("Library.SaveSettings", config);
   },

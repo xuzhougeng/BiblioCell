@@ -3,6 +3,7 @@ import type { App } from "./app.ts";
 import { Library, type Config } from "./mygo.ts";
 import { esc } from "./model.ts";
 import { applyFontSize } from "./shell.ts";
+import { enqueue } from "./store.ts";
 import { $, I, badge, errorMessage, text } from "./ui.ts";
 
 export function renderSettings(app: App): string {
@@ -24,7 +25,7 @@ export function renderSettings(app: App): string {
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("folder", 21)}</span><div><h2>数据存放位置</h2><p>SQLite 数据库和文献文件都保存在这个文件夹。</p></div></div>`
     + `<div class="settings-field"><label for="settings-storage-path">存放文件夹</label><div class="settings-path-row"><input class="settings-path-input" id="settings-storage-path" name="storagePath" type="text" value="${esc(preferences.storagePath)}" placeholder="在桌面应用中选择存放文件夹" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="choose-storage" ${disabled}>${I("folder", 16)} 选择文件夹</button></div></div>`
     + `<div class="settings-active-path"><span>本次运行正在使用</span><code>${esc(currentPath)}</code></div>`
-    + `<div class="settings-inline-note">${I("info", 16)}<span>文件夹内是 bibliocell.sqlite 和 papers/。退出应用后可以把整个文件夹复制到别处，在这里选中新位置并重启即可继续使用。应用不会移动或覆盖旧数据；所选文件夹没有数据库时会新建空库。</span></div></section>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>文件夹内是 bibliocell.sqlite 和 papers/。选中新位置并保存后，应用会自动重启并切换过去。退出应用后也可以把整个文件夹复制到别处，再在这里选中副本。应用不会移动或覆盖旧数据；所选文件夹没有数据库时会新建空库。</span></div></section>`
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("code", 21)}</span><div><h2>外部 AI · MCP</h2><p>允许本机 AI 查询正式库；认证后可导入和编辑。</p></div>${badge(mcp.enabled ? "已启用" : "未启动", mcp.enabled ? "green" : "gray")}</div>`
     + `<div class="settings-mcp-meta"><div><span>Streamable HTTP 地址</span><code>${esc(mcp.enabled ? mcp.endpoint : "启动桌面应用后监听 127.0.0.1:37841")}</code></div><p><strong>工具</strong>${esc(mcp.tools.join(" · "))}</p><p><strong>Schema 资源</strong>${esc(mcp.resources.join(" · "))}</p></div>`
     + `<div class="settings-field"><label for="settings-mcp-token">Bearer Token</label><div class="settings-token-row"><input class="settings-path-input" id="settings-mcp-token" name="mcpToken" type="password" value="${esc(preferences.mcpToken)}" minlength="32" maxlength="256" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-mcp-token" ${disabled}>显示</button><button class="btn btn-secondary" type="button" data-action="copy-mcp-token" ${disabled}>复制</button><button class="btn btn-secondary" type="button" data-action="regenerate-mcp-token" ${disabled}>重新生成</button></div><p class="form-hint">32–256 个可见 ASCII 字符，不能包含空格。重新生成后，旧 Token 将在重启时失效。</p></div>`
@@ -33,7 +34,7 @@ export function renderSettings(app: App): string {
     + `<div class="settings-field"><div class="settings-label-row"><label for="settings-font-size">界面字号</label><output id="settings-font-size-value" for="settings-font-size">${esc(preferences.fontSize)} px</output></div><div class="settings-font-control"><span>小</span><input id="settings-font-size" name="fontSize" type="range" min="12" max="20" step="1" value="${esc(preferences.fontSize)}" ${disabled}><span>大</span><button class="text-link" type="button" data-action="reset-font-size" ${disabled}>恢复 15 px</button></div></div>`
     + '<div class="settings-font-preview"><span>阅读预览</span><p>从一片叶、一个细胞，到一篇可追溯的研究。</p><small>Plant single-cell research · 文献、数据与笔记</small></div></section>'
     + `<footer class="settings-footer"><p id="settings-save-status" role="status">${saveStatus}</p><button class="btn btn-primary" type="submit" ${disabled}>${I("check", 16)} 保存设置</button></footer></form>`
-    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>安静、清晰，<br>适合自己的阅读节奏。</h2><p>字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。</p><div class="settings-aside-rule"></div><dl><div><dt>当前模式</dt><dd>${env.real ? "真实数据库" : "Demo"}</dd></div><div><dt>正式数据</dt><dd>本地 SQLite</dd></div><div><dt>配置方式</dt><dd>自动持久化</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p><strong>存放文件夹与 MCP 变更需要重启</strong><br>字体大小无需重启，保存前即可预览。</p></div></aside></div>`;
+    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>安静、清晰，<br>适合自己的阅读节奏。</h2><p>字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。</p><div class="settings-aside-rule"></div><dl><div><dt>当前模式</dt><dd>${env.real ? "真实数据库" : "Demo"}</dd></div><div><dt>正式数据</dt><dd>本地 SQLite</dd></div><div><dt>配置方式</dt><dd>自动持久化</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p><strong>切换存放文件夹会自动重启</strong><br>MCP Token 在下次启动时生效；字体大小无需重启，保存前即可预览。</p></div></aside></div>`;
 }
 
 const setStatus = (message: string): void => {
@@ -56,18 +57,20 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   }
   if (button) button.disabled = true;
   setStatus("正在保存设置…");
-  Library.saveSettings(next).then((result) => {
+  Library.saveSettings(next).then(async (result) => {
+    if (result.storageChanged) {
+      setStatus("已保存，应用正在重启并切换到新的文件夹…");
+      await enqueue(() => Library.restart()); // Behind any edit still being written.
+      return;
+    }
     app.env.settings = result.settings;
     applyFontSize(result.settings.fontSize);
     const path = $<HTMLInputElement>("#settings-storage-path");
     if (path) path.value = result.settings.storagePath;
     const token = $<HTMLInputElement>("#settings-mcp-token");
     if (token) token.value = result.settings.mcpToken;
-    const restartChanges: string[] = [];
-    if (result.storageChanged) restartChanges.push("存放文件夹");
-    if (result.mcpTokenChanged) restartChanges.push("MCP Token");
-    setStatus(restartChanges.length ? `设置已保存。${restartChanges.join("和")}将在重启后生效。` : "设置已保存，字号已应用。");
-    app.toast(restartChanges.length ? `设置已保存，${restartChanges.join("和")}将在重启后生效。` : "设置已保存。");
+    setStatus(result.mcpTokenChanged ? "设置已保存。MCP Token 将在重启后生效。" : "设置已保存，字号已应用。");
+    app.toast(result.mcpTokenChanged ? "设置已保存，MCP Token 将在重启后生效。" : "设置已保存。");
   }).catch((error: unknown) => {
     setStatus(`保存失败：${errorMessage(error, "请检查路径和权限后重试。")}`);
   }).finally(() => {
@@ -85,7 +88,7 @@ export const settingsActions = (app: App): Record<string, (el: HTMLElement) => v
       if (!path) return;
       const input = $<HTMLInputElement>("#settings-storage-path");
       if (input) input.value = path;
-      setStatus("已选择新位置，保存并重启后生效。");
+      setStatus("已选择新位置，保存后应用会自动重启并切换过去。");
     }).catch((error: unknown) => {
       app.toast(`无法选择文件夹：${errorMessage(error, "请重试")}`, true);
     }).finally(() => {
