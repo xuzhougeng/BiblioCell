@@ -130,7 +130,7 @@ export async function syncSource(app: App, id: string): Promise<void> {
   try {
     const result = await enqueue(() => Library.syncSource(id));
     app.env.sources = app.env.sources.map((item) => (item.id === id ? result.status : item));
-    app.state.papers = arr(result.papers);
+    await app.reload();
     const source = app.env.sources.find((item) => item.id === id);
     const message = `${source ? source.name : id} 同步完成：${result.recordsSeen} 条外部记录，新增 ${result.papersAdded} 篇文献，${result.duplicates} 条已存在。`;
     app.logActivity(message, "sync");

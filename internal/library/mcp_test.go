@@ -28,6 +28,71 @@ func authenticatedHTTPClient() *http.Client {
 	return &http.Client{Transport: bearerTransport{base: http.DefaultTransport}}
 }
 
+func TestMCPAgentCanOnlyPropose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	store, err := Open(t.TempDir() + "/bibliocell.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server, err := startMCP(store, "127.0.0.1:0", testMCPToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close(ctx)
+	client := mcp.NewClient(&mcp.Implementation{Name: "bibliocell-propose-test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.Endpoint, HTTPClient: authenticatedHTTPClient()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	rejected := func(name string, arguments map[string]any) bool {
+		t.Helper()
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
+		return err != nil || result.IsError
+	}
+	if !rejected("add_paper", map[string]any{"title": "Self approved", "screening": "included"}) {
+		t.Fatal("add_paper accepted a screening decision")
+	}
+	proposed, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "add_paper", Arguments: map[string]any{
+		"title": "Suggested", "proposedScreening": "excluded", "proposedReason": "spatial only",
+	}})
+	if err != nil || proposed.IsError {
+		t.Fatalf("add_paper with a proposal: %v %+v", err, proposed)
+	}
+	var paper Paper
+	data, _ := json.Marshal(proposed.StructuredContent)
+	if err := json.Unmarshal(data, &paper); err != nil {
+		t.Fatal(err)
+	}
+	if paper.Screening != "pending" || paper.ProposedScreening != "excluded" || paper.ReviewedAt != "" {
+		t.Fatalf("proposal result = %+v", paper)
+	}
+	if !rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"screening": "included"}}) {
+		t.Fatal("update_paper accepted a screening decision")
+	}
+	if !rejected("add_paper", map[string]any{"title": "No reason", "proposedScreening": "excluded"}) {
+		t.Fatal("exclusion proposal without a reason accepted")
+	}
+
+	reviewed := paper
+	reviewed.Screening, reviewed.ScreeningReason = "included", "checked the methods section"
+	if conflicts, err := store.SavePaperEdits(ctx, []PaperEdit{{Before: &paper, After: reviewed}}); err != nil || len(conflicts) != 0 {
+		t.Fatalf("human decision: %v %v", conflicts, err)
+	}
+	if !rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"journal": "Changed after review"}}) {
+		t.Fatal("update_paper edited a reviewed paper")
+	}
+	if rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"proposedScreening": "uncertain"}}) {
+		t.Fatal("update_paper refused a proposal on a reviewed paper")
+	}
+	if got, err := store.GetPaper(ctx, paper.ID); err != nil || got.Screening != "included" || got.Journal != "" || got.ProposedScreening != "uncertain" {
+		t.Fatalf("reviewed paper = %+v, %v", got, err)
+	}
+}
+
 func TestMCPAddAndListPapers(t *testing.T) {
 	store, err := Open(t.TempDir() + "/bibliocell.sqlite")
 	if err != nil {

@@ -96,6 +96,9 @@ export interface Paper {
   tags: string[];
   screening: string;
   screeningReason: string;
+  reviewedAt: string;
+  proposedScreening: string;
+  proposedReason: string;
   reading: string;
   fulltext: string;
   starred: boolean;
@@ -103,6 +106,11 @@ export interface Paper {
   addedAt: string;
   updatedAt: string;
   isDemo: boolean;
+}
+
+export interface PaperEdit {
+  before: Paper | null;
+  after: Paper;
 }
 
 export interface PaperFile {
@@ -233,9 +241,12 @@ export const Library = {
   saveDatasets(datasets: Dataset[]): Promise<void> {
     return call("Library.SaveDatasets", datasets);
   },
-  /** SavePapers persists paper edits without deleting records added by MCP. */
-  savePapers(papers: Paper[]): Promise<void> {
-    return call("Library.SavePapers", papers);
+  /**
+   * SavePaperEdits stores what a person changed and returns the titles of papers
+   * left unsaved because another writer changed the same fields.
+   */
+  savePaperEdits(edits: PaperEdit[]): Promise<string[]> {
+    return call("Library.SavePaperEdits", edits);
   },
   /** SaveSettings persists preferences without moving data or reopening the database. */
   saveSettings(config: Config): Promise<SettingsSaveResult> {

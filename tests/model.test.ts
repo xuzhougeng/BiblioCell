@@ -2,12 +2,36 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoState } from "../src/demo-data.ts";
-import { csvText, emptyFilters, esc, fileSize, filterPapers, normalizeDOI, normalizeDataset, prepareImport, tasksFor, validDOI } from "../src/model.ts";
+import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterPapers, normalizeDOI, normalizeDataset, prepareImport, tasksFor, validDOI } from "../src/model.ts";
 
 test("esc neutralizes HTML metacharacters and tolerates null", () => {
   assert.equal(esc(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
   assert.equal(esc(null), "");
   assert.equal(esc(2026), "2026");
+});
+
+test("changedItems returns only edited and new items with their synced versions", () => {
+  const saved = [{ id: "a", v: 1 }, { id: "b", v: 1 }];
+  const next = [{ id: "a", v: 1 }, { id: "b", v: 2 }, { id: "c", v: 1 }];
+  assert.deepEqual(changedItems(next, saved), [[{ id: "b", v: 2 }, { id: "b", v: 1 }], [{ id: "c", v: 1 }, undefined]]);
+});
+
+test("decideScreening settles the proposal and pending clears the review", () => {
+  const paper = { ...demoState().papers[0]!, proposedScreening: "excluded", proposedReason: "off topic" };
+  decideScreening(paper, "included");
+  assert.equal(paper.screening, "included");
+  assert.equal(paper.proposedScreening, "");
+  assert.ok(paper.reviewedAt);
+  decideScreening(paper, "pending");
+  assert.equal(paper.reviewedAt, "");
+});
+
+test("tasksFor queues an agent proposal that differs from the human decision", () => {
+  const paper = { ...demoState().papers[0]!, screening: "included", proposedScreening: "excluded" };
+  const rows = tasksFor([paper], []).filter((row) => row.type === "screen");
+  assert.equal(rows.length, 1);
+  assert.match(rows[0]!.subtitle, /Agent 建议/);
+  assert.equal(tasksFor([{ ...paper, proposedScreening: "included" }], []).filter((row) => row.type === "screen").length, 0);
 });
 
 test("fileSize switches from KB to MB", () => {

@@ -70,7 +70,7 @@ http://127.0.0.1:37841/mcp
 | `get_paper` | 按 ID 读取一篇文献及全部可编辑 metadata |
 | `add_paper` | 向正式 SQLite 数据库添加一篇文献，需要写权限 |
 | `import_papers` | 原子批量导入最多 1000 篇文献，支持 `dryRun`，需要写权限 |
-| `update_paper` | 局部编辑现有文献 metadata，保留未提供字段，需要写权限 |
+| `update_paper` | 局部编辑未经人工确认的文献 metadata，或提出收录建议，保留未提供字段，需要写权限 |
 
 ### MCP 权限
 
@@ -79,6 +79,18 @@ http://127.0.0.1:37841/mcp
 - 无 Token 的写调用会被拒绝；错误 Token 返回 HTTP 401。
 - Token 是应用首次启动时生成的 256 位随机密钥。可以在“设置 → 外部 AI · MCP”中查看、复制、自定义或重新生成；自定义 Token 保存在 `settings.json`，修改后重启生效。Token 不会通过 MCP 暴露。
 - `describe_library` 返回当前连接的 `accessRole`（`read-only` 或 `read-write`）和 `canWrite`。
+
+### 人工核查
+
+收录判断只由人做出，agent 只能提议：
+
+- `screening`（`pending` / `included` / `excluded` / `uncertain`）只记录人的决定，MCP 和命令行都不能写入。agent 用 `proposedScreening` 和 `proposedReason` 提出建议，提议排除时必须写理由。
+- 建议显示在“待补事项”和文献详情的“收录判断”里，人可以采纳、忽略，或自行选择。做出决定后建议随即失效。
+- 数据库记录真实来源：只有人的决定会把 `screening_method` 写成 `human` 并记下 `screening_reviewed_at`，接口里对应 `reviewedAt`。未决定的文献是 `unreviewed`。
+- 文献一经人工确认，`update_paper` 就只接受建议，不再允许修改 metadata。把判断改回“待判断”即可解除。
+- 桌面端只保存你改动的字段：agent 在窗口打开期间写入的内容不会被覆盖。同一篇文献的同一字段被两边同时修改时，这次改动不保存并提示，窗口重新加载。窗口回到前台时自动读取最新数据，打开详情或弹窗时不刷新。
+- 从旧版本升级时，来源为 MCP 或 CLI 的已判断文献分不清是谁判断的，会退回“待判断”，原判断保留为建议，可一键采纳。其他已判断文献记为人工确认。
+- 这是防止误操作的边界，不是安全边界：`sql` 命令和直接修改 SQLite 文件仍可绕过。
 
 `update_paper` 使用 `id` 和 `patch`。例如只修改期刊时传入 `{"id":"P-...","patch":{"journal":"New journal"}}`，未提供的 DOI、作者、笔记等字段保持不变；`clearYear: true` 可以将年份清空。多值字段（`species`、`organs`、`modalities`、`platforms`、`articleTypes`）以数组整体替换，例如 `{"patch":{"platforms":["10x Genomics Chromium","BD Rhapsody"]}}`，空数组表示清空。
 
@@ -110,7 +122,7 @@ AI 客户端可以通过标准 MCP 能力发现接口，不需要在提示词里
 
 省略 `headers` 即为只读连接；需要导入或编辑时，将 `<MCP_TOKEN>` 替换为应用页面显示的 Token。
 
-MCP 始终操作正式数据库，与界面是否开启 Demo 无关。MCP 新增或编辑的文献在重新加载真实模式后可见。服务仅监听 `127.0.0.1`，不要将端口转发到局域网或公网。
+MCP 始终操作正式数据库，与界面是否开启 Demo 无关。MCP 新增或编辑的文献在窗口回到前台时可见。服务仅监听 `127.0.0.1`，不要将端口转发到局域网或公网。
 
 ## 命令行
 

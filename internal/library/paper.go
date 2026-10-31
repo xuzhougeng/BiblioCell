@@ -1,6 +1,7 @@
 package library
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -23,6 +24,8 @@ type SpeciesEntry struct {
 // Paper is the document-shaped representation used by the desktop frontend.
 // Species, organs, modalities, platforms, and article types are multi-valued:
 // one paper can cover several of each, and an empty array means "not curated".
+// Screening holds a person's decision and ReviewedAt says when it was made;
+// agents can only suggest one through ProposedScreening and ProposedReason.
 type Paper struct {
 	ID                string         `json:"id"`
 	Title             string         `json:"title"`
@@ -42,6 +45,9 @@ type Paper struct {
 	Tags              []string       `json:"tags"`
 	Screening         string         `json:"screening"`
 	ScreeningReason   string         `json:"screeningReason"`
+	ReviewedAt        string         `json:"reviewedAt"`
+	ProposedScreening string         `json:"proposedScreening"`
+	ProposedReason    string         `json:"proposedReason"`
 	Reading           string         `json:"reading"`
 	Fulltext          string         `json:"fulltext"`
 	Starred           bool           `json:"starred"`
@@ -70,14 +76,17 @@ type PaperPatch struct {
 	Abstract          *string         `json:"abstract,omitempty"`
 	Notes             *string         `json:"notes,omitempty"`
 	Tags              *[]string       `json:"tags,omitempty" jsonschema:"Replace all personal tags"`
-	Screening         *string         `json:"screening,omitempty" jsonschema:"pending, included, excluded, or uncertain"`
-	ScreeningReason   *string         `json:"screeningReason,omitempty" jsonschema:"Required when changing screening to excluded"`
+	ProposedScreening *string         `json:"proposedScreening,omitempty" jsonschema:"Suggest included, excluded, or uncertain for a person to confirm; an empty string withdraws the suggestion"`
+	ProposedReason    *string         `json:"proposedReason,omitempty" jsonschema:"Why; required when proposing excluded"`
 	Reading           *string         `json:"reading,omitempty" jsonschema:"unread, skimmed, or read"`
 	Starred           *bool           `json:"starred,omitempty"`
 }
 
 // ErrPaperNotFound indicates that the requested real paper does not exist.
 var ErrPaperNotFound = errors.New("paper not found")
+
+// ErrHumanReviewed indicates an agent edit of a paper a person already decided on.
+var ErrHumanReviewed = errors.New("paper was reviewed by a person; only proposedScreening and proposedReason can change")
 
 var doiPattern = regexp.MustCompile(`^10\.\d{4,9}/\S+$`)
 
@@ -90,6 +99,7 @@ const paperSelect = `
 		       organs_json, modalities_json, coalesce(platforms_json, '[]'), coalesce(source, ''),
 		       first_seen_at, updated_at, screening_status, coalesce(screening_reason, ''),
 		       reading_status, starred, tags_json, notes, fulltext_status,
+		       coalesce(screening_reviewed_at, ''), proposed_screening, proposed_reason,
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'doi'), ''),
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'pmid'), '')
 		FROM v_paper_overview`
@@ -126,7 +136,8 @@ func scanPaper(rows *sql.Rows) (Paper, error) {
 		&year, &p.PublicationStatus, &articleTypes,
 		&species, &organs, &modalities, &platforms, &p.Source,
 		&p.AddedAt, &p.UpdatedAt, &p.Screening, &p.ScreeningReason,
-		&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext, &p.DOI, &p.PMID,
+		&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext,
+		&p.ReviewedAt, &p.ProposedScreening, &p.ProposedReason, &p.DOI, &p.PMID,
 	); err != nil {
 		return Paper{}, fmt.Errorf("read paper: %w", err)
 	}
@@ -174,28 +185,111 @@ func FilterPapers(papers []Paper, query string, limit int) []Paper {
 	return matches
 }
 
-// SavePapers upserts frontend papers without deleting records added by MCP or another window.
-func (s *Store) SavePapers(ctx context.Context, papers []Paper) error {
+// PaperEdit is one change a person made in the desktop window: the paper as the
+// window last read it and as the person left it. Before is nil for a new paper.
+type PaperEdit struct {
+	Before *Paper `json:"before"`
+	After  Paper  `json:"after"`
+}
+
+// SavePaperEdits stores a person's edits. It writes only the fields each edit
+// changed, so whatever an agent wrote since the window read the paper survives.
+// A paper with the same field changed on both sides is left alone and its title
+// returned. A changed screening status is the person's decision.
+func (s *Store) SavePaperEdits(ctx context.Context, edits []PaperEdit) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin paper save: %w", err)
+		return nil, fmt.Errorf("begin paper save: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	seen := make(map[string]bool, len(papers))
-	for i := range papers {
-		if seen[papers[i].ID] {
-			return fmt.Errorf("duplicate paper ID %q", papers[i].ID)
+	conflicts := []string{}
+	for i := range edits {
+		after := edits[i].After
+		if edits[i].Before == nil {
+			normalizePaper(&after)
+			recordDecision(&after)
+			if err := savePaper(ctx, tx, &after); err != nil {
+				return nil, err
+			}
+			continue
 		}
-		seen[papers[i].ID] = true
-		if err := savePaper(ctx, tx, &papers[i]); err != nil {
-			return err
+		current, err := readPaper(ctx, tx, after.ID)
+		if err != nil {
+			return nil, err
+		}
+		merged, changed, conflict, err := mergePaper(*edits[i].Before, after, current)
+		if err != nil {
+			return nil, err
+		}
+		if conflict {
+			conflicts = append(conflicts, current.Title)
+			continue
+		}
+		if !changed {
+			continue
+		}
+		if merged.Screening != current.Screening {
+			recordDecision(&merged)
+		}
+		if err := savePaper(ctx, tx, &merged); err != nil {
+			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("save papers: %w", err)
+		return nil, fmt.Errorf("save papers: %w", err)
 	}
-	return nil
+	return conflicts, nil
+}
+
+// recordDecision stamps the screening status as a person's decision, which
+// settles any agent proposal. Pending means nobody has decided.
+func recordDecision(p *Paper) {
+	p.ProposedScreening, p.ProposedReason, p.ReviewedAt = "", "", ""
+	if p.Screening != "pending" {
+		p.ReviewedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+}
+
+// serverPaperFields are never taken from a desktop edit: the database owns them.
+var serverPaperFields = map[string]bool{
+	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "reviewedAt": true, "isDemo": true,
+}
+
+// mergePaper applies what changed from before to after onto current, field by
+// field. It reports a conflict when another writer changed one of those fields
+// to something else, and whether anything needs writing at all.
+func mergePaper(before, after, current Paper) (merged Paper, changed, conflict bool, err error) {
+	var fields [3]map[string]json.RawMessage
+	for i, paper := range []Paper{before, after, current} {
+		normalizePaper(&paper)
+		data, err := json.Marshal(paper)
+		if err != nil {
+			return Paper{}, false, false, fmt.Errorf("encode paper: %w", err)
+		}
+		if err := json.Unmarshal(data, &fields[i]); err != nil {
+			return Paper{}, false, false, fmt.Errorf("decode paper fields: %w", err)
+		}
+	}
+	base, next, latest := fields[0], fields[1], fields[2]
+	for field, value := range next {
+		if serverPaperFields[field] || bytes.Equal(value, base[field]) || bytes.Equal(value, latest[field]) {
+			continue
+		}
+		if !bytes.Equal(latest[field], base[field]) {
+			return Paper{}, false, true, nil
+		}
+		latest[field] = value
+		changed = true
+	}
+	data, err := json.Marshal(latest)
+	if err != nil {
+		return Paper{}, false, false, fmt.Errorf("encode merged paper: %w", err)
+	}
+	if err := json.Unmarshal(data, &merged); err != nil {
+		return Paper{}, false, false, fmt.Errorf("decode merged paper: %w", err)
+	}
+	return merged, changed, false, nil
 }
 
 // ImportResult describes an atomic paper import or validation run.
@@ -224,6 +318,7 @@ func (s *Store) ImportPapers(ctx context.Context, papers []Paper, dryRun bool) (
 			papers[i].ID = id
 		}
 		normalizePaper(&papers[i])
+		papers[i].ReviewedAt = "" // Imports come from agents, never from a reviewer.
 		if seen[papers[i].ID] {
 			return ImportResult{}, fmt.Errorf("paper %d: duplicate ID %q", i, papers[i].ID)
 		}
@@ -261,8 +356,17 @@ func (s *Store) AddPaper(ctx context.Context, p Paper) (Paper, error) {
 
 // GetPaper returns one real paper by its stable ID.
 func (s *Store) GetPaper(ctx context.Context, id string) (Paper, error) {
-	id = strings.TrimSpace(id)
-	rows, err := s.db.QueryContext(ctx, paperSelect+` WHERE id = ?`, id)
+	return readPaper(ctx, s.db, strings.TrimSpace(id))
+}
+
+// paperReader is a *sql.DB or, inside a transaction, the *sql.Tx holding the
+// only connection.
+type paperReader interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func readPaper(ctx context.Context, reader paperReader, id string) (Paper, error) {
+	rows, err := reader.QueryContext(ctx, paperSelect+` WHERE id = ?`, id)
 	if err != nil {
 		return Paper{}, fmt.Errorf("get paper: %w", err)
 	}
@@ -276,11 +380,19 @@ func (s *Store) GetPaper(ctx context.Context, id string) (Paper, error) {
 	return scanPaper(rows)
 }
 
-// UpdatePaper applies a partial metadata patch without replacing omitted fields.
+// UpdatePaper applies a partial metadata patch from an agent without replacing
+// omitted fields. Once a person has decided on a paper, only proposals can change.
 func (s *Store) UpdatePaper(ctx context.Context, id string, patch PaperPatch) (Paper, error) {
 	paper, err := s.GetPaper(ctx, id)
 	if err != nil {
 		return Paper{}, err
+	}
+	if paper.ReviewedAt != "" {
+		metadata := patch
+		metadata.ProposedScreening, metadata.ProposedReason = nil, nil
+		if metadata != (PaperPatch{}) {
+			return Paper{}, ErrHumanReviewed
+		}
 	}
 	previousUpdatedAt := paper.UpdatedAt
 	applyPaperPatch(&paper, patch)
@@ -358,11 +470,11 @@ func applyPaperPatch(paper *Paper, patch PaperPatch) {
 	if patch.Tags != nil {
 		paper.Tags = *patch.Tags
 	}
-	if patch.Screening != nil {
-		paper.Screening = *patch.Screening
+	if patch.ProposedScreening != nil {
+		paper.ProposedScreening = *patch.ProposedScreening
 	}
-	if patch.ScreeningReason != nil {
-		paper.ScreeningReason = *patch.ScreeningReason
+	if patch.ProposedReason != nil {
+		paper.ProposedReason = *patch.ProposedReason
 	}
 	if patch.Reading != nil {
 		paper.Reading = *patch.Reading
@@ -386,8 +498,18 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 	if !oneOf(p.Screening, "pending", "included", "excluded", "uncertain") {
 		return fmt.Errorf("invalid screening status %q", p.Screening)
 	}
+	// The one gate every write passes: a decision exists only with its review.
+	if p.Screening != "pending" && p.ReviewedAt == "" {
+		return fmt.Errorf("screening %q is a person's decision; send proposedScreening instead", p.Screening)
+	}
 	if p.Screening == "excluded" && p.ScreeningReason == "" {
 		return errors.New("an excluded paper needs a screening reason")
+	}
+	if !oneOf(p.ProposedScreening, "", "included", "excluded", "uncertain") {
+		return fmt.Errorf("invalid proposed screening %q", p.ProposedScreening)
+	}
+	if p.ProposedScreening == "excluded" && p.ProposedReason == "" {
+		return errors.New("proposing to exclude a paper needs a proposedReason")
 	}
 	if !oneOf(p.Reading, "unread", "skimmed", "read") {
 		return fmt.Errorf("invalid reading status %q", p.Reading)
@@ -448,18 +570,27 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 		return fmt.Errorf("save paper %s: %w", p.ID, err)
 	}
 
+	method := "unreviewed"
+	if p.ReviewedAt != "" {
+		method = "human"
+	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO paper_curation(
-			paper_id, screening_status, screening_reason, screening_method,
-			reading_status, starred, tags_json, notes, updated_at
-		) VALUES(?, ?, ?, 'human', ?, ?, ?, ?, ?)
+			paper_id, screening_status, screening_reason, screening_method, screening_reviewed_at,
+			proposed_screening, proposed_reason, reading_status, starred, tags_json, notes, updated_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(paper_id) DO UPDATE SET
 			screening_status = excluded.screening_status,
 			screening_reason = excluded.screening_reason,
-			screening_method = 'human', reading_status = excluded.reading_status,
+			screening_method = excluded.screening_method,
+			screening_reviewed_at = excluded.screening_reviewed_at,
+			proposed_screening = excluded.proposed_screening,
+			proposed_reason = excluded.proposed_reason,
+			reading_status = excluded.reading_status,
 			starred = excluded.starred, tags_json = excluded.tags_json,
 			notes = excluded.notes, updated_at = excluded.updated_at`,
-		p.ID, p.Screening, p.ScreeningReason, p.Reading, boolInt(p.Starred), tags, p.Notes, p.UpdatedAt)
+		p.ID, p.Screening, p.ScreeningReason, method, nullableString(p.ReviewedAt),
+		p.ProposedScreening, p.ProposedReason, p.Reading, boolInt(p.Starred), tags, p.Notes, p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save paper curation %s: %w", p.ID, err)
 	}
@@ -488,7 +619,7 @@ func normalizePaper(p *Paper) {
 	p.Title = strings.TrimSpace(p.Title)
 	p.DOI = normalizeDOI(p.DOI)
 	p.PMID = strings.TrimSpace(p.PMID)
-	p.Authors = strings.TrimSpace(p.Authors)
+	p.Authors = strings.Join(jsonStrings(jsonArray(strings.Split(p.Authors, ";"))), "; ")
 	p.Journal = strings.TrimSpace(p.Journal)
 	p.Species = cleanSpecies(p.Species)
 	p.Organs = cleanStrings(p.Organs)
@@ -496,6 +627,7 @@ func normalizePaper(p *Paper) {
 	p.Platforms = cleanStrings(p.Platforms)
 	p.ArticleTypes = cleanStrings(p.ArticleTypes)
 	p.ScreeningReason = strings.TrimSpace(p.ScreeningReason)
+	p.ProposedReason = strings.TrimSpace(p.ProposedReason)
 	p.Source = strings.TrimSpace(p.Source)
 	if p.Screening == "" {
 		p.Screening = "pending"

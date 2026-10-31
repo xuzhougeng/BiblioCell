@@ -104,6 +104,24 @@ export const splitList = (value: unknown): string[] =>
   [...new Set(String(value ?? "").split(/[,，;；\n]/).map((s) => s.trim()).filter(Boolean))];
 export const nowISO = (): string => new Date().toISOString();
 
+/** changedItems pairs each item that differs from the last synced list with its synced version. */
+export function changedItems<T extends { id: string }>(next: T[], saved: T[]): [T, T | undefined][] {
+  const byID = new Map(saved.map((item) => [item.id, item]));
+  return next
+    .filter((item) => JSON.stringify(item) !== JSON.stringify(byID.get(item.id)))
+    .map((item) => [item, byID.get(item.id)]);
+}
+
+/** decideScreening records a person's decision, which settles any agent proposal. */
+export function decideScreening(p: Paper, status: string, reason = p.screeningReason): void {
+  p.screening = status;
+  p.screeningReason = reason;
+  p.proposedScreening = "";
+  p.proposedReason = "";
+  p.reviewedAt = status === "pending" ? "" : nowISO();
+  p.updatedAt = nowISO();
+}
+
 type HasSpecies = { species: SpeciesEntry[] };
 export const speciesNames = (p: HasSpecies): string[] => arr(p.species).map((s) => s?.name ?? "").filter(Boolean);
 export const speciesDisplay = (p: HasSpecies): string => arr(p.species).map((s) => s?.label || s?.name || "").filter(Boolean).join("、");
@@ -181,8 +199,11 @@ export interface TaskRow {
 export function tasksFor(papers: Paper[], datasets: Dataset[]): TaskRow[] {
   const rows: TaskRow[] = [];
   for (const p of papers) {
+    const proposal = p.proposedScreening ? `Agent 建议：${SCREEN[p.proposedScreening] ?? p.proposedScreening}` : "";
     if (p.screening === "pending" || p.screening === "uncertain") {
-      rows.push({ key: `${p.id}-screen`, type: "screen", paper: p, title: p.screening === "uncertain" ? "补充判断证据" : "确认收录范围", subtitle: "核实研究对象与单细胞测序证据", color: "amber", icon: "check" });
+      rows.push({ key: `${p.id}-screen`, type: "screen", paper: p, title: p.screening === "uncertain" ? "补充判断证据" : "确认收录范围", subtitle: proposal || "核实研究对象与单细胞测序证据", color: "amber", icon: "check" });
+    } else if (proposal && p.proposedScreening !== p.screening) {
+      rows.push({ key: `${p.id}-screen`, type: "screen", paper: p, title: "确认 Agent 建议", subtitle: proposal, color: "amber", icon: "check" });
     }
     if (p.screening === "included" && p.fulltext !== "stored") {
       rows.push({ key: `${p.id}-fulltext`, type: "fulltext", paper: p, title: p.fulltext === "linked" ? "获取全文正文" : "补充全文入口", subtitle: p.fulltext === "linked" ? "已有入口，正文文件仍待获取" : "先记录可用入口，正文可稍后获取", color: "blue", icon: "file" });
@@ -365,7 +386,8 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
       screening: enumValue(row.screening, SCREENINGS, "pending"), reading: enumValue(row.reading, READINGS, "unread"),
       fulltext: enumValue(row.fulltext, FULLTEXTS, "missing"), publicationStatus: enumValue(row.publicationStatus, PUBLICATION_STATUSES, "unknown"),
       starred: row.starred === true, isDemo: row.isDemo === true, source: textValue(row.source, 300) || "JSON 导入",
-      screeningReason: textValue(row.screeningReason, 3000), addedAt: isoDate(row.addedAt), updatedAt: nowISO(),
+      screeningReason: textValue(row.screeningReason, 3000), reviewedAt: "", proposedScreening: "", proposedReason: "",
+      addedAt: isoDate(row.addedAt), updatedAt: nowISO(),
     };
     idMap.set(oldId, id);
     next.papers.push(paper);

@@ -64,6 +64,21 @@ func TestCLIRoundTrip(t *testing.T) {
 		t.Fatalf("settings = %+v", config)
 	}
 
+	// Agents reach the same store as MCP: the CLI cannot make a decision either.
+	var proposed library.Paper
+	run(t, dataDir, `{"proposedScreening":"included"}`, &proposed, "papers", "update", added.ID)
+	if proposed.Screening != "pending" || proposed.ProposedScreening != "included" {
+		t.Fatalf("proposal changed the decision: %+v", proposed)
+	}
+	for _, attempt := range [][]string{
+		{`{"title":"Self approved","screening":"included"}`, "papers", "add"},
+		{`{"screening":"included"}`, "papers", "update", added.ID},
+	} {
+		if code := runCLI(append([]string{"-data-dir", dataDir}, attempt[1:]...), strings.NewReader(attempt[0]), &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
+			t.Fatalf("%v decided screening through the CLI", attempt)
+		}
+	}
+
 	var stderr bytes.Buffer
 	if code := runCLI([]string{"-data-dir", dataDir, "settings", "set", "-font-size", "99"}, strings.NewReader(""), &bytes.Buffer{}, &stderr); code == 0 {
 		t.Fatal("invalid font size accepted")

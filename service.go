@@ -54,12 +54,13 @@ func (l *Library) ListPapers() ([]library.Paper, error) {
 	return l.store.ListPapers(context.Background())
 }
 
-// SavePapers persists paper edits without deleting records added by MCP.
-func (l *Library) SavePapers(papers []library.Paper) error {
+// SavePaperEdits stores what a person changed and returns the titles of papers
+// left unsaved because another writer changed the same fields.
+func (l *Library) SavePaperEdits(edits []library.PaperEdit) ([]string, error) {
 	if l.store == nil {
-		return errors.New("library database is not ready")
+		return nil, errors.New("library database is not ready")
 	}
-	return l.store.SavePapers(context.Background(), papers)
+	return l.store.SavePaperEdits(context.Background(), edits)
 }
 
 // ListPaperFiles returns the files stored for real papers.

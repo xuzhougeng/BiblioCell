@@ -53,8 +53,8 @@ type paperInput struct {
 	Abstract          string         `json:"abstract,omitempty"`
 	Notes             string         `json:"notes,omitempty" jsonschema:"Personal research notes"`
 	Tags              []string       `json:"tags,omitempty" jsonschema:"Personal topic tags"`
-	Screening         string         `json:"screening,omitempty" jsonschema:"pending, included, excluded, or uncertain; defaults to pending"`
-	ScreeningReason   string         `json:"screeningReason,omitempty" jsonschema:"Required when screening is excluded"`
+	ProposedScreening string         `json:"proposedScreening,omitempty" jsonschema:"Suggest included, excluded, or uncertain; screening itself stays pending until a person decides"`
+	ProposedReason    string         `json:"proposedReason,omitempty" jsonschema:"Why; required when proposing excluded"`
 	Reading           string         `json:"reading,omitempty" jsonschema:"unread, skimmed, or read; defaults to unread"`
 	Starred           bool           `json:"starred,omitempty"`
 }
@@ -66,7 +66,7 @@ func (input paperInput) paper() Paper {
 		PublicationStatus: input.PublicationStatus, ArticleTypes: input.ArticleTypes,
 		Species: input.Species, Organs: input.Organs, Modalities: input.Modalities,
 		Platforms: input.Platforms, Abstract: input.Abstract, Notes: input.Notes,
-		Tags: input.Tags, Screening: input.Screening, ScreeningReason: input.ScreeningReason,
+		Tags: input.Tags, ProposedScreening: input.ProposedScreening, ProposedReason: input.ProposedReason,
 		Reading: input.Reading, Starred: input.Starred, Fulltext: "missing", Source: "MCP",
 	}
 }
@@ -146,7 +146,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name: "bibliocell-library", Title: "BiblioCell", Version: "0.1.0",
-	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, and update_paper require the local Bearer token. Demo data is never exposed."})
+	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, and update_paper require the local Bearer token. Screening is a person's decision: agents suggest through proposedScreening and a person confirms in the desktop app. Demo data is never exposed."})
 
 	server.AddResource(&mcp.Resource{
 		URI: paperSchemaURI, Name: "paper-import.schema.json", Title: "Paper import JSON Schema",
@@ -182,6 +182,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 			Enums: map[string][]string{
 				"publicationStatus": {"unknown", "preprint", "published", "unpublished"},
 				"screening":         {"pending", "included", "excluded", "uncertain"},
+				"proposedScreening": {"included", "excluded", "uncertain"},
 				"reading":           {"unread", "skimmed", "read"},
 				"articleTypes":      {"original", "method", "review", "other"},
 			},
@@ -192,7 +193,9 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 				"Imports are atomic: any invalid or duplicate record rolls back the entire batch",
 				"An empty ID is generated; an existing ID is rejected rather than updated",
 				"DOI values are normalized and must be unique across the library",
-				"An excluded paper requires a non-empty screeningReason",
+				"screening and reviewedAt are read-only: a person decides in the desktop app; send proposedScreening with proposedReason instead",
+				"proposedScreening=excluded requires a non-empty proposedReason",
+				"Once reviewedAt is set, update_paper accepts only proposedScreening and proposedReason",
 				"At most 1000 papers can be imported in one call",
 				"Only real SQLite data is accessible; Demo records are never included",
 			},
@@ -264,7 +267,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "update_paper", Description: "Edit selected metadata fields of an existing paper; requires Bearer token write access and preserves omitted fields",
+		Name: "update_paper", Description: "Edit selected metadata of an unreviewed paper or suggest a screening decision; requires Bearer token write access and preserves omitted fields. A paper a person reviewed accepts only proposals",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input updatePaperInput) (*mcp.CallToolResult, Paper, error) {
 		if err := requireWrite(ctx); err != nil {
 			return nil, Paper{}, err

@@ -48,7 +48,7 @@ async function boot(): Promise<void> {
     const env: Env = { desktop: true, real: realMode, settings, mcp, status, sources };
     if (realMode) {
       const initial = await sqliteStore.load();
-      setRuntime("真实数据库", `SQLite 中的 ${initial.papers.length} 篇文献、${initial.datasets.length} 组数据集；MCP 连接信息见设置页。`);
+      setRuntime("真实数据库", "文献与数据集来自本机 SQLite；MCP 连接信息见设置页。");
       new App({ store: sqliteStore, env, initial }).start();
     } else {
       setRuntime("Demo 模式", `虚构示例仅保存在浏览器，不会写入正式库（现有 ${status.paperCount} 篇）。`);

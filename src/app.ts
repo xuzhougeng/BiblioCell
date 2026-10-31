@@ -8,12 +8,12 @@ import {
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
-  PAGES, READING, SCREEN, clone, csvText, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
+  PAGES, READING, SCREEN, clone, csvText, decideScreening, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   speciesNameFor, tasksFor, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, renderSources, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource } from "./sources.ts";
 import { previewFontSize, renderSettings, saveSettings, settingsActions } from "./settings.ts";
-import type { LibraryStore } from "./store.ts";
+import { SaveRejected, type LibraryStore } from "./store.ts";
 import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
 import { renderDatasets, renderOverview, renderPapers, renderSchema, renderTasks } from "./views.ts";
 
@@ -51,6 +51,9 @@ export class App {
   pendingImport: { next: LibraryState; stats: ImportStats } | null = null;
 
   private readonly store: LibraryStore;
+  /** The state as last synced with the store. It moves with this.state, never after an await. */
+  private saved: LibraryState;
+  private edits = 0;
   private page: Page;
   private lastFocus: Element | null = null;
   private modalLastFocus: Element | null = null;
@@ -61,6 +64,7 @@ export class App {
     this.store = options.store;
     this.env = options.env;
     this.state = options.initial;
+    this.saved = clone(options.initial);
     this.warning = options.warning ?? "";
     const hash = location.hash.slice(1);
     this.page = isPage(hash) ? hash : "overview";
@@ -79,6 +83,10 @@ export class App {
         this.page = next;
         this.render();
       }
+    });
+    // Agents write while the window sits in the background; show their work on return.
+    if (this.env.real) window.addEventListener("focus", () => {
+      if (!this.drawer && !$("#modal-root .modal")) void this.reload();
     });
     this.render();
     if (this.warning) this.toast(this.warning, true);
@@ -100,9 +108,28 @@ export class App {
 
   // ---- persistence ----
   persist(): void {
-    this.store.save(clone(this.state)).catch((error: unknown) => {
+    const next = clone(this.state);
+    const saved = this.saved;
+    this.saved = next;
+    this.edits++;
+    this.store.save(next, saved).catch((error: unknown) => {
       this.toast(errorMessage(error, "保存失败，请重试。"), true);
+      if (error instanceof SaveRejected) void this.reload();
     });
+  }
+  /** reload shows what the database holds now, including what agents wrote. */
+  async reload(): Promise<void> {
+    const edits = this.edits;
+    try {
+      const fresh = await this.store.load();
+      if (edits !== this.edits) return await this.reload(); // A newer edit is queued behind this read.
+      this.state = { ...fresh, activities: this.state.activities };
+      this.saved = clone(this.state);
+      this.render();
+      this.renderDrawer();
+    } catch (error) {
+      this.toast(`刷新失败：${errorMessage(error, "请重新打开应用。")}`, true);
+    }
   }
   logActivity(message: string, kind = "edit"): void {
     this.state.activities.unshift({ id: uid("act"), message, kind, at: nowISO() });
@@ -374,6 +401,26 @@ export class App {
     },
     "link-dataset": (_el, id) => linkDatasetModal(this, id),
     "add-resource": (el, id) => resourceModal(this, el.dataset.kind ?? "paper", id),
+    "accept-proposal": (_el, id) => {
+      const p = this.paperById(id);
+      if (!p) return;
+      decideScreening(p, p.proposedScreening, p.proposedReason || p.screeningReason);
+      this.logActivity(`采纳 Agent 建议：${p.title}`);
+      this.persist();
+      this.render();
+      this.renderDrawer();
+      this.toast("已采纳，判断记为人工确认。");
+    },
+    "dismiss-proposal": (_el, id) => {
+      if (!this.touchPaper(id, (p) => {
+        p.proposedScreening = "";
+        p.proposedReason = "";
+      })) return;
+      this.persist();
+      this.render();
+      this.renderDrawer();
+      this.toast("已忽略这条建议。");
+    },
     ...settingsActions(this),
     ...fileActions(this),
   };
@@ -442,7 +489,7 @@ export class App {
           exclusionReasonModal(this, p);
           return;
         }
-        p.screening = value;
+        decideScreening(p, value);
       } else if (key === "reading" && Object.hasOwn(READING, value)) {
         p.reading = value;
       } else {

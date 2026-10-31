@@ -76,17 +76,19 @@ func TestPaperAddEditAndPreserveMCPRecords(t *testing.T) {
 		t.Errorf("deprecated columns were written: %v / %v / %q", speciesText, speciesLabel, articleType)
 	}
 
+	before := papers[0]
 	papers[0].Notes = "keep this note"
 	papers[0].Tags = []string{"root", "priority"}
 	papers[0].Starred = true
-	if err := store.SavePapers(ctx, papers); err != nil {
-		t.Fatalf("SavePapers() error = %v", err)
+	edit := []PaperEdit{{Before: &before, After: papers[0]}}
+	if _, err := store.SavePaperEdits(ctx, edit); err != nil {
+		t.Fatalf("SavePaperEdits() error = %v", err)
 	}
 	if _, err := store.AddPaper(ctx, Paper{Title: "Added outside the UI", Source: "MCP"}); err != nil {
 		t.Fatalf("AddPaper() outside UI error = %v", err)
 	}
-	if err := store.SavePapers(ctx, papers); err != nil {
-		t.Fatalf("SavePapers() after MCP insert error = %v", err)
+	if _, err := store.SavePaperEdits(ctx, edit); err != nil {
+		t.Fatalf("SavePaperEdits() after MCP insert error = %v", err)
 	}
 
 	papers, err = store.ListPapers(ctx)

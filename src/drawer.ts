@@ -1,5 +1,6 @@
 // Detail drawer for one paper or one dataset.
 import type { App } from "./app.ts";
+import type { Paper } from "./mygo.ts";
 import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, dateText, esc, fileSize, joinList, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, options, screenBadge } from "./ui.ts";
 
@@ -24,6 +25,10 @@ const drawerFrame = (id: string, title: string, subtitle: string, body: string):
 const detail = (label: string, value: string, small = ""): string =>
   `<div class="detail-item"><span>${label}</span><strong>${value}</strong>${small}</div>`;
 
+const proposalBox = (p: Paper): string => p.proposedScreening
+  ? `<div class="notice-box compact proposal-box">${I("info", 16)}<span>Agent 建议：<strong>${esc(SCREEN[p.proposedScreening] ?? p.proposedScreening)}</strong>${p.proposedReason ? `<br>${esc(p.proposedReason)}` : ""}</span><span class="section-actions"><button class="text-link" data-action="accept-proposal" data-id="${esc(p.id)}">采纳</button><button class="text-link" data-action="dismiss-proposal" data-id="${esc(p.id)}">忽略</button></span></div>`
+  : "";
+
 const PUBLICATION_LABELS: Record<string, string> = { preprint: "预印本", published: "正式论文", unpublished: "未发表" };
 
 /** renderDrawer returns the drawer HTML, or null when the referenced record no longer exists. */
@@ -43,7 +48,7 @@ export function renderDrawer(app: App): string | null {
         + `<section class="detail-section"><h3>摘要</h3><p class="abstract-text">${esc(p.abstract || "摘要尚未补充。先保留这条文献，之后可以继续完善。")}</p></section>`
         + `<section class="detail-section"><h3>主题标签</h3><div class="tag-list">${arr(p.tags).length ? arr(p.tags).map((t) => `<span class="tag">${esc(t)}</span>`).join("") : '<span class="muted">暂未设置标签</span>'}</div></section>`
         + `<section class="detail-section"><h3>来源与标识</h3><dl class="detail-dl"><dt>DOI</dt><dd>${p.doi ? `<a class="text-link" href="https://doi.org/${esc(encodeURI(p.doi))}" target="_blank" rel="noopener noreferrer">${esc(p.doi)}${I("arrow-up-right", 13)}</a>` : "尚未记录"}</dd><dt>PMID</dt><dd>${esc(p.pmid || "尚未记录")}</dd><dt>发现来源</dt><dd>${esc(p.source || "手动添加")}</dd><dt>加入时间</dt><dd>${dateText(p.addedAt)}</dd></dl></section>`
-        + `<section class="detail-section"><h3>收录判断</h3><label class="form-field"><span class="sr-only">收录判断</span><select class="input" data-paper-setting="screening" data-id="${esc(p.id)}">${options(SCREEN, p.screening)}</select></label><p class="muted small">${esc(p.screeningReason || "可在笔记中补充判断依据。")}</p></section>`;
+        + `<section class="detail-section"><h3>收录判断</h3>${proposalBox(p)}<label class="form-field"><span class="sr-only">收录判断</span><select class="input" data-paper-setting="screening" data-id="${esc(p.id)}">${options(SCREEN, p.screening)}</select></label><p class="muted small">${esc(p.screeningReason || "可在笔记中补充判断依据。")}</p>${app.env.real ? `<p class="muted small">${p.reviewedAt ? `人工确认于 ${dateText(p.reviewedAt)}` : "尚未人工确认"}</p>` : ""}</section>`;
     } else if (tab === "resources") {
       const related = ds.length
         ? ds.map((d) => `<button class="related-dataset" data-action="open-dataset" data-id="${esc(d.id)}"><span class="icon-wrap green">${I("database", 18)}</span><span><strong>${esc(d.title)}</strong><small>${esc(d.accession || "仓库编号待补")}</small></span>${badge(ROLE[d.paperLinks.find((l) => l.paperId === p.id)?.role ?? ""] ?? "关联", "gray")}${I("chevron-right", 15)}</button>`).join("")

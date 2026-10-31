@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 //go:embed schema.sql
 var schemaSQL string
@@ -29,6 +29,23 @@ type columnMigration struct {
 	ddl      string
 	backfill string
 }
+
+// reviewBackfill separates human decisions from agent writes in databases from
+// before proposals existed. Every write used to be labelled human, so a decision
+// on a record that arrived through MCP or the CLI cannot be trusted: it returns
+// to the queue with the old value kept as a proposal. The views are dropped so
+// schema.sql rebuilds them with the new columns.
+const reviewBackfill = `
+	DROP VIEW IF EXISTS v_work_queue;
+	DROP VIEW IF EXISTS v_paper_overview;
+	UPDATE paper_curation
+	SET proposed_screening = screening_status, proposed_reason = coalesce(screening_reason, ''),
+	    screening_status = 'pending', screening_reason = NULL
+	WHERE screening_status <> 'pending' AND paper_id IN (SELECT id FROM papers WHERE source IN ('MCP', 'CLI'));
+	UPDATE paper_curation SET screening_method = 'unreviewed', screening_reviewed_at = NULL
+	WHERE screening_status = 'pending';
+	UPDATE paper_curation SET screening_method = 'human', screening_reviewed_at = coalesce(screening_reviewed_at, updated_at)
+	WHERE screening_status <> 'pending';`
 
 var columnMigrations = []columnMigration{
 	{table: "papers", column: "species_text", ddl: "TEXT"},
@@ -84,12 +101,18 @@ var columnMigrations = []columnMigration{
 		table: "source_states", column: "config_json",
 		ddl: "TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(config_json))",
 	},
+	{table: "paper_curation", column: "proposed_reason", ddl: "TEXT NOT NULL DEFAULT ''"},
+	{
+		table: "paper_curation", column: "proposed_screening",
+		ddl:      "TEXT NOT NULL DEFAULT '' CHECK (proposed_screening IN ('','included','excluded','uncertain'))",
+		backfill: reviewBackfill,
+	},
 }
 
 // healColumns adds missing columns to existing tables and backfills JSON
 // values from legacy fields. Fresh databases are left entirely to schema.sql.
 func healColumns(db *sql.DB) error {
-	for _, table := range []string{"papers", "datasets", "source_states"} {
+	for _, table := range []string{"papers", "datasets", "source_states", "paper_curation"} {
 		rows, err := db.Query("PRAGMA table_info(" + table + ")")
 		if err != nil {
 			return fmt.Errorf("read %s columns: %w", table, err)
@@ -119,13 +142,15 @@ func healColumns(db *sql.DB) error {
 			if migration.table != table || existing[migration.column] {
 				continue
 			}
-			if _, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + migration.column + " " + migration.ddl); err != nil {
-				return fmt.Errorf("migrate %s column %s: %w", table, migration.column, err)
-			}
+			// One transaction: the backfill runs only when the column is added,
+			// so a column without its backfill would never be repaired. A failure
+			// leaves the transaction open, and Open closes the connection.
+			statement := "ALTER TABLE " + table + " ADD COLUMN " + migration.column + " " + migration.ddl
 			if migration.backfill != "" {
-				if _, err := db.Exec(migration.backfill); err != nil {
-					return fmt.Errorf("backfill %s column %s: %w", table, migration.column, err)
-				}
+				statement = "BEGIN; " + statement + "; " + migration.backfill + "; COMMIT"
+			}
+			if _, err := db.Exec(statement); err != nil {
+				return fmt.Errorf("migrate %s column %s: %w", table, migration.column, err)
 			}
 		}
 	}

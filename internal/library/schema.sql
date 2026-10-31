@@ -1,4 +1,4 @@
--- BiblioCell · schema v5
+-- BiblioCell · schema v6
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -88,6 +88,10 @@ CREATE TABLE IF NOT EXISTS paper_curation (
     screening_method TEXT NOT NULL DEFAULT 'unreviewed'
         CHECK (screening_method IN ('unreviewed','rule','model','human')),
     screening_reviewed_at TEXT,
+    -- screening_status 只记录人的决定；agent 的判断只能写入 proposed_*，等人确认。
+    proposed_screening TEXT NOT NULL DEFAULT ''
+        CHECK (proposed_screening IN ('','included','excluded','uncertain')),
+    proposed_reason TEXT NOT NULL DEFAULT '',
     reading_status TEXT NOT NULL DEFAULT 'unread'
         CHECK (reading_status IN ('unread','skimmed','read')),
     priority TEXT NOT NULL DEFAULT 'normal'
@@ -401,6 +405,7 @@ CREATE INDEX IF NOT EXISTS idx_datasets_modality ON datasets(modality, curation_
 -- 状态由附件和关联计算，避免复制一份 fulltext_status 后与实际附件脱节。
 CREATE VIEW IF NOT EXISTS v_paper_overview AS
 SELECT p.*, c.screening_status, c.screening_reason, c.screening_method,
+       c.screening_reviewed_at, c.proposed_screening, c.proposed_reason,
        c.reading_status, c.priority, c.starred, c.tags_json, c.notes,
        coalesce(c.organs_override_json, p.organs_json) AS effective_organs_json,
        coalesce(c.modalities_override_json, p.modalities_json) AS effective_modalities_json,
@@ -456,6 +461,7 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (2, '文献原型映射：物种显示名称与发现来源'),
        (3, '多值研究范围：物种、测序平台、组织、技术与文章类型改为 JSON 数组'),
        (4, '数据集多值研究范围、物种回填与人工整理备注'),
-       (5, '公开来源配置、手动同步与外部记录快照');
-PRAGMA user_version = 5;
+       (5, '公开来源配置、手动同步与外部记录快照'),
+       (6, '区分人工决定与 agent 提议，记录真实核查时间');
+PRAGMA user_version = 6;
 COMMIT;

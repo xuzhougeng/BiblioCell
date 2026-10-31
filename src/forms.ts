@@ -3,7 +3,7 @@
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  ARTICLE_TYPES, AVAILABILITY, MODALITY_CHOICES, PLATFORM_CHOICES, RESOURCE_TYPES, ROLE, arr, clone, emptyFilters, emptyRepository, esc, joinList,
+  ARTICLE_TYPES, AVAILABILITY, MODALITY_CHOICES, PLATFORM_CHOICES, RESOURCE_TYPES, ROLE, arr, clone, decideScreening, emptyFilters, emptyRepository, esc, joinList,
   normalizeDOI, normalizeDataset, nowISO, safeURL, splitList, uid, validDOI, type ImportStats,
 } from "./model.ts";
 import { I, checkboxGroup, customField, field, mergeChecked, option, options, readSpeciesRows, setFormError, speciesRow, text } from "./ui.ts";
@@ -68,7 +68,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   if (existing) {
     p = Object.assign(existing, values);
   } else {
-    p = { ...values, id: uid("P"), pmid: "", screening: "pending", fulltext: "missing", reading: "unread", starred: false, tags: [], notes: "", source: "手动添加", addedAt: now, isDemo: false };
+    p = { ...values, id: uid("P"), pmid: "", screening: "pending", reviewedAt: "", proposedScreening: "", proposedReason: "", fulltext: "missing", reading: "unread", starred: false, tags: [], notes: "", source: "手动添加", addedAt: now, isDemo: false };
     app.state.papers.unshift(p);
   }
   app.logActivity(`${existing ? "更新文献信息：" : "添加文献："}${p.title}`, existing ? "edit" : "add");
@@ -98,9 +98,7 @@ export function saveExclusionReason(app: App, form: HTMLFormElement): void {
     setFormError("请填写判断理由。");
     return;
   }
-  p.screening = "excluded";
-  p.screeningReason = reason;
-  p.updatedAt = nowISO();
+  decideScreening(p, "excluded", reason);
   app.logActivity(`保存排除判断：${p.title}`);
   app.persist();
   app.closeModal();
