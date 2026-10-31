@@ -31,9 +31,16 @@ export interface Dataset {
   cellCountUnit: string;
   cellCountScope: string;
   paperLinks: DatasetPaperLink[];
+  reviewedAt: string;
+  batchId: string;
   addedAt: string;
   updatedAt: string;
   isDemo: boolean;
+}
+
+export interface DatasetEdit {
+  before: Dataset | null;
+  after: Dataset;
 }
 
 export interface DatasetPaperLink {
@@ -55,6 +62,21 @@ export interface DatasetRepository {
   evidenceUrl: string;
   evidenceText: string;
   verified: boolean;
+}
+
+export interface Evidence {
+  id: string;
+  paperId: string;
+  datasetId: string;
+  field: string;
+  value: string;
+  sourceUrl: string;
+  fileId: string;
+  location: string;
+  excerpt: string;
+  extractor: string;
+  status: string;
+  observedAt: string;
 }
 
 export interface HarvestRun {
@@ -103,6 +125,7 @@ export interface Paper {
   fulltext: string;
   starred: boolean;
   source: string;
+  batchId: string;
   addedAt: string;
   updatedAt: string;
   isDemo: boolean;
@@ -172,6 +195,7 @@ export interface SpeciesEntry {
 export interface Status {
   storagePath: string;
   databasePath: string;
+  inboxPath: string;
   schemaVersion: number;
   tableCount: number;
   paperCount: number;
@@ -210,6 +234,10 @@ export const Library = {
   listDatasets(): Promise<Dataset[]> {
     return call("Library.ListDatasets");
   },
+  /** ListEvidence returns every claim agents recorded, for the review views. */
+  listEvidence(): Promise<Evidence[]> {
+    return call("Library.ListEvidence");
+  },
   /** ListPaperFiles returns the files stored for real papers. */
   listPaperFiles(): Promise<PaperFile[]> {
     return call("Library.ListPaperFiles");
@@ -237,9 +265,16 @@ export const Library = {
   removePaperFile(id: string): Promise<void> {
     return call("Library.RemovePaperFile", id);
   },
-  /** SaveDatasets persists dataset edits while preserving unrelated associations. */
-  saveDatasets(datasets: Dataset[]): Promise<void> {
-    return call("Library.SaveDatasets", datasets);
+  /** ReviewEvidence records a person's verdict on a claim. */
+  reviewEvidence(id: string, status: string): Promise<void> {
+    return call("Library.ReviewEvidence", id, status);
+  },
+  /**
+   * SaveDatasetEdits stores what a person changed and returns the titles of
+   * datasets left unsaved because another writer changed the same fields.
+   */
+  saveDatasetEdits(edits: DatasetEdit[]): Promise<string[]> {
+    return call("Library.SaveDatasetEdits", edits);
   },
   /**
    * SavePaperEdits stores what a person changed and returns the titles of papers
@@ -263,5 +298,13 @@ export const Library = {
   /** SyncSource fetches one enabled public source and returns the refreshed papers. */
   syncSource(id: string): Promise<SyncResult> {
     return call("Library.SyncSource", id);
+  },
+  /** VerifyDatasetLink records a person's check of a paper-dataset link. */
+  verifyDatasetLink(paperID: string, datasetID: string, role: string, verified: boolean): Promise<void> {
+    return call("Library.VerifyDatasetLink", paperID, datasetID, role, verified);
+  },
+  /** VerifyDatasetRepository records a person's check of a repository record. */
+  verifyDatasetRepository(datasetID: string, recordID: string, verified: boolean): Promise<void> {
+    return call("Library.VerifyDatasetRepository", datasetID, recordID, verified);
   },
 } as const;

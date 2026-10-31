@@ -61,6 +61,8 @@ type Dataset struct {
 	CellCountUnit          string              `json:"cellCountUnit"`
 	CellCountScope         string              `json:"cellCountScope"`
 	PaperLinks             []DatasetPaperLink  `json:"paperLinks"`
+	ReviewedAt             string              `json:"reviewedAt"`
+	BatchID                string              `json:"batchId"`
 	AddedAt                string              `json:"addedAt"`
 	UpdatedAt              string              `json:"updatedAt"`
 	IsDemo                 bool                `json:"isDemo"`
@@ -68,13 +70,42 @@ type Dataset struct {
 
 // ListDatasets returns real datasets and all normalized associations.
 func (s *Store) ListDatasets(ctx context.Context) ([]Dataset, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return readDatasets(ctx, s.db, "")
+}
+
+// GetDataset returns one real dataset by its stable ID.
+func (s *Store) GetDataset(ctx context.Context, id string) (Dataset, error) {
+	return readDataset(ctx, s.db, strings.TrimSpace(id))
+}
+
+func readDataset(ctx context.Context, reader queryer, id string) (Dataset, error) {
+	datasets, err := readDatasets(ctx, reader, id)
+	if err != nil {
+		return Dataset{}, err
+	}
+	if len(datasets) == 0 {
+		return Dataset{}, fmt.Errorf("%w: %s", ErrDatasetNotFound, id)
+	}
+	return datasets[0], nil
+}
+
+// readDatasets reads one dataset, or all of them when id is empty.
+func readDatasets(ctx context.Context, reader queryer, id string) ([]Dataset, error) {
+	only := func(column string) (string, []any) {
+		if id == "" {
+			return "", nil
+		}
+		return " WHERE " + column + " = ?", []any{id}
+	}
+	where, args := only("id")
+	rows, err := reader.QueryContext(ctx, `
 		SELECT id, title, coalesce(description, ''), notes, species_json, organs_json,
 		       modalities_json, platforms_json, curation_level, raw_availability,
 		       matrix_availability, annotation_availability, n_cells_reported,
 		       coalesce(cell_count_unit, ''), coalesce(cell_count_scope, ''),
+		       coalesce(reviewed_at, ''), coalesce(import_batch_id, ''),
 		       first_seen_at, updated_at
-		FROM datasets ORDER BY first_seen_at DESC, id`)
+		FROM datasets`+where+` ORDER BY first_seen_at DESC, id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list datasets: %w", err)
 	}
@@ -88,7 +119,7 @@ func (s *Store) ListDatasets(ctx context.Context) ([]Dataset, error) {
 			&d.ID, &d.Title, &d.Description, &d.Notes, &species, &organs,
 			&modalities, &platforms, &d.CurationLevel, &d.Availability,
 			&d.MatrixAvailability, &d.AnnotationAvailability, &cells,
-			&d.CellCountUnit, &d.CellCountScope, &d.AddedAt, &d.UpdatedAt,
+			&d.CellCountUnit, &d.CellCountScope, &d.ReviewedAt, &d.BatchID, &d.AddedAt, &d.UpdatedAt,
 		); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("read dataset: %w", err)
@@ -119,13 +150,14 @@ func (s *Store) ListDatasets(ctx context.Context) ([]Dataset, error) {
 		return nil, fmt.Errorf("close datasets: %w", err)
 	}
 
-	repositoryRows, err := s.db.QueryContext(ctx, `
+	where, args = only("dr.dataset_id")
+	repositoryRows, err := reader.QueryContext(ctx, `
 		SELECT dr.dataset_id, rr.id, rr.repository, rr.accession, rr.record_kind,
 		       coalesce(rr.url, ''), rr.public_status, dr.mapping_scope,
 		       coalesce(dr.evidence_url, ''), coalesce(dr.evidence_text, ''), dr.verified
 		FROM dataset_repositories dr
-		JOIN repository_records rr ON rr.id = dr.repository_record_id
-		ORDER BY dr.dataset_id, dr.rowid`)
+		JOIN repository_records rr ON rr.id = dr.repository_record_id`+where+`
+		ORDER BY dr.dataset_id, dr.rowid`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list dataset repositories: %w", err)
 	}
@@ -154,10 +186,11 @@ func (s *Store) ListDatasets(ctx context.Context) ([]Dataset, error) {
 		return nil, fmt.Errorf("close dataset repositories: %w", err)
 	}
 
-	linkRows, err := s.db.QueryContext(ctx, `
+	where, args = only("dataset_id")
+	linkRows, err := reader.QueryContext(ctx, `
 		SELECT dataset_id, paper_id, role, coalesce(evidence_url, ''),
 		       coalesce(evidence_text, ''), verified
-		FROM paper_datasets ORDER BY dataset_id, rowid`)
+		FROM paper_datasets`+where+` ORDER BY dataset_id, rowid`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list dataset paper links: %w", err)
 	}
@@ -191,33 +224,91 @@ func (s *Store) ListDatasets(ctx context.Context) ([]Dataset, error) {
 	return datasets, nil
 }
 
-// SaveDatasets upserts datasets without deleting records or associations added
-// elsewhere. Each call is atomic across all supplied datasets.
-func (s *Store) SaveDatasets(ctx context.Context, datasets []Dataset) error {
+// DatasetEdit is one change a person made in the desktop window. Before is nil
+// for a new dataset.
+type DatasetEdit struct {
+	Before *Dataset `json:"before"`
+	After  Dataset  `json:"after"`
+}
+
+// serverDatasetFields are never taken from a desktop edit: the database owns them.
+var serverDatasetFields = map[string]bool{
+	"id": true, "addedAt": true, "updatedAt": true, "reviewedAt": true, "batchId": true, "isDemo": true,
+}
+
+// SaveDatasetEdits stores a person's edits the way SavePaperEdits does: only the
+// fields each edit changed are written, and the titles of datasets with the same
+// field changed on both sides come back unsaved. It never deletes associations.
+func (s *Store) SaveDatasetEdits(ctx context.Context, edits []DatasetEdit) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin dataset save: %w", err)
+		return nil, fmt.Errorf("begin dataset save: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	seen := make(map[string]bool, len(datasets))
-	for i := range datasets {
-		if seen[datasets[i].ID] {
-			return fmt.Errorf("duplicate dataset ID %q", datasets[i].ID)
+
+	conflicts := []string{}
+	for i := range edits {
+		after := edits[i].After
+		if err := normalizeDataset(&after); err != nil {
+			return nil, err
 		}
-		seen[datasets[i].ID] = true
-		if err := saveDataset(ctx, tx, &datasets[i]); err != nil {
-			return err
+		if edits[i].Before == nil {
+			recordDatasetReview(&after)
+			if err := saveDataset(ctx, tx, &after); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		before := *edits[i].Before
+		if err := normalizeDataset(&before); err != nil {
+			return nil, err
+		}
+		latest, err := readDataset(ctx, tx, after.ID)
+		if err != nil {
+			return nil, err
+		}
+		if err := normalizeDataset(&latest); err != nil {
+			return nil, err
+		}
+		merged, changed, conflict, err := mergeFields(before, after, latest, serverDatasetFields)
+		if err != nil {
+			return nil, err
+		}
+		if conflict {
+			conflicts = append(conflicts, latest.Title)
+			continue
+		}
+		if !changed {
+			continue
+		}
+		if merged.Status != latest.Status {
+			recordDatasetReview(&merged)
+		}
+		if err := saveDataset(ctx, tx, &merged); err != nil {
+			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("save datasets: %w", err)
+		return nil, fmt.Errorf("save datasets: %w", err)
 	}
-	return nil
+	return conflicts, nil
+}
+
+// recordDatasetReview stamps a changed status as a person's decision.
+func recordDatasetReview(d *Dataset) {
+	d.ReviewedAt = ""
+	if d.Status == "verified" {
+		d.ReviewedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
 }
 
 func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 	if err := normalizeDataset(d); err != nil {
 		return err
+	}
+	// The one gate every write passes: verification exists only with its review.
+	if d.Status == "verified" && d.ReviewedAt == "" {
+		return errors.New("only a person can verify a dataset, in the desktop app")
 	}
 	// The legacy single-value columns (tissue_text, modality, technology) are
 	// no longer written; the *_json arrays are authoritative.
@@ -230,8 +321,8 @@ func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 			id, title, description, notes, species_json, organs_json, modalities_json,
 			platforms_json, n_cells_reported,
 			cell_count_unit, cell_count_scope, raw_availability, matrix_availability,
-			annotation_availability, curation_level, first_seen_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			annotation_availability, curation_level, reviewed_at, import_batch_id, first_seen_at, updated_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title, description = excluded.description, notes = excluded.notes,
 			species_json = excluded.species_json, organs_json = excluded.organs_json,
@@ -241,12 +332,13 @@ func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 			raw_availability = excluded.raw_availability,
 			matrix_availability = excluded.matrix_availability,
 			annotation_availability = excluded.annotation_availability,
-			curation_level = excluded.curation_level, updated_at = excluded.updated_at`,
+			curation_level = excluded.curation_level, reviewed_at = excluded.reviewed_at,
+			updated_at = excluded.updated_at`,
 		d.ID, d.Title, nullableString(d.Description), d.Notes, speciesJSONArray(d.Species),
 		jsonArray(d.Organs), jsonArray(d.Modalities), jsonArray(d.Platforms), cells,
 		nullableString(d.CellCountUnit), nullableString(d.CellCountScope),
 		d.Availability, d.MatrixAvailability, d.AnnotationAvailability,
-		d.CurationLevel, d.AddedAt, d.UpdatedAt)
+		d.CurationLevel, nullableString(d.ReviewedAt), nullableString(d.BatchID), d.AddedAt, d.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save dataset %s: %w", d.ID, err)
 	}

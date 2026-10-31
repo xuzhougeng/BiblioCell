@@ -26,18 +26,16 @@ export function enqueue<T>(operation: () => Promise<T>): Promise<T> {
 export const sqliteStore: LibraryStore = {
   load() {
     return enqueue<LibraryState>(async () => {
-      const [papers, datasets, files] = await Promise.all([Library.listPapers(), Library.listDatasets(), Library.listPaperFiles()]);
-      return { schemaVersion: 2, papers, datasets: datasets.map(normalizeDataset), resources: files.map(fileResource), activities: [] };
+      const [papers, datasets, files, evidence] = await Promise.all([Library.listPapers(), Library.listDatasets(), Library.listPaperFiles(), Library.listEvidence()]);
+      return { schemaVersion: 2, papers, datasets: datasets.map(normalizeDataset), resources: files.map(fileResource), evidence, activities: [] };
     });
   },
   save(next, saved) {
-    const edits = changedItems(next.papers, saved.papers).map(([after, before]) => ({ before: before ?? null, after }));
-    // ponytail: agents cannot write datasets yet, so the last save wins; merge like papers once MCP can.
-    const datasets = changedItems(next.datasets, saved.datasets).map(([dataset]) => dataset);
+    const papers = changedItems(next.papers, saved.papers).map(([after, before]) => ({ before: before ?? null, after }));
+    const datasets = changedItems(next.datasets, saved.datasets).map(([after, before]) => ({ before: before ?? null, after }));
     return enqueue(async () => {
-      const conflicts = edits.length ? await Library.savePaperEdits(edits) : [];
-      if (datasets.length) await Library.saveDatasets(datasets);
-      return conflicts;
+      const conflicts = papers.length ? await Library.savePaperEdits(papers) : [];
+      return datasets.length ? [...conflicts, ...await Library.saveDatasetEdits(datasets)] : conflicts;
     }).then(
       (conflicts) => {
         if (conflicts.length) throw new SaveRejected(`《${conflicts.join("》《")}》的同一内容刚被其他来源修改，这次改动未保存，已重新加载。`);

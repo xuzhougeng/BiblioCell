@@ -46,7 +46,7 @@ func main() {
 		if configuredToken == "" {
 			log.Printf("MCP authentication unavailable: no bearer token")
 		} else {
-			mcpServer, err = library.StartMCP(store, configuredToken)
+			mcpServer, err = library.StartMCP(store, library.MCPAddress, configuredToken)
 			if err != nil {
 				log.Printf("MCP server unavailable on %s: %v", library.MCPAddress, err)
 			} else {

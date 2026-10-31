@@ -1,4 +1,4 @@
--- BiblioCell · schema v6
+-- BiblioCell · schema v7
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS papers (
     species_text TEXT,
     species_label TEXT,
     source TEXT,
+    -- agent 一次导入的标签：同一批可整批撤销，已被人处理过的记录不受影响。
+    import_batch_id TEXT,
     online_date TEXT,
     issue_year INTEGER CHECK (issue_year IS NULL OR issue_year BETWEEN 1800 AND 2200),
     publication_state TEXT NOT NULL DEFAULT 'unknown'
@@ -158,6 +160,9 @@ CREATE TABLE IF NOT EXISTS datasets (
     availability_checked_at TEXT,
     curation_level TEXT NOT NULL DEFAULT 'indexed'
         CHECK (curation_level IN ('indexed','samples_checked','files_verified','matrix_standardized','reprocessed')),
+    -- 人工核实的时间；agent 不能把数据集标为已核实。
+    reviewed_at TEXT,
+    import_batch_id TEXT,
     first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     CHECK (n_cells_reported IS NULL OR
@@ -462,6 +467,7 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (3, '多值研究范围：物种、测序平台、组织、技术与文章类型改为 JSON 数组'),
        (4, '数据集多值研究范围、物种回填与人工整理备注'),
        (5, '公开来源配置、手动同步与外部记录快照'),
-       (6, '区分人工决定与 agent 提议，记录真实核查时间');
-PRAGMA user_version = 6;
+       (6, '区分人工决定与 agent 提议，记录真实核查时间'),
+       (7, 'agent 导入批次与数据集人工核实时间');
+PRAGMA user_version = 7;
 COMMIT;

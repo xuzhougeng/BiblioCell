@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/egoist/mygo"
 
@@ -24,20 +27,33 @@ Usage:
 
 Commands:
   status                              database path, schema version, counts
-  papers list [-q TEXT] [-limit N]    search papers (JSON)
+  papers list [-q TEXT] [-screening S] [-source S] [-batch ID] [-needs-review] [-limit N] [-offset N]
+                                      search papers (JSON)
   papers get ID                       one paper by ID
   papers add [-f FILE]                add one paper from JSON (stdin by default)
-  papers import [-f FILE] [-dry-run]  atomically import a JSON array of papers
+  papers import [-f FILE] [-batch ID] [-dry-run]
+                                      atomically import a JSON array, skipping known papers
   papers update ID [-f FILE]          apply a JSON patch (stdin by default)
   papers attach ID [-type fulltext|supplement] FILE...
                                       copy files into the storage folder
-  datasets list                       datasets with repositories and papers
+  papers files ID                     files attached to a paper
+  papers undo BATCH                   remove an import batch, keeping what a person worked on
+  datasets list [-q TEXT] [-status S] [-limit N] [-offset N]
+                                      datasets with repositories and papers
+  datasets get ID                     one dataset by ID
+  datasets add [-f FILE]              add a dataset from JSON, or add links to a known one
+  datasets update ID [-f FILE]        apply a JSON patch
+  datasets link ID [-f FILE]          link a paper from JSON, with evidence
+  evidence list [-paper ID] [-dataset ID]
+                                      recorded claims and their verdicts
+  evidence add [-f FILE]              record a JSON array of claims
   sources list                        connector configurations and last runs
   sources set ID [-enabled=BOOL] [-query TEXT] [-max N] [-provider geo|sra|ena]
   sources sync ID                     fetch one source now
   settings get                        current settings.json
   settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN]
   mcp                                 MCP endpoint and bearer token
+  serve [-addr HOST:PORT]             run the MCP server without a window, until interrupted
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
 
 Data directory: -data-dir, else $BIBLIOCELL_DATA_DIR, else the app's user data directory.
@@ -46,7 +62,7 @@ Output is JSON. Settings changes take effect on the next app start.
 
 var cliCommands = map[string]bool{
 	"status": true, "papers": true, "datasets": true, "sources": true,
-	"settings": true, "mcp": true, "sql": true, "help": true,
+	"settings": true, "mcp": true, "sql": true, "help": true, "evidence": true, "serve": true,
 }
 
 // isCLICommand tells a command line invocation from a desktop launch, whose
@@ -124,7 +140,11 @@ func (c *cli) run(command string, args []string) error {
 	case "papers":
 		return c.papers(ctx, args)
 	case "datasets":
-		return c.print(c.store.ListDatasets(ctx))
+		return c.datasets(ctx, args)
+	case "evidence":
+		return c.evidence(ctx, args)
+	case "serve":
+		return c.serve(args)
 	case "sources":
 		return c.sources(ctx, args)
 	case "settings":
@@ -153,9 +173,15 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 	sub, rest := split(args)
 	switch sub {
 	case "list":
+		var filter library.PaperFilter
 		flags := flag.NewFlagSet("papers list", flag.ContinueOnError)
-		query := flags.String("q", "", "text matched against title, DOI, authors, species, organs, tags")
-		limit := flags.Int("limit", 0, "maximum papers to print, 0 for all")
+		flags.StringVar(&filter.Query, "q", "", "text matched against title, DOI, authors, species, organs, tags")
+		flags.StringVar(&filter.Screening, "screening", "", "pending, included, excluded, or uncertain")
+		flags.StringVar(&filter.Source, "source", "", "only papers from this source")
+		flags.StringVar(&filter.BatchID, "batch", "", "only papers from this import batch")
+		flags.BoolVar(&filter.NeedsReview, "needs-review", false, "only papers a person has not settled")
+		flags.IntVar(&filter.Limit, "limit", 0, "maximum papers to print, 0 for all")
+		flags.IntVar(&filter.Offset, "offset", 0, "matching papers to skip")
 		if err := flags.Parse(rest); err != nil {
 			return err
 		}
@@ -163,7 +189,8 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		return c.print(library.FilterPapers(papers, *query, *limit), nil)
+		matches, _ := library.FilterPapers(papers, filter)
+		return c.print(matches, nil)
 	case "get":
 		if len(rest) != 1 {
 			return errors.New("usage: papers get ID")
@@ -182,6 +209,7 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 		var papers []library.Paper
 		flags := flag.NewFlagSet("papers import", flag.ContinueOnError)
 		dryRun := flags.Bool("dry-run", false, "validate the batch and roll back without writing")
+		batch := flags.String("batch", "", "batch to join; generated when empty")
 		file := flags.String("f", "", "JSON file holding an array of papers; stdin when omitted")
 		if err := flags.Parse(rest); err != nil {
 			return err
@@ -194,7 +222,7 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 				papers[i].Source = "CLI"
 			}
 		}
-		return c.print(c.store.ImportPapers(ctx, papers, *dryRun))
+		return c.print(c.store.ImportPapers(ctx, papers, *batch, *dryRun))
 	case "update":
 		if len(rest) == 0 {
 			return errors.New("usage: papers update ID [-f FILE]")
@@ -225,8 +253,124 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 			files = append(files, file)
 		}
 		return c.print(files, nil)
+	case "files":
+		if len(rest) != 1 {
+			return errors.New("usage: papers files ID")
+		}
+		all, err := c.store.ListPaperFiles(ctx)
+		if err != nil {
+			return err
+		}
+		files := []library.PaperFile{}
+		for _, file := range all {
+			if file.PaperID == rest[0] {
+				files = append(files, file)
+			}
+		}
+		return c.print(files, nil)
+	case "undo":
+		if len(rest) != 1 {
+			return errors.New("usage: papers undo BATCH")
+		}
+		return c.print(c.store.UndoImport(ctx, rest[0]))
 	}
-	return errors.New("usage: papers list|get|add|import|update|attach")
+	return errors.New("usage: papers list|get|add|import|update|attach|files|undo")
+}
+
+func (c *cli) datasets(ctx context.Context, args []string) error {
+	sub, rest := split(args)
+	switch sub {
+	case "", "list":
+		var filter library.DatasetFilter
+		flags := flag.NewFlagSet("datasets list", flag.ContinueOnError)
+		flags.StringVar(&filter.Query, "q", "", "text matched against title, accession, species, organs")
+		flags.StringVar(&filter.Status, "status", "", "pending, identified, or verified")
+		flags.IntVar(&filter.Limit, "limit", 0, "maximum datasets to print, 0 for all")
+		flags.IntVar(&filter.Offset, "offset", 0, "matching datasets to skip")
+		if err := flags.Parse(rest); err != nil {
+			return err
+		}
+		datasets, err := c.store.ListDatasets(ctx)
+		if err != nil {
+			return err
+		}
+		matches, _ := library.FilterDatasets(datasets, filter)
+		return c.print(matches, nil)
+	case "get":
+		if len(rest) != 1 {
+			return errors.New("usage: datasets get ID")
+		}
+		return c.print(c.store.GetDataset(ctx, rest[0]))
+	case "add":
+		var input library.DatasetInput
+		if err := c.readJSON(rest, &input); err != nil {
+			return err
+		}
+		return c.print(c.store.AddDataset(ctx, input))
+	case "update":
+		if len(rest) == 0 {
+			return errors.New("usage: datasets update ID [-f FILE]")
+		}
+		var patch library.DatasetPatch
+		if err := c.readJSON(rest[1:], &patch); err != nil {
+			return err
+		}
+		return c.print(c.store.UpdateDataset(ctx, rest[0], patch))
+	case "link":
+		if len(rest) == 0 {
+			return errors.New("usage: datasets link ID [-f FILE]")
+		}
+		var link library.PaperLinkInput
+		if err := c.readJSON(rest[1:], &link); err != nil {
+			return err
+		}
+		return c.print(c.store.LinkDataset(ctx, rest[0], link))
+	}
+	return errors.New("usage: datasets list|get|add|update|link")
+}
+
+func (c *cli) evidence(ctx context.Context, args []string) error {
+	sub, rest := split(args)
+	switch sub {
+	case "list":
+		flags := flag.NewFlagSet("evidence list", flag.ContinueOnError)
+		paper := flags.String("paper", "", "only claims about this paper")
+		dataset := flags.String("dataset", "", "only claims about this dataset")
+		if err := flags.Parse(rest); err != nil {
+			return err
+		}
+		return c.print(c.store.ListEvidence(ctx, *paper, *dataset))
+	case "add":
+		var inputs []library.EvidenceInput
+		if err := c.readJSON(rest, &inputs); err != nil {
+			return err
+		}
+		return c.print(c.store.AddEvidence(ctx, inputs))
+	}
+	return errors.New("usage: evidence list|add")
+}
+
+// serve runs the MCP server without a window until the process is interrupted.
+// The desktop app serves the same address, so only one of them can run on it.
+func (c *cli) serve(args []string) error {
+	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
+	address := flags.String("addr", library.MCPAddress, "loopback address to listen on")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	server, err := library.StartMCP(c.store, *address, c.settings.Get().MCPToken)
+	if err != nil {
+		return fmt.Errorf("start MCP server: %w", err)
+	}
+	if err := c.print(map[string]string{"endpoint": server.Endpoint}, nil); err != nil {
+		return err
+	}
+	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	<-stop.Done()
+	shutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+	return server.Close(shutdown)
 }
 
 func (c *cli) sources(ctx context.Context, args []string) error {

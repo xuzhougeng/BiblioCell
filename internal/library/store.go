@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 //go:embed schema.sql
 var schemaSQL string
@@ -107,6 +107,19 @@ var columnMigrations = []columnMigration{
 		ddl:      "TEXT NOT NULL DEFAULT '' CHECK (proposed_screening IN ('','included','excluded','uncertain'))",
 		backfill: reviewBackfill,
 	},
+	{
+		table: "papers", column: "import_batch_id", ddl: "TEXT",
+		backfill: "DROP VIEW IF EXISTS v_work_queue; DROP VIEW IF EXISTS v_paper_overview",
+	},
+	{table: "datasets", column: "import_batch_id", ddl: "TEXT"},
+	{
+		// Agents could not write datasets before this column, so every verified
+		// dataset so far was verified by a person.
+		table: "datasets", column: "reviewed_at", ddl: "TEXT",
+		backfill: `DROP VIEW IF EXISTS v_dataset_overview;
+			UPDATE datasets SET reviewed_at = updated_at
+			WHERE curation_level IN ('files_verified', 'matrix_standardized', 'reprocessed')`,
+	},
 }
 
 // healColumns adds missing columns to existing tables and backfills JSON
@@ -165,13 +178,19 @@ type Store struct {
 	sourceSyncMu sync.Mutex
 }
 
-// PapersDir is the folder beside the database that holds paper files.
-const PapersDir = "papers"
+const (
+	// PapersDir is the folder beside the database that holds paper files.
+	PapersDir = "papers"
+	// InboxDir is the folder beside the database where agents drop files for
+	// attach_file. Only this folder is readable through MCP.
+	InboxDir = "inbox"
+)
 
 // Status summarizes the initialized local library.
 type Status struct {
 	StoragePath   string `json:"storagePath"`
 	DatabasePath  string `json:"databasePath"`
+	InboxPath     string `json:"inboxPath"`
 	SchemaVersion int    `json:"schemaVersion"`
 	TableCount    int    `json:"tableCount"`
 	PaperCount    int    `json:"paperCount"`
@@ -184,8 +203,10 @@ func Open(path string) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("database path is empty")
 	}
-	if err := os.MkdirAll(filepath.Join(filepath.Dir(path), PapersDir), 0o755); err != nil {
-		return nil, fmt.Errorf("create storage directories: %w", err)
+	for _, folder := range []string{PapersDir, InboxDir} {
+		if err := os.MkdirAll(filepath.Join(filepath.Dir(path), folder), 0o755); err != nil {
+			return nil, fmt.Errorf("create storage directories: %w", err)
+		}
 	}
 
 	db, err := sql.Open("sqlite", path)
@@ -253,6 +274,10 @@ func Open(path string) (*Store, error) {
 	return store, nil
 }
 
+func (s *Store) inboxPath() string {
+	return filepath.Join(filepath.Dir(s.path), InboxDir)
+}
+
 // Status returns current database metadata and record counts. Integrity is
 // the result of the full PRAGMA integrity_check run once in Open; a full
 // scan on every status call is too slow for larger libraries.
@@ -260,7 +285,7 @@ func (s *Store) Status() (Status, error) {
 	if s == nil || s.db == nil {
 		return Status{}, errors.New("library database is not ready")
 	}
-	status := Status{StoragePath: filepath.Dir(s.path), DatabasePath: s.path, SchemaVersion: SchemaVersion, Integrity: s.integrity}
+	status := Status{StoragePath: filepath.Dir(s.path), DatabasePath: s.path, InboxPath: s.inboxPath(), SchemaVersion: SchemaVersion, Integrity: s.integrity}
 	queries := []struct {
 		query  string
 		target *int

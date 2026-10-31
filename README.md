@@ -19,6 +19,7 @@
 - 数据集仓库编号规范化存入 `repository_records` 和 `dataset_repositories`；文献角色存入 `paper_datasets`，保存时保留关联证据和人工核验状态。
 - Demo 与正式数据完全隔离，切换模式不会复制或清空任何一边的数据。
 - 文献详情的“数据与资料”可导入全文和补充材料：文件复制到存放文件夹的 `papers/`，原文件保持不动，导入全文后文献状态自动变为“已保存文件”。文件按资源 ID 命名（如 `papers/R-3fa9….pdf`），原文件名保留为标题，这样跨系统复制不受文件名编码和非法字符影响。同一文献重复导入相同内容不会多存一份。移除时文件进废纸篓。
+- 文献详情显示 agent 记录的证据，可逐条确认或驳回；文献与数据集的关联、数据集的仓库编号都可以逐条核实。文献列表可按来源筛选。
 - 资料链接和 JSON 导入目前只在 Demo 中开放。
 
 ## 设置
@@ -54,7 +55,8 @@
 
 ## 外部 AI：MCP
 
-应用启动后在本机回环地址提供 Streamable HTTP MCP 服务：
+桌面应用启动后在本机回环地址提供 Streamable HTTP MCP 服务。不开窗口时用 `./BiblioCell serve` 提供同一服务，适合由 agent 调度；两者默认用同一端口，只能运行一个，`serve -addr 127.0.0.1:PORT` 可换端口，只接受回环地址。
+
 
 ```text
 http://127.0.0.1:37841/mcp
@@ -68,14 +70,25 @@ http://127.0.0.1:37841/mcp
 | `library_status` | 查看正式数据库状态与记录数量 |
 | `list_papers` | 查询、搜索正式文献，不返回 Demo 数据 |
 | `get_paper` | 按 ID 读取一篇文献及全部可编辑 metadata |
-| `add_paper` | 向正式 SQLite 数据库添加一篇文献，需要写权限 |
-| `import_papers` | 原子批量导入最多 1000 篇文献，支持 `dryRun`，需要写权限 |
+| `add_paper` | 向正式 SQLite 数据库添加一篇文献，已存在时报错，需要写权限 |
+| `import_papers` | 原子批量导入最多 1000 篇文献，跳过已有文献并返回 `batchId`，支持 `dryRun`，需要写权限 |
 | `update_paper` | 局部编辑未经人工确认的文献 metadata，或提出收录建议，保留未提供字段，需要写权限 |
+| `undo_import` | 撤销一个导入批次，保留人已处理过的记录，需要写权限 |
+| `list_datasets` / `get_dataset` | 查询、分页读取数据集及其仓库编号和文献关联 |
+| `add_dataset` | 新建数据集；按 accession 或题目找到已有数据集时只补充新关联，需要写权限 |
+| `update_dataset` | 局部编辑未经人工核实的数据集，需要写权限 |
+| `link_dataset` | 记录文献与数据集的关联，必须附依据，需要写权限 |
+| `add_evidence` | 按字段记录提取依据：摘录和来源，供人核对，需要写权限 |
+| `list_evidence` | 读取证据及人的判断 |
+| `attach_file` | 把存放文件夹 `inbox/` 中的文件移入文库并挂到文献上，需要写权限 |
+| `list_files` | 列出文献的附件，路径相对存放文件夹 |
+
+`list_papers` 可按 `query`、`screening`、`source`、`batchId`、`needsReview` 筛选，用 `limit`（最大 500）和 `offset` 翻页，`total` 是匹配总数。`list_datasets` 同样分页。
 
 ### MCP 权限
 
-- **无认证**：只读，可调用 `describe_library`、`library_status`、`list_papers`、`get_paper`，并读取 Schema 资源。
-- **Bearer Token 认证**：额外允许 `add_paper`、`import_papers` 和 `update_paper`。
+- **无认证**：只读，可调用所有读取工具（`describe_library`、`library_status`、`list_*`、`get_*`），并读取 Schema 资源。
+- **Bearer Token 认证**：额外允许标注“需要写权限”的工具。
 - 无 Token 的写调用会被拒绝；错误 Token 返回 HTTP 401。
 - Token 是应用首次启动时生成的 256 位随机密钥。可以在“设置 → 外部 AI · MCP”中查看、复制、自定义或重新生成；自定义 Token 保存在 `settings.json`，修改后重启生效。Token 不会通过 MCP 暴露。
 - `describe_library` 返回当前连接的 `accessRole`（`read-only` 或 `read-write`）和 `canWrite`。
@@ -87,10 +100,21 @@ http://127.0.0.1:37841/mcp
 - `screening`（`pending` / `included` / `excluded` / `uncertain`）只记录人的决定，MCP 和命令行都不能写入。agent 用 `proposedScreening` 和 `proposedReason` 提出建议，提议排除时必须写理由。
 - 建议显示在“待补事项”和文献详情的“收录判断”里，人可以采纳、忽略，或自行选择。做出决定后建议随即失效。
 - 数据库记录真实来源：只有人的决定会把 `screening_method` 写成 `human` 并记下 `screening_reviewed_at`，接口里对应 `reviewedAt`。未决定的文献是 `unreviewed`。
-- 文献一经人工确认，`update_paper` 就只接受建议，不再允许修改 metadata。把判断改回“待判断”即可解除。
+- 文献一经人工确认，`update_paper` 就只接受建议，不再允许修改 metadata。把判断改回“待判断”即可解除。数据集同理：经人工核实后 `update_dataset` 被拒绝，改回其他状态即可解除。
+- 证据（`add_evidence`）、数据集仓库编号和文献关联由 agent 记录，只有人能在桌面端确认、驳回或核实，MCP 和命令行没有对应入口。证据的判断 agent 可以读到；已核实的关联不会被 agent 改动。同一条证据重复提交不会重置人的判断。证据不影响字段本身：驳回只表示人不认可这条依据。
+- 移除文件时，来自该文件的证据一并删除。
 - 桌面端只保存你改动的字段：agent 在窗口打开期间写入的内容不会被覆盖。同一篇文献的同一字段被两边同时修改时，这次改动不保存并提示，窗口重新加载。窗口回到前台时自动读取最新数据，打开详情或弹窗时不刷新。
 - 从旧版本升级时，来源为 MCP 或 CLI 的已判断文献分不清是谁判断的，会退回“待判断”，原判断保留为建议，可一键采纳。其他已判断文献记为人工确认。
 - 这是防止误操作的边界，不是安全边界：`sql` 命令和直接修改 SQLite 文件仍可绕过。
+
+### Agent 工作流
+
+1. `describe_library` 读取规则和 `inboxPath`；一次运行用同一个 `batchId`。
+2. `import_papers` 导入文献，已有文献被跳过并列在 `skipped`，可以放心重跑。`add_dataset` 同样可重跑。
+3. 把 PDF 放进 `inboxPath`，再用 `attach_file` 挂到文献上。只能读取 `inbox/` 内的文件，`..` 和指向外部的符号链接都会被拒绝。文件移入文库后从 inbox 消失。
+4. `add_dataset` / `link_dataset` 记录数据集和关联，`add_evidence` 记录每个字段的摘录和来源，`update_paper` 提交 `proposedScreening`。
+5. 人在桌面端核查。agent 用 `list_papers` 的 `needsReview` 和 `list_evidence` 查看进度和判断。
+6. 这批导入错了就 `undo_import`：删除未经人处理的文献、数据集和它们的文件副本；人已确认、收藏、阅读或核实过的记录保留并列在 `kept`。
 
 `update_paper` 使用 `id` 和 `patch`。例如只修改期刊时传入 `{"id":"P-...","patch":{"journal":"New journal"}}`，未提供的 DOI、作者、笔记等字段保持不变；`clearYear: true` 可以将年份清空。多值字段（`species`、`organs`、`modalities`、`platforms`、`articleTypes`）以数组整体替换，例如 `{"patch":{"platforms":["10x Genomics Chromium","BD Rhapsody"]}}`，空数组表示清空。
 
@@ -103,7 +127,7 @@ AI 客户端可以通过标准 MCP 能力发现接口，不需要在提示词里
 - `bibliocell://schema/sql` 提供完整 SQLite 表、约束、索引和视图 DDL。
 - `describe_library` 汇总必填字段、状态枚举、导入规则和上述资源入口。
 
-推荐导入流程：先调用 `describe_library`，读取文献 Schema，再用 `import_papers` 设置 `dryRun: true` 校验，最后将 `dryRun` 设为 `false` 正式导入。每批最多 1000 篇，任何一条失败都会回滚整个批次；已有 ID 或重复 DOI 会报错，不会静默覆盖旧记录。
+推荐导入流程：先调用 `describe_library`，读取文献 Schema，再用 `import_papers` 设置 `dryRun: true` 校验，最后将 `dryRun` 设为 `false` 正式导入。每批最多 1000 篇，任何一条无效都会回滚整个批次；按 ID、DOI、PMID、题目识别出的已有文献被跳过，不会覆盖旧记录。
 
 通用 MCP 客户端配置示例（具体字段以所用 AI 客户端为准）：
 
@@ -137,17 +161,28 @@ echo '{"title":"...","doi":"10.1000/x"}' | ./BiblioCell papers add
 echo '{"journal":"Cell"}' | ./BiblioCell papers update P-xxxx
 ./BiblioCell papers attach P-xxxx paper.pdf
 ./BiblioCell papers attach P-xxxx -type supplement table-s1.xlsx
-./BiblioCell datasets list
+./BiblioCell papers files P-xxxx
+./BiblioCell papers list -needs-review -batch run-1 -limit 100 -offset 100
+./BiblioCell papers undo run-1
+./BiblioCell datasets list -status pending
+./BiblioCell datasets get DS-xxxx
+echo '{"title":"...","repositories":[{"repository":"geo","accession":"GSE1"}]}' | ./BiblioCell datasets add
+echo '{"status":"identified"}' | ./BiblioCell datasets update DS-xxxx
+echo '{"paperId":"P-xxxx","role":"generated","evidenceText":"..."}' | ./BiblioCell datasets link DS-xxxx
+./BiblioCell evidence list -paper P-xxxx
+./BiblioCell evidence add -f claims.json
 ./BiblioCell sources list
 ./BiblioCell sources set pubmed -enabled -query "plant single cell" -max 50
 ./BiblioCell sources sync pubmed
 ./BiblioCell settings get
 ./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN>
 ./BiblioCell mcp
+./BiblioCell serve -addr 127.0.0.1:37841
 ./BiblioCell sql "select id, title from papers order by added_at desc limit 5"
 ```
 
-- `papers add` / `import` / `update` 使用与 MCP 相同的字段和校验规则；`import` 一批原子提交，`-dry-run` 只校验不写入。
+- `papers add` / `import` / `update` 和 `datasets`、`evidence` 使用与 MCP 相同的字段和校验规则；`import` 一批原子提交，`-batch` 指定批次，`-dry-run` 只校验不写入。
+- `papers attach` 由本机命令行执行，可以读取任意路径；MCP 的 `attach_file` 只能读 `inbox/`。
 - `papers attach` 把文件复制进存放文件夹的 `papers/`，默认记为全文，`-type supplement` 记为补充材料。
 - `sql` 直接执行任意语句：`SELECT` / `WITH` / `PRAGMA` 打印行，其他语句打印受影响行数。它绕过应用层校验，改数据前先备份。
 - 数据目录按 `-data-dir`、`$BIBLIOCELL_DATA_DIR`、应用默认用户数据目录的顺序确定；在 macOS 上 `.app` 包内和 `go run` 的默认目录名相同，命令行与桌面应用看到的是同一个库。

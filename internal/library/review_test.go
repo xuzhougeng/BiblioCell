@@ -186,6 +186,48 @@ func TestAgentWritesCannotCarryADecision(t *testing.T) {
 	}
 }
 
+func TestVerifiedDatasetsBecomeReviewedOnUpgrade(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bibliocell.sqlite")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rebuild the v6 shape: no batch or review columns.
+	if _, err := store.db.Exec(`
+		INSERT INTO datasets(id, title, curation_level, updated_at) VALUES
+			('checked', 'Checked', 'files_verified', '2026-01-02'),
+			('open', 'Open', 'indexed', '2026-01-02');
+		DROP VIEW v_work_queue;
+		DROP VIEW v_paper_overview;
+		DROP VIEW v_dataset_overview;
+		ALTER TABLE papers DROP COLUMN import_batch_id;
+		ALTER TABLE datasets DROP COLUMN import_batch_id;
+		ALTER TABLE datasets DROP COLUMN reviewed_at;
+		CREATE VIEW v_paper_overview AS SELECT id FROM papers;
+		PRAGMA user_version = 6;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err = Open(path)
+	if err != nil {
+		t.Fatalf("Open() v6 database: %v", err)
+	}
+	defer store.Close()
+	checked, err := store.GetDataset(context.Background(), "checked")
+	if err != nil || checked.ReviewedAt != "2026-01-02" || checked.Status != "verified" {
+		t.Errorf("checked = %+v, %v", checked, err)
+	}
+	if open, err := store.GetDataset(context.Background(), "open"); err != nil || open.ReviewedAt != "" {
+		t.Errorf("open = %+v, %v", open, err)
+	}
+	if _, err := store.ListPapers(context.Background()); err != nil {
+		t.Errorf("the rebuilt view is unreadable: %v", err)
+	}
+}
+
 func TestReviewBackfillSeparatesAgentWrites(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bibliocell.sqlite")
 	store, err := Open(path)

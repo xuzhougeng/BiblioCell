@@ -88,6 +88,75 @@ func TestCLIRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCLIAgentCommands(t *testing.T) {
+	dataDir := t.TempDir()
+	var imported library.ImportResult
+	run(t, dataDir, `[{"title":"CLI batch paper"}]`, &imported, "papers", "import", "-batch", "cli-run")
+	if imported.Count != 1 || imported.BatchID != "cli-run" {
+		t.Fatalf("import = %+v", imported)
+	}
+	paperID := imported.Papers[0].ID
+
+	var added library.DatasetResult
+	run(t, dataDir, `{"title":"CLI dataset","batchId":"cli-run","repositories":[{"repository":"geo","accession":"GSE5"}]}`, &added, "datasets", "add")
+	var linked library.Dataset
+	run(t, dataDir, `{"paperId":"`+paperID+`","role":"generated","evidenceText":"we deposited"}`, &linked, "datasets", "link", added.Dataset.ID)
+	if len(linked.PaperLinks) != 1 || linked.PaperLinks[0].Verified {
+		t.Fatalf("link = %+v", linked)
+	}
+	var updated library.Dataset
+	run(t, dataDir, `{"status":"identified"}`, &updated, "datasets", "update", added.Dataset.ID)
+	var listed []library.Dataset
+	run(t, dataDir, "", &listed, "datasets", "list", "-status", "identified")
+	if len(listed) != 1 {
+		t.Fatalf("datasets list = %+v", listed)
+	}
+	var got library.Dataset
+	run(t, dataDir, "", &got, "datasets", "get", added.Dataset.ID)
+	if got.Status != "identified" {
+		t.Fatalf("datasets get = %+v", got)
+	}
+
+	var evidence []library.Evidence
+	run(t, dataDir, `[{"paperId":"`+paperID+`","field":"organs","excerpt":"root tips","sourceUrl":"https://example.org"}]`, &evidence, "evidence", "add")
+	run(t, dataDir, "", &evidence, "evidence", "list", "-paper", paperID)
+	if len(evidence) != 1 || evidence[0].Status != "unreviewed" {
+		t.Fatalf("evidence = %+v", evidence)
+	}
+
+	var papers []library.Paper
+	run(t, dataDir, "", &papers, "papers", "list", "-batch", "cli-run", "-needs-review", "-limit", "1")
+	if len(papers) != 1 {
+		t.Fatalf("papers list = %+v", papers)
+	}
+	var files []library.PaperFile
+	run(t, dataDir, "", &files, "papers", "files", paperID)
+	if len(files) != 0 {
+		t.Fatalf("papers files = %+v", files)
+	}
+
+	for _, attempt := range [][]string{
+		{"datasets", "delete", "x"}, {"datasets", "verify", added.Dataset.ID}, {"evidence", "verify", "x"},
+		{"serve", "-addr", "0.0.0.0:0"},
+	} {
+		if code := runCLI(append([]string{"-data-dir", dataDir}, attempt...), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
+			t.Errorf("%v succeeded", attempt)
+		}
+	}
+	if code := runCLI([]string{"-data-dir", dataDir, "datasets", "update", added.Dataset.ID}, strings.NewReader(`{"status":"verified"}`), &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
+		t.Error("the CLI verified a dataset")
+	}
+
+	var undone library.UndoResult
+	run(t, dataDir, "", &undone, "papers", "undo", "cli-run")
+	if undone.PapersRemoved != 1 || undone.DatasetsRemoved != 1 {
+		t.Fatalf("undo = %+v", undone)
+	}
+	if !isCLICommand("serve") || !isCLICommand("evidence") {
+		t.Fatal("agent commands must not open a window")
+	}
+}
+
 func TestStorageFolderKeepsWorkingAfterCopy(t *testing.T) {
 	dataDir := t.TempDir()
 	original := filepath.Join(t.TempDir(), "library")

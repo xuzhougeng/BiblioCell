@@ -34,6 +34,28 @@ test("tasksFor queues an agent proposal that differs from the human decision", (
   assert.equal(tasksFor([{ ...paper, proposedScreening: "included" }], []).filter((row) => row.type === "screen").length, 0);
 });
 
+test("tasksFor queues unreviewed evidence on a decided paper and agent links on included ones", () => {
+  const { papers, datasets } = demoState();
+  const paper = { ...papers[0]!, screening: "excluded" };
+  const claim = { id: "E-1", paperId: paper.id, datasetId: "", field: "organs", value: "root", sourceUrl: "", fileId: "", location: "", excerpt: "x", extractor: "", status: "unreviewed", observedAt: "" };
+  const screen = (evidence: typeof claim[]) => tasksFor([paper], datasets, evidence).filter((row) => row.type === "screen");
+  assert.match(screen([claim])[0]!.subtitle, /1 条证据待核对/);
+  assert.equal(screen([{ ...claim, status: "verified" }]).length, 0);
+
+  const included = { ...papers[0]!, id: "P-x", screening: "included" };
+  const dataset = { ...datasets[0]!, accession: "GSE1", status: "verified", paperLinks: [{ paperId: "P-x", role: "generated", evidenceUrl: "", evidenceText: "we deposited", verified: false }] };
+  const data = (d: typeof dataset) => tasksFor([included], [d]).filter((row) => row.type === "data");
+  assert.equal(data(dataset).length, 1);
+  assert.equal(data({ ...dataset, paperLinks: [{ ...dataset.paperLinks[0]!, verified: true }] }).length, 0);
+});
+
+test("filterPapers narrows by source", () => {
+  const { papers } = demoState();
+  const source = papers[0]!.source;
+  const matched = filterPapers(papers, { ...emptyFilters(), source });
+  assert.ok(matched.length > 0 && matched.every((p) => p.source === source));
+});
+
 test("fileSize switches from KB to MB", () => {
   assert.equal(fileSize(10), "1 KB");
   assert.equal(fileSize(2048), "2 KB");

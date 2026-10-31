@@ -36,7 +36,7 @@ func TestMCPAgentCanOnlyPropose(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	server, err := startMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestMCPAddAndListPapers(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	defer store.Close()
-	server, err := startMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
 	if err != nil {
 		t.Fatalf("startMCP() error = %v", err)
 	}
@@ -210,7 +210,7 @@ func TestMCPSchemaResourcesAndAtomicImport(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	defer store.Close()
-	server, err := startMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
 	if err != nil {
 		t.Fatalf("startMCP() error = %v", err)
 	}
@@ -281,7 +281,7 @@ func TestMCPSchemaResourcesAndAtomicImport(t *testing.T) {
 		Name: "import_papers", Arguments: map[string]any{
 			"papers": []map[string]any{
 				{"title": "Must roll back"},
-				{"title": "Duplicate", "doi": "10.1000/import"},
+				{"title": "Invalid", "doi": "not-a-doi"},
 			},
 		},
 	})
@@ -289,7 +289,7 @@ func TestMCPSchemaResourcesAndAtomicImport(t *testing.T) {
 		t.Fatalf("CallTool(invalid import) protocol error = %v", err)
 	}
 	if !failed.IsError {
-		t.Fatal("import with duplicate DOI succeeded, want tool error")
+		t.Fatal("import with an invalid DOI succeeded, want tool error")
 	}
 	papers, err := store.ListPapers(ctx)
 	if err != nil {
@@ -312,7 +312,7 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddPaper() error = %v", err)
 	}
-	server, err := startMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
 	if err != nil {
 		t.Fatalf("startMCP() error = %v", err)
 	}

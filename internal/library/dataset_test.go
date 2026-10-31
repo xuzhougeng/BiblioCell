@@ -42,7 +42,7 @@ func TestDatasetRoundTripAndAssociationPreservation(t *testing.T) {
 			Repositories: []DatasetRepository{{Repository: "geo", Accession: "GSE100"}},
 		},
 	}
-	if err := store.SaveDatasets(ctx, datasets); err != nil {
+	if err := saveDatasets(ctx, store, datasets); err != nil {
 		t.Fatalf("SaveDatasets() error = %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestDatasetRoundTripAndAssociationPreservation(t *testing.T) {
 	// Changing a shared accession must not mutate the other dataset's record.
 	first.Repositories[0].Accession = "GSE200"
 	first.CurationLevel = "reprocessed"
-	if err := store.SaveDatasets(ctx, []Dataset{first}); err != nil {
+	if err := saveDatasets(ctx, store, []Dataset{first}); err != nil {
 		t.Fatalf("SaveDatasets() shared edit error = %v", err)
 	}
 	saved, err = store.ListDatasets(ctx)
@@ -116,7 +116,7 @@ func TestDatasetRoundTripAndAssociationPreservation(t *testing.T) {
 		VALUES('P-two', 'DS-one', 'benchmarked', 1, 'external link')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveDatasets(ctx, []Dataset{first}); err != nil {
+	if err := saveDatasets(ctx, store, []Dataset{first}); err != nil {
 		t.Fatalf("SaveDatasets() stale save error = %v", err)
 	}
 	var externalRepository, externalLink int
@@ -141,12 +141,12 @@ func TestDatasetCellCountAndVerifiedValidation(t *testing.T) {
 	}
 	defer store.Close()
 	cells := 1200
-	if err := store.SaveDatasets(context.Background(), []Dataset{{
+	if err := saveDatasets(context.Background(), store, []Dataset{{
 		ID: "DS-invalid", Title: "Invalid", CellsReported: &cells,
 	}}); err == nil {
 		t.Fatal("cell count without unit and scope succeeded")
 	}
-	if err := store.SaveDatasets(context.Background(), []Dataset{{
+	if err := saveDatasets(context.Background(), store, []Dataset{{
 		ID: "DS-verified", Title: "Verified without accession", Status: "verified",
 	}}); err == nil {
 		t.Fatal("verified dataset without accession succeeded")
@@ -231,7 +231,17 @@ func TestOpenMigratesV3Datasets(t *testing.T) {
 	if chemistry != "v3" || notes != "" {
 		t.Errorf("chemistry or notes changed: %q / %q", chemistry, notes)
 	}
-	if SchemaVersion != 6 {
-		t.Errorf("SchemaVersion = %d, want 6", SchemaVersion)
+	if SchemaVersion != 7 {
+		t.Errorf("SchemaVersion = %d, want 7", SchemaVersion)
 	}
+}
+
+// saveDatasets stores whole datasets the way a person's new records are saved.
+func saveDatasets(ctx context.Context, store *Store, datasets []Dataset) error {
+	edits := make([]DatasetEdit, len(datasets))
+	for i := range datasets {
+		edits[i] = DatasetEdit{After: datasets[i]}
+	}
+	_, err := store.SaveDatasetEdits(ctx, edits)
+	return err
 }

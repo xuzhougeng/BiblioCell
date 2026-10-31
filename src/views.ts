@@ -85,7 +85,7 @@ export function renderPapers(app: App): string {
   const { filters } = app;
   const papers = app.state.papers;
   const items = filterPapers(papers, filters);
-  const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening"] as const;
+  const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening", "source"] as const;
   const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0);
   const entries = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
   return `<div class="section-toolbar"><div class="view-tabs"><button class="view-tab ${filters.starred ? "" : "active"}" data-action="all-papers">全部文献 <span>${papers.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} 我的收藏 <span>${papers.filter((p) => p.starred).length}</span></button></div><button class="btn btn-secondary" data-action="export-csv">${I("download", 16)} 导出列表</button></div>`
@@ -98,6 +98,7 @@ export function renderPapers(app: App): string {
     + selectFilter(filters, "platform", "全部平台", uniqueValues(papers, "platform"))
     + selectFilter(filters, "fulltext", "全文情况", entries(FULL))
     + selectFilter(filters, "screening", "收录状态", entries(SCREEN))
+    + selectFilter(filters, "source", "全部来源", uniqueValues(papers, "source"))
     + (filterCount || filters.search ? `<button class="text-link" data-action="clear-filters">清空${filterCount ? ` (${filterCount})` : ""}</button>` : "")
     + `</div>${paperTable(items)}<div class="table-footer"><span>显示 ${items.length} / ${papers.length} 篇文献</span><span class="muted">点击文献查看详情与整理记录</span></div></section>`;
 }

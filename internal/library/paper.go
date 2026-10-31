@@ -52,6 +52,7 @@ type Paper struct {
 	Fulltext          string         `json:"fulltext"`
 	Starred           bool           `json:"starred"`
 	Source            string         `json:"source"`
+	BatchID           string         `json:"batchId"`
 	AddedAt           string         `json:"addedAt"`
 	UpdatedAt         string         `json:"updatedAt"`
 	IsDemo            bool           `json:"isDemo"`
@@ -85,6 +86,9 @@ type PaperPatch struct {
 // ErrPaperNotFound indicates that the requested real paper does not exist.
 var ErrPaperNotFound = errors.New("paper not found")
 
+// ErrDuplicatePaper indicates an add of a paper the library already holds.
+var ErrDuplicatePaper = errors.New("paper already exists")
+
 // ErrHumanReviewed indicates an agent edit of a paper a person already decided on.
 var ErrHumanReviewed = errors.New("paper was reviewed by a person; only proposedScreening and proposedReason can change")
 
@@ -100,6 +104,7 @@ const paperSelect = `
 		       first_seen_at, updated_at, screening_status, coalesce(screening_reason, ''),
 		       reading_status, starred, tags_json, notes, fulltext_status,
 		       coalesce(screening_reviewed_at, ''), proposed_screening, proposed_reason,
+		       coalesce(import_batch_id, ''),
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'doi'), ''),
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'pmid'), '')
 		FROM v_paper_overview`
@@ -137,7 +142,7 @@ func scanPaper(rows *sql.Rows) (Paper, error) {
 		&species, &organs, &modalities, &platforms, &p.Source,
 		&p.AddedAt, &p.UpdatedAt, &p.Screening, &p.ScreeningReason,
 		&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext,
-		&p.ReviewedAt, &p.ProposedScreening, &p.ProposedReason, &p.DOI, &p.PMID,
+		&p.ReviewedAt, &p.ProposedScreening, &p.ProposedReason, &p.BatchID, &p.DOI, &p.PMID,
 	); err != nil {
 		return Paper{}, fmt.Errorf("read paper: %w", err)
 	}
@@ -159,30 +164,60 @@ func scanPaper(rows *sql.Rows) (Paper, error) {
 	return p, nil
 }
 
-// FilterPapers keeps papers whose metadata contains query, case-insensitively,
-// and at most limit of them when limit is positive. Shared by MCP and the CLI.
-func FilterPapers(papers []Paper, query string, limit int) []Paper {
-	query = strings.ToLower(strings.TrimSpace(query))
+// PaperFilter narrows a paper listing for MCP and the CLI.
+type PaperFilter struct {
+	Query       string `json:"query,omitempty" jsonschema:"Optional text matched against title, DOI, authors, species, organs, modalities, platforms, and tags"`
+	Screening   string `json:"screening,omitempty" jsonschema:"Only papers with this decision: pending, included, excluded, or uncertain"`
+	Source      string `json:"source,omitempty" jsonschema:"Only papers from this source, such as MCP, CLI, or PubMed"`
+	BatchID     string `json:"batchId,omitempty" jsonschema:"Only papers from this import batch"`
+	NeedsReview bool   `json:"needsReview,omitempty" jsonschema:"Only papers a person has not decided on or that carry an open proposal"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"Maximum papers to return, from 1 to 500; defaults to 100"`
+	Offset      int    `json:"offset,omitempty" jsonschema:"Matching papers to skip; use it with limit to page through total"`
+}
+
+func (f PaperFilter) matches(p Paper) bool {
+	if (f.Screening != "" && p.Screening != f.Screening) || (f.Source != "" && p.Source != f.Source) ||
+		(f.BatchID != "" && p.BatchID != f.BatchID) {
+		return false
+	}
+	if f.NeedsReview && p.ReviewedAt != "" && (p.ProposedScreening == "" || p.ProposedScreening == p.Screening) {
+		return false
+	}
+	query := strings.ToLower(strings.TrimSpace(f.Query))
+	if query == "" {
+		return true
+	}
+	speciesTexts := make([]string, 0, len(p.Species)*2)
+	for _, entry := range p.Species {
+		speciesTexts = append(speciesTexts, entry.Name, entry.Label)
+	}
+	return strings.Contains(strings.ToLower(strings.Join([]string{
+		p.Title, p.DOI, p.PMID, p.Authors,
+		strings.Join(speciesTexts, " "), strings.Join(p.Organs, " "),
+		strings.Join(p.Modalities, " "), strings.Join(p.Platforms, " "),
+		strings.Join(p.ArticleTypes, " "), strings.Join(p.Tags, " "),
+	}, " ")), query)
+}
+
+// FilterPapers returns the requested page of matching papers and how many match
+// in all. A zero limit means every match after offset.
+func FilterPapers(papers []Paper, filter PaperFilter) ([]Paper, int) {
 	matches := make([]Paper, 0, len(papers))
 	for _, paper := range papers {
-		if limit > 0 && len(matches) >= limit {
-			break
-		}
-		speciesTexts := make([]string, 0, len(paper.Species)*2)
-		for _, entry := range paper.Species {
-			speciesTexts = append(speciesTexts, entry.Name, entry.Label)
-		}
-		haystack := strings.ToLower(strings.Join([]string{
-			paper.Title, paper.DOI, paper.PMID, paper.Authors,
-			strings.Join(speciesTexts, " "), strings.Join(paper.Organs, " "),
-			strings.Join(paper.Modalities, " "), strings.Join(paper.Platforms, " "),
-			strings.Join(paper.ArticleTypes, " "), strings.Join(paper.Tags, " "),
-		}, " "))
-		if query == "" || strings.Contains(haystack, query) {
+		if filter.matches(paper) {
 			matches = append(matches, paper)
 		}
 	}
-	return matches
+	return page(matches, filter.Limit, filter.Offset), len(matches)
+}
+
+func page[T any](items []T, limit, offset int) []T {
+	offset = min(max(offset, 0), len(items))
+	items = items[offset:]
+	if limit > 0 && limit < len(items) {
+		items = items[:limit]
+	}
+	return items
 }
 
 // PaperEdit is one change a person made in the desktop window: the paper as the
@@ -218,7 +253,11 @@ func (s *Store) SavePaperEdits(ctx context.Context, edits []PaperEdit) ([]string
 		if err != nil {
 			return nil, err
 		}
-		merged, changed, conflict, err := mergePaper(*edits[i].Before, after, current)
+		before, latest := *edits[i].Before, current
+		normalizePaper(&before)
+		normalizePaper(&after)
+		normalizePaper(&latest)
+		merged, changed, conflict, err := mergeFields(before, after, latest, serverPaperFields)
 		if err != nil {
 			return nil, err
 		}
@@ -253,82 +292,107 @@ func recordDecision(p *Paper) {
 
 // serverPaperFields are never taken from a desktop edit: the database owns them.
 var serverPaperFields = map[string]bool{
-	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "reviewedAt": true, "isDemo": true,
+	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "reviewedAt": true, "batchId": true, "isDemo": true,
 }
 
-// mergePaper applies what changed from before to after onto current, field by
-// field. It reports a conflict when another writer changed one of those fields
-// to something else, and whether anything needs writing at all.
-func mergePaper(before, after, current Paper) (merged Paper, changed, conflict bool, err error) {
+// mergeFields applies what changed from before to after onto current, field by
+// field; callers pass all three normalized. It reports a conflict when another
+// writer changed one of those fields to something else, and whether anything
+// needs writing at all.
+func mergeFields[T any](before, after, current T, serverOwned map[string]bool) (merged T, changed, conflict bool, err error) {
 	var fields [3]map[string]json.RawMessage
-	for i, paper := range []Paper{before, after, current} {
-		normalizePaper(&paper)
-		data, err := json.Marshal(paper)
+	for i, record := range []T{before, after, current} {
+		data, err := json.Marshal(record)
 		if err != nil {
-			return Paper{}, false, false, fmt.Errorf("encode paper: %w", err)
+			return merged, false, false, fmt.Errorf("encode record: %w", err)
 		}
 		if err := json.Unmarshal(data, &fields[i]); err != nil {
-			return Paper{}, false, false, fmt.Errorf("decode paper fields: %w", err)
+			return merged, false, false, fmt.Errorf("decode record fields: %w", err)
 		}
 	}
 	base, next, latest := fields[0], fields[1], fields[2]
 	for field, value := range next {
-		if serverPaperFields[field] || bytes.Equal(value, base[field]) || bytes.Equal(value, latest[field]) {
+		if serverOwned[field] || bytes.Equal(value, base[field]) || bytes.Equal(value, latest[field]) {
 			continue
 		}
 		if !bytes.Equal(latest[field], base[field]) {
-			return Paper{}, false, true, nil
+			return merged, false, true, nil
 		}
 		latest[field] = value
 		changed = true
 	}
 	data, err := json.Marshal(latest)
 	if err != nil {
-		return Paper{}, false, false, fmt.Errorf("encode merged paper: %w", err)
+		return merged, false, false, fmt.Errorf("encode merged record: %w", err)
 	}
 	if err := json.Unmarshal(data, &merged); err != nil {
-		return Paper{}, false, false, fmt.Errorf("decode merged paper: %w", err)
+		return merged, false, false, fmt.Errorf("decode merged record: %w", err)
 	}
 	return merged, changed, false, nil
 }
 
-// ImportResult describes an atomic paper import or validation run.
-type ImportResult struct {
-	DryRun bool    `json:"dryRun"`
-	Count  int     `json:"count"`
-	Papers []Paper `json:"papers"`
+// SkippedPaper is a record an import left out because the library holds it.
+type SkippedPaper struct {
+	Index      int    `json:"index"`
+	Title      string `json:"title"`
+	ExistingID string `json:"existingId"`
 }
 
-// ImportPapers validates and inserts a batch in one transaction. DryRun rolls it back.
-func (s *Store) ImportPapers(ctx context.Context, papers []Paper, dryRun bool) (ImportResult, error) {
+// ImportResult describes an atomic paper import or validation run. Papers holds
+// what was created and Skipped what already existed, so rerunning a batch is safe.
+type ImportResult struct {
+	DryRun  bool           `json:"dryRun"`
+	BatchID string         `json:"batchId"`
+	Count   int            `json:"count"`
+	Papers  []Paper        `json:"papers"`
+	Skipped []SkippedPaper `json:"skipped"`
+}
+
+// ImportPapers validates and inserts a batch in one transaction: an invalid
+// record rolls everything back, while a known paper is skipped and reported.
+// Papers are matched by ID, DOI, PMID, then title. An empty batchID starts a new
+// batch; reusing one groups several calls for UndoImport. DryRun rolls back.
+func (s *Store) ImportPapers(ctx context.Context, papers []Paper, batchID string, dryRun bool) (ImportResult, error) {
+	if batchID = strings.TrimSpace(batchID); batchID == "" {
+		var err error
+		if batchID, err = newLocalID("B"); err != nil {
+			return ImportResult{}, err
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ImportResult{}, fmt.Errorf("begin paper import: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	result := ImportResult{DryRun: dryRun, Papers: []Paper{}}
-	seen := make(map[string]bool, len(papers))
+	result := ImportResult{DryRun: dryRun, BatchID: batchID, Papers: []Paper{}, Skipped: []SkippedPaper{}}
 	for i := range papers {
-		if papers[i].ID == "" {
-			id, err := newPaperID()
-			if err != nil {
-				return ImportResult{}, err
-			}
-			papers[i].ID = id
-		}
 		normalizePaper(&papers[i])
 		papers[i].ReviewedAt = "" // Imports come from agents, never from a reviewer.
-		if seen[papers[i].ID] {
-			return ImportResult{}, fmt.Errorf("paper %d: duplicate ID %q", i, papers[i].ID)
+		papers[i].BatchID = batchID
+		existing := ""
+		if papers[i].ID != "" {
+			var exists int
+			if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM papers WHERE id = ?)", papers[i].ID).Scan(&exists); err != nil {
+				return ImportResult{}, fmt.Errorf("check paper %d ID: %w", i, err)
+			}
+			if exists == 1 {
+				existing = papers[i].ID
+			}
 		}
-		seen[papers[i].ID] = true
-		var exists int
-		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM papers WHERE id = ?)", papers[i].ID).Scan(&exists); err != nil {
-			return ImportResult{}, fmt.Errorf("check paper %d ID: %w", i, err)
+		if existing == "" {
+			if existing, err = existingPaperID(ctx, tx, papers[i]); err != nil {
+				return ImportResult{}, fmt.Errorf("paper %d: %w", i, err)
+			}
 		}
-		if exists == 1 {
-			return ImportResult{}, fmt.Errorf("paper %d: ID %s already exists", i, papers[i].ID)
+		if existing != "" {
+			result.Skipped = append(result.Skipped, SkippedPaper{Index: i, Title: papers[i].Title, ExistingID: existing})
+			continue
+		}
+		if papers[i].ID == "" {
+			if papers[i].ID, err = newPaperID(); err != nil {
+				return ImportResult{}, err
+			}
 		}
 		if err := savePaper(ctx, tx, &papers[i]); err != nil {
 			return ImportResult{}, fmt.Errorf("paper %d: %w", i, err)
@@ -347,9 +411,12 @@ func (s *Store) ImportPapers(ctx context.Context, papers []Paper, dryRun bool) (
 
 // AddPaper validates and inserts one real paper.
 func (s *Store) AddPaper(ctx context.Context, p Paper) (Paper, error) {
-	result, err := s.ImportPapers(ctx, []Paper{p}, false)
+	result, err := s.ImportPapers(ctx, []Paper{p}, p.BatchID, false)
 	if err != nil {
 		return Paper{}, err
+	}
+	if len(result.Skipped) > 0 {
+		return Paper{}, fmt.Errorf("%w: %s", ErrDuplicatePaper, result.Skipped[0].ExistingID)
 	}
 	return result.Papers[0], nil
 }
@@ -359,13 +426,13 @@ func (s *Store) GetPaper(ctx context.Context, id string) (Paper, error) {
 	return readPaper(ctx, s.db, strings.TrimSpace(id))
 }
 
-// paperReader is a *sql.DB or, inside a transaction, the *sql.Tx holding the
-// only connection.
-type paperReader interface {
+// queryer is a *sql.DB or, inside a transaction, the *sql.Tx holding the only
+// connection.
+type queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-func readPaper(ctx context.Context, reader paperReader, id string) (Paper, error) {
+func readPaper(ctx context.Context, reader queryer, id string) (Paper, error) {
 	rows, err := reader.QueryContext(ctx, paperSelect+` WHERE id = ?`, id)
 	if err != nil {
 		return Paper{}, fmt.Errorf("get paper: %w", err)
@@ -552,8 +619,8 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 		INSERT INTO papers(
 			id, title, abstract, authors_json, journal, organs_json, modalities_json,
 			platforms_json, issue_year, publication_state,
-			article_types_json, species_json, source, first_seen_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			article_types_json, species_json, source, import_batch_id, first_seen_at, updated_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title, abstract = excluded.abstract,
 			authors_json = excluded.authors_json, journal = excluded.journal,
@@ -565,7 +632,7 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 			updated_at = excluded.updated_at`,
 		p.ID, p.Title, p.Abstract, authors, p.Journal, organs, modalities,
 		platforms, year, p.PublicationStatus,
-		jsonArray(articleTypes), species, p.Source, p.AddedAt, p.UpdatedAt)
+		jsonArray(articleTypes), species, p.Source, nullableString(p.BatchID), p.AddedAt, p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save paper %s: %w", p.ID, err)
 	}

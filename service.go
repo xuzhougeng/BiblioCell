@@ -137,12 +137,45 @@ func (l *Library) ListDatasets() ([]library.Dataset, error) {
 	return l.store.ListDatasets(context.Background())
 }
 
-// SaveDatasets persists dataset edits while preserving unrelated associations.
-func (l *Library) SaveDatasets(datasets []library.Dataset) error {
+// SaveDatasetEdits stores what a person changed and returns the titles of
+// datasets left unsaved because another writer changed the same fields.
+func (l *Library) SaveDatasetEdits(edits []library.DatasetEdit) ([]string, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	return l.store.SaveDatasetEdits(context.Background(), edits)
+}
+
+// ListEvidence returns every claim agents recorded, for the review views.
+func (l *Library) ListEvidence() ([]library.Evidence, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	return l.store.ListEvidence(context.Background(), "", "")
+}
+
+// ReviewEvidence records a person's verdict on a claim.
+func (l *Library) ReviewEvidence(id, status string) error {
 	if l.store == nil {
 		return errors.New("library database is not ready")
 	}
-	return l.store.SaveDatasets(context.Background(), datasets)
+	return l.store.ReviewEvidence(context.Background(), id, status)
+}
+
+// VerifyDatasetLink records a person's check of a paper-dataset link.
+func (l *Library) VerifyDatasetLink(paperID, datasetID, role string, verified bool) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.VerifyDatasetLink(context.Background(), paperID, datasetID, role, verified)
+}
+
+// VerifyDatasetRepository records a person's check of a repository record.
+func (l *Library) VerifyDatasetRepository(datasetID, recordID string, verified bool) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.VerifyDatasetRepository(context.Background(), datasetID, recordID, verified)
 }
 
 // ListSources returns saved connector configurations and their latest runs.

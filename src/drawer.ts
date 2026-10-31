@@ -1,6 +1,6 @@
 // Detail drawer for one paper or one dataset.
 import type { App } from "./app.ts";
-import type { Paper } from "./mygo.ts";
+import type { DatasetPaperLink, Evidence, Paper } from "./mygo.ts";
 import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, dateText, esc, fileSize, joinList, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, options, screenBadge } from "./ui.ts";
 
@@ -29,6 +29,39 @@ const proposalBox = (p: Paper): string => p.proposedScreening
   ? `<div class="notice-box compact proposal-box">${I("info", 16)}<span>Agent 建议：<strong>${esc(SCREEN[p.proposedScreening] ?? p.proposedScreening)}</strong>${p.proposedReason ? `<br>${esc(p.proposedReason)}` : ""}</span><span class="section-actions"><button class="text-link" data-action="accept-proposal" data-id="${esc(p.id)}">采纳</button><button class="text-link" data-action="dismiss-proposal" data-id="${esc(p.id)}">忽略</button></span></div>`
   : "";
 
+const FIELD_LABELS: Record<string, string> = {
+  title: "题目", doi: "DOI", pmid: "PMID", authors: "作者", year: "年份", journal: "期刊", abstract: "摘要",
+  species: "物种", organs: "组织", modalities: "测序类型", platforms: "测序平台", articleTypes: "文献类型",
+  screening: "收录判断", repositories: "数据仓库", accession: "Accession", availability: "数据可用性", cellsReported: "细胞数",
+};
+const EVIDENCE_STATUS: Record<string, [string, string]> = { unreviewed: ["待核对", "amber"], verified: ["已确认", "green"], rejected: ["已驳回", "gray"] };
+
+const sourceLink = (value: string): string => {
+  const url = safeURL(value);
+  return url ? `<a class="text-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">来源${I("arrow-up-right", 13)}</a>` : "";
+};
+
+function evidenceRow(e: Evidence): string {
+  const [label, color] = EVIDENCE_STATUS[e.status] ?? ["待核对", "amber"];
+  const source = [
+    sourceLink(e.sourceUrl),
+    e.fileId ? `<button class="text-link" data-action="open-file" data-id="${esc(e.fileId)}">打开文件</button>` : "",
+    e.location ? `<span>${esc(e.location)}</span>` : "",
+    e.extractor ? `<span>${esc(e.extractor)}</span>` : "",
+  ].join("");
+  const verdict = (status: string, text: string) => `<button class="text-link" data-action="review-evidence" data-id="${esc(e.id)}" data-status="${status}">${text}</button>`;
+  const actions = e.status === "unreviewed" ? verdict("verified", "确认") + verdict("rejected", "驳回") : verdict("unreviewed", "撤销");
+  return `<div class="evidence-item ${esc(e.status)}"><div class="evidence-head"><strong>${esc(FIELD_LABELS[e.field] ?? e.field)}${e.value ? `：${esc(e.value)}` : ""}</strong>${badge(label, color)}</div><blockquote>${esc(e.excerpt)}</blockquote><div class="evidence-foot"><span class="evidence-source">${source}</span><span class="section-actions">${actions}</span></div></div>`;
+}
+
+const evidenceSection = (items: Evidence[]): string => items.length
+  ? `<section class="detail-section"><h3>Agent 证据 <span class="count-pill">${items.length}</span></h3>${items.map(evidenceRow).join("")}</section>`
+  : "";
+
+/** linkReview shows why an agent linked a paper and dataset, for a person to verify. */
+const linkReview = (app: App, datasetId: string, link: DatasetPaperLink): string => !app.env.real ? "" :
+  `<div class="link-review"><span class="evidence-source"><span>${esc(link.evidenceText || (link.verified ? "已核实" : "未记录依据"))}</span>${sourceLink(link.evidenceUrl)}</span><button class="text-link" data-action="verify-link" data-paper="${esc(link.paperId)}" data-dataset="${esc(datasetId)}" data-role="${esc(link.role)}" data-verified="${!link.verified}">${link.verified ? "撤销核实" : "核实关联"}</button></div>`;
+
 const PUBLICATION_LABELS: Record<string, string> = { preprint: "预印本", published: "正式论文", unpublished: "未发表" };
 
 /** renderDrawer returns the drawer HTML, or null when the referenced record no longer exists. */
@@ -47,11 +80,12 @@ export function renderDrawer(app: App): string | null {
         + `<div class="detail-grid">${detail("研究物种", esc(speciesDisplay(p) || "待补"), `<small>${esc(joinList(speciesNames(p)))}</small>`)}${detail("组织 / 部位", esc(joinList(p.organs) || "待补"))}${detail("测序类型", esc(joinList(p.modalities) || "待补"))}${detail("测序平台", esc(joinList(p.platforms) || "待补"))}${detail("发表年份", esc(p.year || "待补"))}${detail("文献类型", esc(joinList(p.articleTypes) || "待判断"))}${detail("发表状态", PUBLICATION_LABELS[p.publicationStatus] ?? "尚未确认")}</div>`
         + `<section class="detail-section"><h3>摘要</h3><p class="abstract-text">${esc(p.abstract || "摘要尚未补充。先保留这条文献，之后可以继续完善。")}</p></section>`
         + `<section class="detail-section"><h3>主题标签</h3><div class="tag-list">${arr(p.tags).length ? arr(p.tags).map((t) => `<span class="tag">${esc(t)}</span>`).join("") : '<span class="muted">暂未设置标签</span>'}</div></section>`
-        + `<section class="detail-section"><h3>来源与标识</h3><dl class="detail-dl"><dt>DOI</dt><dd>${p.doi ? `<a class="text-link" href="https://doi.org/${esc(encodeURI(p.doi))}" target="_blank" rel="noopener noreferrer">${esc(p.doi)}${I("arrow-up-right", 13)}</a>` : "尚未记录"}</dd><dt>PMID</dt><dd>${esc(p.pmid || "尚未记录")}</dd><dt>发现来源</dt><dd>${esc(p.source || "手动添加")}</dd><dt>加入时间</dt><dd>${dateText(p.addedAt)}</dd></dl></section>`
+        + evidenceSection(app.evidenceFor("paperId", p.id))
+        + `<section class="detail-section"><h3>来源与标识</h3><dl class="detail-dl"><dt>DOI</dt><dd>${p.doi ? `<a class="text-link" href="https://doi.org/${esc(encodeURI(p.doi))}" target="_blank" rel="noopener noreferrer">${esc(p.doi)}${I("arrow-up-right", 13)}</a>` : "尚未记录"}</dd><dt>PMID</dt><dd>${esc(p.pmid || "尚未记录")}</dd><dt>发现来源</dt><dd>${esc(p.source || "手动添加")}</dd>${p.batchId ? `<dt>导入批次</dt><dd>${esc(p.batchId)}</dd>` : ""}<dt>加入时间</dt><dd>${dateText(p.addedAt)}</dd></dl></section>`
         + `<section class="detail-section"><h3>收录判断</h3>${proposalBox(p)}<label class="form-field"><span class="sr-only">收录判断</span><select class="input" data-paper-setting="screening" data-id="${esc(p.id)}">${options(SCREEN, p.screening)}</select></label><p class="muted small">${esc(p.screeningReason || "可在笔记中补充判断依据。")}</p>${app.env.real ? `<p class="muted small">${p.reviewedAt ? `人工确认于 ${dateText(p.reviewedAt)}` : "尚未人工确认"}</p>` : ""}</section>`;
     } else if (tab === "resources") {
       const related = ds.length
-        ? ds.map((d) => `<button class="related-dataset" data-action="open-dataset" data-id="${esc(d.id)}"><span class="icon-wrap green">${I("database", 18)}</span><span><strong>${esc(d.title)}</strong><small>${esc(d.accession || "仓库编号待补")}</small></span>${badge(ROLE[d.paperLinks.find((l) => l.paperId === p.id)?.role ?? ""] ?? "关联", "gray")}${I("chevron-right", 15)}</button>`).join("")
+        ? ds.map((d) => `<button class="related-dataset" data-action="open-dataset" data-id="${esc(d.id)}"><span class="icon-wrap green">${I("database", 18)}</span><span><strong>${esc(d.title)}</strong><small>${esc(d.accession || "仓库编号待补")}</small></span>${badge(ROLE[d.paperLinks.find((l) => l.paperId === p.id)?.role ?? ""] ?? "关联", "gray")}${I("chevron-right", 15)}</button>${d.paperLinks.filter((l) => l.paperId === p.id).map((l) => linkReview(app, d.id, l)).join("")}`).join("")
         : '<p class="muted">尚未关联数据。已有公共数据可以复用关联，无需重复创建。</p>';
       const addResource = app.env.real
         ? `<span class="section-actions"><button class="text-link" data-action="import-file" data-id="${esc(p.id)}" data-type="fulltext">${I("plus", 15)} 导入全文</button><button class="text-link" data-action="import-file" data-id="${esc(p.id)}" data-type="supplement">${I("plus", 15)} 导入补充材料</button></span>`
@@ -73,11 +107,16 @@ export function renderDrawer(app: App): string | null {
   if (!d) return null;
   const links = arr(d.paperLinks).map((l) => {
     const p = app.paperById(l.paperId);
-    return p ? `<button class="related-dataset" data-action="open-paper" data-id="${esc(p.id)}"><span class="icon-wrap blue">${I("book", 18)}</span><span><strong>${esc(p.title)}</strong><small>${esc(p.year || "年份待补")}</small></span>${badge(ROLE[l.role] ?? "关联")}</button>` : "";
+    return p ? `<button class="related-dataset" data-action="open-paper" data-id="${esc(p.id)}"><span class="icon-wrap blue">${I("book", 18)}</span><span><strong>${esc(p.title)}</strong><small>${esc(p.year || "年份待补")}</small></span>${badge(ROLE[l.role] ?? "关联")}</button>${linkReview(app, d.id, l)}` : "";
   }).join("");
+  const repositories = arr(d.repositories).map((r) =>
+    `<div class="evidence-item"><div class="evidence-head"><strong>${esc(r.repository.toUpperCase())} ${esc(r.accession)}</strong>${badge(r.verified ? "已核实" : "待核实", r.verified ? "green" : "amber")}</div>${r.evidenceText ? `<blockquote>${esc(r.evidenceText)}</blockquote>` : ""}<div class="evidence-foot"><span class="evidence-source">${sourceLink(r.url)}${r.evidenceUrl && r.evidenceUrl !== r.url ? sourceLink(r.evidenceUrl) : ""}</span><span class="section-actions"><button class="text-link" data-action="verify-repository" data-id="${esc(d.id)}" data-record="${esc(r.id)}" data-verified="${!r.verified}">${r.verified ? "撤销核实" : "核实编号"}</button></span></div></div>`,
+  ).join("");
   const body = `<div class="drawer-body"><div class="drawer-status-row">${datasetStatusBadge(d)}${demoBadge(d)}</div>`
     + `<div class="detail-grid">${detail("仓库", esc(d.repository || "待补"))}${detail("Accession", esc(d.accession || "编号待补"))}${detail("研究组织", esc(joinList(d.organs) || "待补"))}${detail("测序类型", esc(joinList(d.modalities) || "待补"))}${detail("测序平台", esc(joinList(d.platforms) || "待补"))}${detail("细胞数", d.cellsReported == null ? "尚未整理" : esc(d.cellsReported))}${detail("原始数据", esc(AVAILABILITY[d.availability] ?? "尚未核实"))}</div>`
+    + (app.env.real && repositories ? `<section class="detail-section"><h3>数据仓库</h3>${repositories}</section>` : "")
     + `<section class="detail-section"><h3>关联文献</h3>${arr(d.paperLinks).length ? links : '<p class="muted">尚未关联文献。</p>'}</section>`
+    + evidenceSection(app.evidenceFor("datasetId", d.id))
     + `<section class="detail-section"><div class="section-title"><h3>数据与资料入口</h3><button class="text-link" data-action="add-resource" data-id="${esc(d.id)}" data-kind="dataset">${I("plus", 15)} 添加链接</button></div>${resourceRows(app.state.resources.filter((r) => r.datasetId === d.id))}</section>`
     + `<section class="detail-section"><h3>整理备注</h3><p class="abstract-text">${esc(d.notes || "尚未填写。")}</p></section></div>`
     + `<div class="drawer-footer"><span class="muted">独立记录数据，保留复用关系</span><button class="btn btn-primary" data-action="edit-dataset" data-id="${esc(d.id)}">编辑信息</button></div>`;

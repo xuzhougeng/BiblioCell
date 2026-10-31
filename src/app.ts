@@ -2,6 +2,7 @@
 import type { Config, MCPInfo, Paper, SourceStatus, Status } from "./mygo.ts";
 import { demoState } from "./demo-data.ts";
 import { renderDrawer } from "./drawer.ts";
+import type { Evidence } from "./mygo.ts";
 import { fileActions } from "./files.ts";
 import {
   datasetModal, exclusionReasonModal, importSummaryModal, linkDatasetModal, paperModal, resetDemoModal, resourceModal,
@@ -12,6 +13,7 @@ import {
   speciesNameFor, tasksFor, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, renderSources, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource } from "./sources.ts";
+import { reviewActions } from "./review.ts";
 import { previewFontSize, renderSettings, saveSettings, settingsActions } from "./settings.ts";
 import { SaveRejected, type LibraryStore } from "./store.ts";
 import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
@@ -102,8 +104,11 @@ export class App {
   paperResources(id: string): Resource[] {
     return this.state.resources.filter((r) => r.paperId === id);
   }
+  evidenceFor(target: "paperId" | "datasetId", id: string): Evidence[] {
+    return (this.state.evidence ?? []).filter((e) => e[target] === id);
+  }
   tasks(): TaskRow[] {
-    return tasksFor(this.state.papers, this.state.datasets);
+    return tasksFor(this.state.papers, this.state.datasets, this.state.evidence);
   }
 
   // ---- persistence ----
@@ -195,14 +200,14 @@ export class App {
     this.lastFocus = document.activeElement;
     this.drawer = { type: "paper", id };
     this.drawerTab = "overview";
-    this.renderDrawer();
+    this.renderDrawer(true);
   }
   openDataset(id: string): void {
     if (!this.state.datasets.some((d) => d.id === id)) return;
     this.lastFocus = document.activeElement;
     this.drawer = { type: "dataset", id };
     this.drawerTab = "overview";
-    this.renderDrawer();
+    this.renderDrawer(true);
   }
   closeDrawer(): void {
     this.drawer = null;
@@ -211,7 +216,8 @@ export class App {
     document.body.classList.remove("drawer-open");
     if (this.lastFocus instanceof HTMLElement && document.contains(this.lastFocus)) this.lastFocus.focus();
   }
-  renderDrawer(): void {
+  /** renderDrawer keeps the reading position unless fresh, so reviewing item after item stays in place. */
+  renderDrawer(fresh = false): void {
     if (!this.drawer) return;
     const root = $("#drawer-root");
     if (!root) return;
@@ -220,7 +226,10 @@ export class App {
       this.closeDrawer();
       return;
     }
+    const scrollTop = fresh ? 0 : $(".drawer-body", root)?.scrollTop ?? 0;
     root.innerHTML = html;
+    const body = $(".drawer-body", root);
+    if (body) body.scrollTop = scrollTop;
     document.body.classList.add("drawer-open");
     requestAnimationFrame(() => $('#drawer-root button[data-action="close-drawer"]')?.focus());
   }
@@ -329,7 +338,7 @@ export class App {
     "close-modal": () => this.closeModal(),
     "drawer-tab": (el) => {
       this.drawerTab = el.dataset.tab ?? "overview";
-      this.renderDrawer();
+      this.renderDrawer(true);
     },
     "export-csv": () => this.exportCSV(),
     "export-json": () => this.exportJSON(),
@@ -423,6 +432,7 @@ export class App {
     },
     ...settingsActions(this),
     ...fileActions(this),
+    ...reviewActions(this),
   };
 
   private onClick(e: MouseEvent): void {

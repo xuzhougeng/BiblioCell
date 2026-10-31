@@ -1,5 +1,5 @@
 // Pure data logic shared by the UI and the node:test suite. No DOM access here.
-import type { Dataset, DatasetPaperLink, DatasetRepository, Paper, PaperFile, SpeciesEntry } from "./mygo.ts";
+import type { Dataset, DatasetPaperLink, DatasetRepository, Evidence, Paper, PaperFile, SpeciesEntry } from "./mygo.ts";
 
 export interface Resource {
   id: string;
@@ -33,6 +33,7 @@ export interface LibraryState {
   papers: Paper[];
   datasets: Dataset[];
   resources: Resource[];
+  evidence?: Evidence[];
   activities: Activity[];
 }
 
@@ -45,12 +46,13 @@ export interface Filters {
   platform: string;
   fulltext: string;
   screening: string;
+  source: string;
   starred: boolean;
   sort: string;
 }
 
 export const emptyFilters = (): Filters => ({
-  search: "", species: "", organ: "", year: "", modality: "", platform: "", fulltext: "", screening: "", starred: false, sort: "newest",
+  search: "", species: "", organ: "", year: "", modality: "", platform: "", fulltext: "", screening: "", source: "", starred: false, sort: "newest",
 });
 
 export const SCREEN: Record<string, string> = { included: "已纳入", pending: "待判断", uncertain: "证据不足", excluded: "相关 / 排除" };
@@ -127,13 +129,14 @@ export const speciesNames = (p: HasSpecies): string[] => arr(p.species).map((s) 
 export const speciesDisplay = (p: HasSpecies): string => arr(p.species).map((s) => s?.label || s?.name || "").filter(Boolean).join("、");
 export const joinList = (value: string[] | null | undefined, separator = "、"): string => arr(value).filter(Boolean).join(separator);
 
-export type ListField = "species" | "organ" | "year" | "modality" | "platform";
+export type ListField = "species" | "organ" | "year" | "modality" | "platform" | "source";
 export const listValues: Record<ListField, (p: Paper) => string[]> = {
   species: (p) => speciesNames(p),
   organ: (p) => arr(p.organs),
   modality: (p) => arr(p.modalities),
   platform: (p) => arr(p.platforms),
   year: (p) => (p.year ? [String(p.year)] : []),
+  source: (p) => (p.source ? [p.source] : []),
 };
 
 export function uniqueValues(papers: Paper[], field: ListField): string[] {
@@ -173,6 +176,7 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
         && (!filters.platform || listValues.platform(p).includes(filters.platform))
         && (!filters.fulltext || p.fulltext === filters.fulltext)
         && (!filters.screening || p.screening === filters.screening)
+        && (!filters.source || p.source === filters.source)
         && (!filters.starred || p.starred);
     })
     .sort((a, b) => filters.sort === "year-desc"
@@ -196,20 +200,29 @@ export interface TaskRow {
   icon: string;
 }
 
-export function tasksFor(papers: Paper[], datasets: Dataset[]): TaskRow[] {
+export function tasksFor(papers: Paper[], datasets: Dataset[], evidence: Evidence[] = []): TaskRow[] {
   const rows: TaskRow[] = [];
+  const open = new Map<string, number>();
+  for (const e of evidence) if (e.paperId && e.status === "unreviewed") open.set(e.paperId, (open.get(e.paperId) ?? 0) + 1);
   for (const p of papers) {
-    const proposal = p.proposedScreening ? `Agent 建议：${SCREEN[p.proposedScreening] ?? p.proposedScreening}` : "";
+    const differs = p.proposedScreening && p.proposedScreening !== p.screening;
+    const claims = open.get(p.id) ?? 0;
+    const review = [
+      differs ? `Agent 建议：${SCREEN[p.proposedScreening] ?? p.proposedScreening}` : "",
+      claims ? `${claims} 条证据待核对` : "",
+    ].filter(Boolean).join(" · ");
     if (p.screening === "pending" || p.screening === "uncertain") {
-      rows.push({ key: `${p.id}-screen`, type: "screen", paper: p, title: p.screening === "uncertain" ? "补充判断证据" : "确认收录范围", subtitle: proposal || "核实研究对象与单细胞测序证据", color: "amber", icon: "check" });
-    } else if (proposal && p.proposedScreening !== p.screening) {
-      rows.push({ key: `${p.id}-screen`, type: "screen", paper: p, title: "确认 Agent 建议", subtitle: proposal, color: "amber", icon: "check" });
+      rows.push({ key: `${p.id}-screen`, type: "screen", paper: p, title: p.screening === "uncertain" ? "补充判断证据" : "确认收录范围", subtitle: review || "核实研究对象与单细胞测序证据", color: "amber", icon: "check" });
+    } else if (review) {
+      rows.push({ key: `${p.id}-screen`, type: "screen", paper: p, title: differs ? "确认 Agent 建议" : "核对 Agent 证据", subtitle: review, color: "amber", icon: "check" });
     }
     if (p.screening === "included" && p.fulltext !== "stored") {
       rows.push({ key: `${p.id}-fulltext`, type: "fulltext", paper: p, title: p.fulltext === "linked" ? "获取全文正文" : "补充全文入口", subtitle: p.fulltext === "linked" ? "已有入口，正文文件仍待获取" : "先记录可用入口，正文可稍后获取", color: "blue", icon: "file" });
     }
     const linked = paperDatasets(datasets, p.id);
-    if (p.screening === "included" && (!linked.length || linked.some((d) => !d.accession || d.status !== "verified"))) {
+    // A link carrying evidence is an agent's claim, which a person still has to verify.
+    const claimed = (d: Dataset) => arr(d.paperLinks).some((l) => l.paperId === p.id && !l.verified && (l.evidenceUrl || l.evidenceText));
+    if (p.screening === "included" && (!linked.length || linked.some((d) => !d.accession || d.status !== "verified" || claimed(d)))) {
       rows.push({ key: `${p.id}-data`, type: "data", paper: p, title: "核对数据来源", subtitle: "补充 accession，区分新生成与复用", color: "purple", icon: "database" });
     }
   }
@@ -264,7 +277,8 @@ export function normalizeDataset(input: object): Dataset {
     availability: str(raw.availability) || "unknown", matrixAvailability: str(raw.matrixAvailability) || "unknown",
     annotationAvailability: str(raw.annotationAvailability) || "unknown",
     cellsReported: cells, cellCountUnit: str(raw.cellCountUnit), cellCountScope: str(raw.cellCountScope),
-    paperLinks, addedAt: str(raw.addedAt), updatedAt: str(raw.updatedAt), isDemo: raw.isDemo === true,
+    paperLinks, reviewedAt: str(raw.reviewedAt), batchId: str(raw.batchId),
+    addedAt: str(raw.addedAt), updatedAt: str(raw.updatedAt), isDemo: raw.isDemo === true,
   };
 }
 
@@ -386,7 +400,7 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
       screening: enumValue(row.screening, SCREENINGS, "pending"), reading: enumValue(row.reading, READINGS, "unread"),
       fulltext: enumValue(row.fulltext, FULLTEXTS, "missing"), publicationStatus: enumValue(row.publicationStatus, PUBLICATION_STATUSES, "unknown"),
       starred: row.starred === true, isDemo: row.isDemo === true, source: textValue(row.source, 300) || "JSON 导入",
-      screeningReason: textValue(row.screeningReason, 3000), reviewedAt: "", proposedScreening: "", proposedReason: "",
+      screeningReason: textValue(row.screeningReason, 3000), reviewedAt: "", proposedScreening: "", proposedReason: "", batchId: "",
       addedAt: isoDate(row.addedAt), updatedAt: nowISO(),
     };
     idMap.set(oldId, id);

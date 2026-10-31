@@ -26,14 +26,22 @@ type MCPServer struct {
 
 type emptyInput struct{}
 
-type listPapersInput struct {
-	Query string `json:"query,omitempty" jsonschema:"Optional text matched against title, DOI, authors, species, organs, modalities, platforms, and tags"`
-	Limit int    `json:"limit,omitempty" jsonschema:"Maximum papers to return, from 1 to 500; defaults to 100"`
-}
-
 type listPapersOutput struct {
 	Papers []Paper `json:"papers"`
 	Total  int     `json:"total"`
+}
+
+type listDatasetsOutput struct {
+	Datasets []Dataset `json:"datasets"`
+	Total    int       `json:"total"`
+}
+
+// mcpPageLimit applies the page size agents get when they do not ask for one.
+func mcpPageLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+	return min(limit, 500)
 }
 
 type paperInput struct {
@@ -55,6 +63,7 @@ type paperInput struct {
 	Tags              []string       `json:"tags,omitempty" jsonschema:"Personal topic tags"`
 	ProposedScreening string         `json:"proposedScreening,omitempty" jsonschema:"Suggest included, excluded, or uncertain; screening itself stays pending until a person decides"`
 	ProposedReason    string         `json:"proposedReason,omitempty" jsonschema:"Why; required when proposing excluded"`
+	BatchID           string         `json:"batchId,omitempty" jsonschema:"Import batch to join, so undo_import removes this paper with it"`
 	Reading           string         `json:"reading,omitempty" jsonschema:"unread, skimmed, or read; defaults to unread"`
 	Starred           bool           `json:"starred,omitempty"`
 }
@@ -67,7 +76,7 @@ func (input paperInput) paper() Paper {
 		Species: input.Species, Organs: input.Organs, Modalities: input.Modalities,
 		Platforms: input.Platforms, Abstract: input.Abstract, Notes: input.Notes,
 		Tags: input.Tags, ProposedScreening: input.ProposedScreening, ProposedReason: input.ProposedReason,
-		Reading: input.Reading, Starred: input.Starred, Fulltext: "missing", Source: "MCP",
+		BatchID: input.BatchID, Reading: input.Reading, Starred: input.Starred, Fulltext: "missing", Source: "MCP",
 	}
 }
 
@@ -108,8 +117,54 @@ func mcpAuth(next http.Handler, token string) http.Handler {
 }
 
 type importPapersInput struct {
-	Papers []paperInput `json:"papers" jsonschema:"Paper records to validate and insert as one atomic batch; maximum 1000"`
-	DryRun bool         `json:"dryRun,omitempty" jsonschema:"When true, validate the complete batch and roll back without writing"`
+	Papers  []paperInput `json:"papers" jsonschema:"Paper records to validate and insert as one atomic batch; maximum 1000"`
+	DryRun  bool         `json:"dryRun,omitempty" jsonschema:"When true, validate the complete batch and roll back without writing"`
+	BatchID string       `json:"batchId,omitempty" jsonschema:"Batch to join; reuse it across calls of one run to undo them together. Generated when empty"`
+}
+
+type undoImportInput struct {
+	BatchID string `json:"batchId" jsonschema:"The batchId an import returned"`
+}
+
+type addEvidenceInput struct {
+	Evidence []EvidenceInput `json:"evidence" jsonschema:"Claims to record as one atomic batch; maximum 1000"`
+}
+
+type evidenceOutput struct {
+	Evidence []Evidence `json:"evidence"`
+}
+
+type listEvidenceInput struct {
+	PaperID   string `json:"paperId,omitempty" jsonschema:"Only evidence about this paper"`
+	DatasetID string `json:"datasetId,omitempty" jsonschema:"Only evidence about this dataset"`
+}
+
+type getDatasetInput struct {
+	ID string `json:"id" jsonschema:"Stable dataset ID returned by list_datasets or add_dataset"`
+}
+
+type updateDatasetInput struct {
+	ID    string       `json:"id" jsonschema:"Stable ID of the dataset to edit"`
+	Patch DatasetPatch `json:"patch" jsonschema:"Only supplied fields change"`
+}
+
+type linkDatasetInput struct {
+	DatasetID string `json:"datasetId" jsonschema:"Stable ID of the dataset"`
+	PaperLinkInput
+}
+
+type attachFileInput struct {
+	PaperID string `json:"paperId" jsonschema:"Stable ID of the paper"`
+	Name    string `json:"name" jsonschema:"File name relative to inboxPath from describe_library"`
+	Type    string `json:"type,omitempty" jsonschema:"fulltext or supplement; defaults to fulltext"`
+}
+
+type listFilesInput struct {
+	PaperID string `json:"paperId" jsonschema:"Stable ID of the paper"`
+}
+
+type listFilesOutput struct {
+	Files []PaperFile `json:"files"`
 }
 
 type describeLibraryOutput struct {
@@ -123,17 +178,34 @@ type describeLibraryOutput struct {
 	Enums            map[string][]string `json:"enums"`
 	ImportRules      []string            `json:"importRules"`
 	AvailableTools   []string            `json:"availableTools"`
+	InboxPath        string              `json:"inboxPath"`
 	DemoDataIncluded bool                `json:"demoDataIncluded"`
 }
 
-// StartMCP starts a local Streamable HTTP MCP server for the real database.
-func StartMCP(store *Store, token string) (*MCPServer, error) {
-	return startMCP(store, MCPAddress, token)
+// addWriteTool registers a tool that requires the bearer token.
+func addWriteTool[In, Out any](server *mcp.Server, name, description string, handler func(context.Context, In) (Out, error)) {
+	mcp.AddTool(server, &mcp.Tool{Name: name, Description: description}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+		if err := requireWrite(ctx); err != nil {
+			var none Out
+			return nil, none, err
+		}
+		output, err := handler(ctx, input)
+		return nil, output, err
+	})
 }
 
-func startMCP(store *Store, address, token string) (*MCPServer, error) {
+// StartMCP starts a local Streamable HTTP MCP server for the real database. It
+// serves loopback addresses only: the bearer token travels unencrypted.
+func StartMCP(store *Store, address, token string) (*MCPServer, error) {
 	if len(token) < 32 {
 		return nil, errors.New("a secure MCP write token is required")
+	}
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return nil, errors.New("the MCP server listens on loopback addresses only")
 	}
 	paperSchema, err := jsonschema.For[paperInput](nil)
 	if err != nil {
@@ -146,7 +218,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name: "bibliocell-library", Title: "BiblioCell", Version: "0.1.0",
-	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, and update_paper require the local Bearer token. Screening is a person's decision: agents suggest through proposedScreening and a person confirms in the desktop app. Demo data is never exposed."})
+	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, and update_paper require the local Bearer token. Screening and verification are a person's decisions: agents propose through proposedScreening, record claims with add_evidence, and a person confirms in the desktop app. Reuse one batchId across a run so undo_import can remove it. Demo data is never exposed."})
 
 	server.AddResource(&mcp.Resource{
 		URI: paperSchemaURI, Name: "paper-import.schema.json", Title: "Paper import JSON Schema",
@@ -185,21 +257,36 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 				"proposedScreening": {"included", "excluded", "uncertain"},
 				"reading":           {"unread", "skimmed", "read"},
 				"articleTypes":      {"original", "method", "review", "other"},
+				"datasetStatus":     {"pending", "identified", "verified"},
+				"datasetRole":       {"generated", "reused", "reprocessed", "benchmarked", "unknown"},
+				"evidenceStatus":    {"unreviewed", "verified", "rejected"},
+				"fileType":          {"fulltext", "supplement"},
 			},
 			ImportRules: []string{
 				"Write tools require Authorization: Bearer <MCP token>; unauthenticated access is read-only",
 				"Read the paper JSON Schema before constructing records",
 				"Set dryRun=true first to validate the complete batch without writing",
-				"Imports are atomic: any invalid or duplicate record rolls back the entire batch",
-				"An empty ID is generated; an existing ID is rejected rather than updated",
+				"Imports are atomic: any invalid record rolls back the entire batch",
+				"A known paper (same ID, DOI, PMID, or title) is skipped and listed in skipped, so rerunning a batch is safe; it is never updated",
+				"add_dataset matches by accession or title the same way and only adds new links",
+				"An empty ID is generated",
 				"DOI values are normalized and must be unique across the library",
+				"undo_import removes one batch and its stored files, except records a person has reviewed, starred, read, or verified",
+				"Record what you extract with add_evidence: a short excerpt and its source, per field, for the person checking it",
+				"Only a person verifies evidence, datasets, repository records, and paper links; list_evidence shows their verdicts",
+				"Drop a file into inboxPath, then call attach_file with its name; it moves into the library",
 				"screening and reviewedAt are read-only: a person decides in the desktop app; send proposedScreening with proposedReason instead",
 				"proposedScreening=excluded requires a non-empty proposedReason",
 				"Once reviewedAt is set, update_paper accepts only proposedScreening and proposedReason",
 				"At most 1000 papers can be imported in one call",
 				"Only real SQLite data is accessible; Demo records are never included",
 			},
-			AvailableTools:   []string{"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper"},
+			AvailableTools: []string{
+				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "undo_import",
+				"list_datasets", "get_dataset", "add_dataset", "update_dataset", "link_dataset",
+				"add_evidence", "list_evidence", "attach_file", "list_files",
+			},
+			InboxPath:        store.inboxPath(),
 			DemoDataIncluded: false,
 		}, nil
 	})
@@ -212,21 +299,15 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "list_papers", Description: "List and search real papers; never returns Demo records",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input listPapersInput) (*mcp.CallToolResult, listPapersOutput, error) {
+		Name: "list_papers", Description: "List and search real papers by text, decision, source, or batch, one page at a time; never returns Demo records",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input PaperFilter) (*mcp.CallToolResult, listPapersOutput, error) {
 		papers, err := store.ListPapers(ctx)
 		if err != nil {
 			return nil, listPapersOutput{}, err
 		}
-		matches := FilterPapers(papers, input.Query, 0)
-		limit := input.Limit
-		if limit <= 0 {
-			limit = 100
-		}
-		if limit > 500 {
-			limit = 500
-		}
-		return nil, listPapersOutput{Total: len(matches), Papers: FilterPapers(matches, "", limit)}, nil
+		input.Limit = mcpPageLimit(input.Limit)
+		matches, total := FilterPapers(papers, input)
+		return nil, listPapersOutput{Total: total, Papers: matches}, nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -247,7 +328,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "import_papers", Description: "Validate and atomically import up to 1000 papers; dryRun=true checks without writing",
+		Name: "import_papers", Description: "Validate and atomically import up to 1000 papers, skipping known ones and returning a batchId; dryRun=true checks without writing",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input importPapersInput) (*mcp.CallToolResult, ImportResult, error) {
 		if err := requireWrite(ctx); err != nil {
 			return nil, ImportResult{}, err
@@ -262,7 +343,7 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 		for i := range input.Papers {
 			papers[i] = input.Papers[i].paper()
 		}
-		result, err := store.ImportPapers(ctx, papers, input.DryRun)
+		result, err := store.ImportPapers(ctx, papers, input.BatchID, input.DryRun)
 		return nil, result, err
 	})
 
@@ -274,6 +355,85 @@ func startMCP(store *Store, address, token string) (*MCPServer, error) {
 		}
 		paper, err := store.UpdatePaper(ctx, input.ID, input.Patch)
 		return nil, paper, err
+	})
+
+	addWriteTool(server, "undo_import", "Remove what one import batch created, keeping records a person has worked on; requires Bearer token write access",
+		func(ctx context.Context, input undoImportInput) (UndoResult, error) {
+			return store.UndoImport(ctx, input.BatchID)
+		})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_datasets", Description: "List and search real datasets, one page at a time; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input DatasetFilter) (*mcp.CallToolResult, listDatasetsOutput, error) {
+		datasets, err := store.ListDatasets(ctx)
+		if err != nil {
+			return nil, listDatasetsOutput{}, err
+		}
+		input.Limit = mcpPageLimit(input.Limit)
+		matches, total := FilterDatasets(datasets, input)
+		return nil, listDatasetsOutput{Total: total, Datasets: matches}, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "get_dataset", Description: "Read one real dataset with its repositories and paper links; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input getDatasetInput) (*mcp.CallToolResult, Dataset, error) {
+		dataset, err := store.GetDataset(ctx, input.ID)
+		return nil, dataset, err
+	})
+
+	addWriteTool(server, "add_dataset", "Create a dataset with its repositories and paper links, or find it by accession or title and add new links; requires Bearer token write access",
+		func(ctx context.Context, input DatasetInput) (DatasetResult, error) {
+			return store.AddDataset(ctx, input)
+		})
+
+	addWriteTool(server, "update_dataset", "Edit selected fields of a dataset a person has not verified; requires Bearer token write access",
+		func(ctx context.Context, input updateDatasetInput) (Dataset, error) {
+			return store.UpdateDataset(ctx, input.ID, input.Patch)
+		})
+
+	addWriteTool(server, "link_dataset", "Record that a paper relates to a dataset, with evidence for a person to verify; requires Bearer token write access",
+		func(ctx context.Context, input linkDatasetInput) (Dataset, error) {
+			return store.LinkDataset(ctx, input.DatasetID, input.PaperLinkInput)
+		})
+
+	addWriteTool(server, "add_evidence", "Record claims about paper or dataset fields, each with an excerpt and source, for a person to check; requires Bearer token write access",
+		func(ctx context.Context, input addEvidenceInput) (evidenceOutput, error) {
+			if len(input.Evidence) == 0 || len(input.Evidence) > 1000 {
+				return evidenceOutput{}, errors.New("evidence must contain 1 to 1000 records")
+			}
+			evidence, err := store.AddEvidence(ctx, input.Evidence)
+			return evidenceOutput{Evidence: evidence}, err
+		})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_evidence", Description: "List recorded claims and a person's verdicts on them; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input listEvidenceInput) (*mcp.CallToolResult, evidenceOutput, error) {
+		evidence, err := store.ListEvidence(ctx, input.PaperID, input.DatasetID)
+		return nil, evidenceOutput{Evidence: evidence}, err
+	})
+
+	addWriteTool(server, "attach_file", "Move a file from the inbox into the library and attach it to a paper; requires Bearer token write access",
+		func(ctx context.Context, input attachFileInput) (PaperFile, error) {
+			if input.Type == "" {
+				input.Type = "fulltext"
+			}
+			return store.AttachInboxFile(ctx, input.PaperID, input.Name, input.Type)
+		})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_files", Description: "List the files attached to a paper, with paths relative to storagePath; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input listFilesInput) (*mcp.CallToolResult, listFilesOutput, error) {
+		files, err := store.ListPaperFiles(ctx)
+		if err != nil {
+			return nil, listFilesOutput{}, err
+		}
+		output := listFilesOutput{Files: []PaperFile{}}
+		for _, file := range files {
+			if file.PaperID == input.PaperID {
+				output.Files = append(output.Files, file)
+			}
+		}
+		return nil, output, nil
 	})
 
 	listener, err := net.Listen("tcp", address)
