@@ -25,7 +25,7 @@ export function renderSettings(app: App): string {
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("folder", 21)}</span><div><h2>数据存放位置</h2><p>SQLite 数据库和文献文件都保存在这个文件夹。</p></div></div>`
     + `<div class="settings-field"><label for="settings-storage-path">存放文件夹</label><div class="settings-path-row"><input class="settings-path-input" id="settings-storage-path" name="storagePath" type="text" value="${esc(preferences.storagePath)}" placeholder="在桌面应用中选择存放文件夹" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="choose-storage" ${disabled}>${I("folder", 16)} 选择文件夹</button></div></div>`
     + `<div class="settings-active-path"><span>本次运行正在使用</span><code>${esc(currentPath)}</code></div>`
-    + `<div class="settings-inline-note">${I("info", 16)}<span>文件夹内是 bibliocell.sqlite 和 papers/。选中新位置并保存后，应用会自动重启并切换过去。退出应用后也可以把整个文件夹复制到别处，再在这里选中副本。应用不会移动或覆盖旧数据；所选文件夹没有数据库时会新建空库。</span></div></section>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>文件夹内是 bibliocell.sqlite 和 papers/。选择文件夹后，应用会自动重启并切换过去；手动输入路径时，点“保存设置”后切换。退出应用后也可以把整个文件夹复制到别处，再在这里选中副本。应用不会移动或覆盖旧数据；所选文件夹没有数据库时会新建空库。</span></div></section>`
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("code", 21)}</span><div><h2>外部 AI · MCP</h2><p>允许本机 AI 查询正式库；认证后可导入和编辑。</p></div>${badge(mcp.enabled ? "已启用" : "未启动", mcp.enabled ? "green" : "gray")}</div>`
     + `<div class="settings-mcp-meta"><div><span>Streamable HTTP 地址</span><code>${esc(mcp.enabled ? mcp.endpoint : "启动桌面应用后监听 127.0.0.1:37841")}</code></div><p><strong>工具</strong>${esc(mcp.tools.join(" · "))}</p><p><strong>Schema 资源</strong>${esc(mcp.resources.join(" · "))}</p></div>`
     + `<div class="settings-field"><label for="settings-mcp-token">Bearer Token</label><div class="settings-token-row"><input class="settings-path-input" id="settings-mcp-token" name="mcpToken" type="password" value="${esc(preferences.mcpToken)}" minlength="32" maxlength="256" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-mcp-token" ${disabled}>显示</button><button class="btn btn-secondary" type="button" data-action="copy-mcp-token" ${disabled}>复制</button><button class="btn btn-secondary" type="button" data-action="regenerate-mcp-token" ${disabled}>重新生成</button></div><p class="form-hint">32–256 个可见 ASCII 字符，不能包含空格。重新生成后，旧 Token 将在重启时失效。</p></div>`
@@ -85,10 +85,11 @@ export const settingsActions = (app: App): Record<string, (el: HTMLElement) => v
     const button = el as HTMLButtonElement;
     button.disabled = true;
     Library.chooseStoragePath().then((path) => {
-      if (!path) return;
       const input = $<HTMLInputElement>("#settings-storage-path");
-      if (input) input.value = path;
-      setStatus("已选择新位置，保存后应用会自动重启并切换过去。");
+      const form = $<HTMLFormElement>("#settings-form");
+      if (!path || !input || !form || path === app.env.settings.storagePath) return;
+      input.value = path;
+      saveSettings(app, form); // Picking a folder is the decision to switch to it.
     }).catch((error: unknown) => {
       app.toast(`无法选择文件夹：${errorMessage(error, "请重试")}`, true);
     }).finally(() => {
