@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoState } from "../src/demo-data.ts";
-import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterPapers, nextRunText, normalizeDOI, normalizeDataset, prepareImport, shortTime, tasksFor, validDOI } from "../src/model.ts";
+import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterPapers, nextRunText, normalizeDOI, normalizeDataset, pageList, paperPage, prepareImport, shortTime, speciesDisplay, tasksFor, toggleSort, validDOI } from "../src/model.ts";
 
 test("esc neutralizes HTML metacharacters and tolerates null", () => {
   assert.equal(esc(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
@@ -56,6 +56,24 @@ test("filterPapers narrows by source", () => {
   assert.ok(matched.length > 0 && matched.every((p) => p.source === source));
 });
 
+test("paperPage clamps the requested page and returns slice bounds", () => {
+  assert.deepEqual(paperPage(519, 10, 1), { page: 1, count: 52, start: 0, end: 10 });
+  assert.deepEqual(paperPage(519, 10, 52), { page: 52, count: 52, start: 510, end: 519 });
+  assert.deepEqual(paperPage(519, 10, 99), { page: 52, count: 52, start: 510, end: 519 }, "beyond the last page clamps down");
+  assert.deepEqual(paperPage(519, 10, 0), { page: 1, count: 52, start: 0, end: 10 }, "non-positive requests become page 1");
+  assert.deepEqual(paperPage(5, 100, 1), { page: 1, count: 1, start: 0, end: 5 });
+  assert.deepEqual(paperPage(0, 50, 3), { page: 1, count: 1, start: 0, end: 0 });
+  assert.deepEqual(paperPage(519, 80, 1).end, 10, "unknown sizes fall back to the smallest");
+});
+
+test("pageList keeps first, last and a window around the current page", () => {
+  assert.deepEqual(pageList(3, 5), [1, 2, 3, 4, 5]);
+  assert.deepEqual(pageList(1, 52), [1, 2, "gap", 52]);
+  assert.deepEqual(pageList(5, 52), [1, "gap", 4, 5, 6, "gap", 52]);
+  assert.deepEqual(pageList(52, 52), [1, "gap", 51, 52]);
+  assert.deepEqual(pageList(2, 8), [1, 2, 3, "gap", 8]);
+});
+
 test("fileSize switches from KB to MB", () => {
   assert.equal(fileSize(10), "1 KB");
   assert.equal(fileSize(2048), "2 KB");
@@ -96,8 +114,33 @@ test("filterPapers matches any of a paper's species, applies starred and sorts b
   const search = filterPapers(papers, { ...emptyFilters(), search: "根瘤" });
   assert.deepEqual(search.map((p) => p.id), ["DEMO-P-006"]);
 
-  const byTitle = filterPapers(papers, { ...emptyFilters(), sort: "title" }).map((p) => p.title);
+  const byTitle = filterPapers(papers, { ...emptyFilters(), sort: "title-asc" }).map((p) => p.title);
   assert.deepEqual(byTitle, [...byTitle].sort((a, b) => a.localeCompare(b, "zh-CN")));
+});
+
+test("toggleSort flips direction and applies column defaults", () => {
+  assert.equal(toggleSort("newest", "year"), "year-desc");
+  assert.equal(toggleSort("year-desc", "year"), "year-asc");
+  assert.equal(toggleSort("year-asc", "year"), "year-desc");
+  assert.equal(toggleSort("newest", "title"), "title-asc");
+  assert.equal(toggleSort("title-asc", "title"), "title-desc");
+  assert.equal(toggleSort("modality-desc", "species"), "species-asc");
+});
+
+test("filterPapers sorts by year with missing years last, and by species display", () => {
+  const { papers } = demoState();
+  const withMissing = [...papers, { ...papers[0]!, id: "P-none", year: null }];
+  const asc = filterPapers(withMissing, { ...emptyFilters(), sort: "year-asc" }).map((p) => p.year);
+  const known = asc.filter((y) => y != null);
+  assert.deepEqual(known, [...known].sort((a, b) => a - b));
+  assert.equal(asc.at(-1), null);
+  const desc = filterPapers(withMissing, { ...emptyFilters(), sort: "year-desc" }).map((p) => p.year);
+  const knownDesc = desc.filter((y) => y != null);
+  assert.deepEqual(knownDesc, [...knownDesc].sort((a, b) => b - a));
+  assert.equal(desc.at(-1), null);
+
+  const species = filterPapers(papers, { ...emptyFilters(), sort: "species-asc" }).map((p) => speciesDisplay(p));
+  assert.deepEqual(species, [...species].sort((a, b) => a.localeCompare(b, "zh-CN")));
 });
 
 test("tasksFor generates screening, fulltext and data rows from state", () => {

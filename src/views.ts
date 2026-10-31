@@ -2,8 +2,8 @@
 import type { App } from "./app.ts";
 import type { Paper } from "./mygo.ts";
 import {
-  FULL, SCREEN, arr, esc, filterPapers, joinList, speciesDisplay, speciesNames, uniqueValues, speciesLabelOf,
-  type TaskRow, type TaskType,
+  FULL, PAGE_SIZES, SORT_OPTIONS, SCREEN, arr, esc, filterPapers, joinList, pageList, paperPage, sortParts, speciesDisplay, speciesNames, uniqueValues, speciesLabelOf,
+  type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
 
@@ -30,18 +30,27 @@ export function taskGroups(ts: TaskRow[]): string {
   return groups || '<p class="muted task-empty">暂无待补事项。</p>';
 }
 
-export function paperTable(items: Paper[], compact = false): string {
+export function paperTable(items: Paper[], compact = false, sort = ""): string {
   if (!items.length) return empty("没有找到匹配文献", "尝试调整筛选条件，或添加一篇新文献。", '<button class="btn btn-secondary" data-action="clear-filters">清空筛选</button>');
+  const active = compact ? null : sortParts(sort);
+  const th = (label: string, key?: SortKey): string => {
+    if (compact || !key) return `<th>${label}</th>`;
+    const on = active!.key === key;
+    const dir = on ? active!.dir : "";
+    return `<th${on ? ` aria-sort="${dir === "asc" ? "ascending" : "descending"}"` : ""}><button class="th-sort${on ? " on" : ""}" data-action="sort-column" data-key="${key}" aria-label="按${label}排序">${label}<span class="sort-mark">${on ? I(dir === "asc" ? "chevron-up" : "chevron-down", 12) : ""}</span></button></th>`;
+  };
   const rows = items.map((p) =>
     `<tr data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="查看 ${esc(p.title)}">`
     + `<td><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? "取消收藏" : "收藏"}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`
     + `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || "作者待补")}</span><span class="meta-separator">·</span><span>${esc(p.year || "年份待补")}</span>${p.publicationStatus === "preprint" ? '<span class="preprint-label">预印本</span>' : ""}</div></td>`
+    + (compact ? "" : `<td class="year-cell">${p.year ? esc(String(p.year)) : '<span class="muted">年份待补</span>'}</td>`)
     + `<td><div class="species-label">${esc(speciesDisplay(p) || "物种待补")}</div><div class="species-name">${esc(joinList(p.organs) || "组织待补")}</div></td>`
     + `<td>${modalityBadges(p)}</td>`
     + (compact ? "" : `<td><span class="fulltext-status">${fullBadge(p.fulltext)}</span></td>`)
     + `<td>${screenBadge(p.screening)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`,
   ).join("");
-  return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead><tr><th class="col-star"><span class="sr-only">收藏</span></th><th>文献</th><th>研究对象</th><th>技术</th>${compact ? "" : "<th>全文</th>"}<th>收录状态</th><th class="col-arrow"></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const head = `<tr><th class="col-star"><span class="sr-only">收藏</span></th>${th("文献", "title")}${compact ? "" : th("发表时间", "year")}${th("研究对象", "species")}${th("技术", "modality")}${compact ? "" : "<th>全文</th>"}<th>收录状态</th><th class="col-arrow"></th></tr>`;
+  return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 
 export function renderOverview(app: App): string {
@@ -81,15 +90,28 @@ export function renderOverview(app: App): string {
     + `<section class="panel"><div class="panel-header"><div><h2>研究物种</h2><p class="muted">当前目录中的文献分布</p></div><span class="muted">${uniqueValues(papers, "species").length} 个分类</span></div><div class="panel-body species-bars">${speciesBars}</div></section></div>`;
 }
 
+/** paperPager renders the page-size select and page buttons for the papers table footer. */
+function paperPager(size: number, info: ReturnType<typeof paperPage>): string {
+  const pages = pageList(info.page, info.count).map((n) =>
+    n === "gap" ? '<span class="pager-gap">…</span>'
+      : `<button class="page-btn${n === info.page ? " active" : ""}" data-action="paper-page" data-id="${n}"${n === info.page ? ' aria-current="page"' : ""} aria-label="第 ${n} 页">${n}</button>`,
+  ).join("");
+  return `<div class="pager"><label class="page-size"><span>每页</span><select class="filter-select" data-page-size aria-label="每页显示条数">${PAGE_SIZES.map((s) => option(String(s), `${s} 篇`, size)).join("")}</select></label>`
+    + `<nav class="pager-pages" aria-label="文献分页"><button class="page-btn" data-action="paper-page" data-id="${info.page - 1}"${info.page <= 1 ? " disabled" : ""} aria-label="上一页">${I("chevron-left", 15)}</button>${pages}<button class="page-btn" data-action="paper-page" data-id="${info.page + 1}"${info.page >= info.count ? " disabled" : ""} aria-label="下一页">${I("chevron-right", 15)}</button></nav></div>`;
+}
+
 export function renderPapers(app: App): string {
   const { filters } = app;
   const papers = app.state.papers;
   const items = filterPapers(papers, filters);
+  // Writing the clamped page back keeps state valid as filters or edits shrink the list.
+  const info = paperPage(items.length, app.paperPageSize, app.paperPage);
+  app.paperPage = info.page;
   const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening", "source"] as const;
   const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0);
   const entries = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
   return `<div class="section-toolbar"><div class="view-tabs"><button class="view-tab ${filters.starred ? "" : "active"}" data-action="all-papers">全部文献 <span>${papers.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} 我的收藏 <span>${papers.filter((p) => p.starred).length}</span></button></div><button class="btn btn-secondary" data-action="export-csv">${I("download", 16)} 导出列表</button></div>`
-    + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="搜索题目、物种、作者或 DOI…" value="${esc(filters.search)}" aria-label="搜索文献"></label><select class="filter-select" data-filter="sort" aria-label="排序方式">${option("newest", "最近收录", filters.sort)}${option("year-desc", "发表年份 ↓", filters.sort)}${option("title", "按标题排序", filters.sort)}</select></div>`
+    + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="搜索题目、物种、作者或 DOI…" value="${esc(filters.search)}" aria-label="搜索文献"></label><select class="filter-select" data-filter="sort" aria-label="排序方式">${SORT_OPTIONS.map(([value, label]) => option(value, label, filters.sort)).join("")}</select></div>`
     + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} 筛选</span>`
     + selectFilter(filters, "species", "全部物种", uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))
     + selectFilter(filters, "organ", "全部组织", uniqueValues(papers, "organ"))
@@ -100,7 +122,7 @@ export function renderPapers(app: App): string {
     + selectFilter(filters, "screening", "收录状态", entries(SCREEN))
     + selectFilter(filters, "source", "全部来源", uniqueValues(papers, "source"))
     + (filterCount || filters.search ? `<button class="text-link" data-action="clear-filters">清空${filterCount ? ` (${filterCount})` : ""}</button>` : "")
-    + `</div>${paperTable(items)}<div class="table-footer"><span>显示 ${items.length} / ${papers.length} 篇文献</span><span class="muted">点击文献查看详情与整理记录</span></div></section>`;
+    + `</div>${paperTable(items.slice(info.start, info.end), false, filters.sort)}<div class="table-footer"><span>显示 ${items.length ? `${info.start + 1}–${info.end}` : 0} / ${items.length} 篇文献</span><span class="muted footer-hint">点击文献查看详情与整理记录</span>${items.length ? paperPager(app.paperPageSize, info) : ""}</div></section>`;
 }
 
 export function renderDatasets(app: App): string {

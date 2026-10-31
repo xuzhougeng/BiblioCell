@@ -338,8 +338,15 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .paper-meta { font-size: calc(12.5px * var(--font-scale, 1)); color: #75735f; line-height: 1.6; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
 .paper-meta > span + span:before { margin-right: 8px; color: #b8ac8d; content: none }
 .table-wrap { overflow: auto }
-.paper-table { min-width: 640px }
+.paper-table { min-width: 720px }
 .paper-table th { font-family: var(--serif); font-size: calc(13px * var(--font-scale, 1)); color: #78725d; letter-spacing: 1.2px; text-transform: uppercase; background: #f3edda; border-bottom: 1.5px solid var(--line-strong); padding: 9px 16px; white-space: nowrap }
+.th-sort { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer }
+.th-sort:hover { color: var(--primary-deep) }
+.th-sort.on { color: var(--primary) }
+.th-sort .sort-mark { display: inline-flex; width: 12px; height: 12px; color: var(--primary) }
+.th-sort .sort-mark:empty { display: none }
+.th-sort svg { width: 12px; height: 12px }
+.paper-table .year-cell { white-space: nowrap; color: #6a7161; font-variant-numeric: tabular-nums }
 .paper-table td { padding: 11px 16px; border-bottom: 1px solid #e6dec6; font-size: calc(14px * var(--font-scale, 1)); vertical-align: middle; color: #4a5142 }
 .paper-table th:first-child, .paper-table td:first-child { min-width: 0; width: 42px; max-width: 42px; padding-left: 13px; padding-right: 4px }
 .paper-table th:last-child, .paper-table td:last-child { padding-right: 22px }
@@ -349,6 +356,16 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .paper-table td .badge { margin: 2px 4px 2px 0 }
 .table-footer { display: flex; justify-content: space-between; align-items: center; padding: 15px 22px; font-size: calc(12.5px * var(--font-scale, 1)); color: #78725e; background: var(--surface-deep); border-top: 1px solid var(--line) }
 .table-footer button { font-size: calc(13px * var(--font-scale, 1)) }
+.pager { display: flex; align-items: center; gap: 16px; flex-wrap: wrap }
+.page-size { display: inline-flex; align-items: center; gap: 7px; color: #78725e }
+.page-size .filter-select { min-width: 0; max-width: 92px; min-height: 31px; padding: 4px 24px 4px 9px; font-size: calc(12.5px * var(--font-scale, 1)) }
+.pager-pages { display: inline-flex; align-items: center; gap: 4px }
+.page-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: #6a6455; font-size: calc(12.5px * var(--font-scale, 1)); cursor: pointer }
+.page-btn:hover:not(:disabled):not(.active) { border-color: var(--primary); color: var(--primary-deep) }
+.page-btn.active { background: var(--primary); border-color: var(--primary); color: #fbf8ef; font-weight: 650; cursor: default }
+.page-btn:disabled { opacity: 0.45; cursor: default }
+.page-btn svg { width: 14px; height: 14px }
+.pager-gap { color: #9a937e; padding: 0 3px }
 /* ---------------- 工具栏与筛选 ---------------- */
 .toolbar { display: flex; gap: 13px; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap }
 .search-input { display: flex; gap: 10px; align-items: center; min-width: 250px; position: relative }
@@ -948,8 +965,9 @@ code { font-family: var(--mono) }
   .filter-field .filter-select { width: 100%; max-width: none; font-size: calc(12.5px * var(--font-scale, 1)); padding-right: 16px }
   .filter-caption { display: none }
   .toolbar > .filter-select { min-width: 95px; max-width: 120px }
-  .table-footer { font-size: calc(11.5px * var(--font-scale, 1)); gap: 14px }
-  .table-footer > span:last-child { max-width: 150px; text-align: right }
+  .table-footer { font-size: calc(11.5px * var(--font-scale, 1)); gap: 14px; flex-wrap: wrap }
+  .table-footer > .footer-hint { display: none }
+  .pager { gap: 10px; margin-left: auto }
   .task-list { padding: 0 18px }
   .panel-footnote { font-size: calc(12px * var(--font-scale, 1)); padding: 13px 18px; align-items: flex-start }
   .panel-footnote svg { margin-top: 2px; flex-shrink: 0 }

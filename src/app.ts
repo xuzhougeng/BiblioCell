@@ -9,8 +9,8 @@ import {
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
-  PAGES, READING, SCREEN, clone, csvText, decideScreening, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
-  speciesNameFor, tasksFor, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type TaskRow, type TaskType,
+  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, csvText, decideScreening, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
+  speciesNameFor, tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
@@ -48,6 +48,9 @@ export class App {
   filters: Filters = emptyFilters();
   taskFilter: TaskType | "all" = "all";
   datasetSearch = "";
+  /** Papers-table pagination; the stored page is clamped against the filtered total at render time. */
+  paperPage = 1;
+  paperPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-page-size"))) ? Number(localStorage.getItem("bibliocell-page-size")) : PAGE_SIZES[0]!;
   drawer: Drawer | null = null;
   drawerTab = "overview";
   syncing = new Set<string>();
@@ -376,16 +379,35 @@ export class App {
     },
     "clear-filters": () => {
       this.filters = emptyFilters();
+      this.paperPage = 1;
       const search = $<HTMLInputElement>("#global-search");
       if (search) search.value = "";
       this.render();
     },
+    "paper-page": (el) => {
+      const page = Number(el.dataset.id);
+      if (!page || page < 1) return;
+      this.paperPage = page;
+      this.render();
+      // Keep the new page's header in view below the sticky topbar.
+      const table = $(".papers-panel .table-wrap");
+      if (table) window.scrollTo({ top: window.scrollY + table.getBoundingClientRect().top - 66 });
+    },
+    "sort-column": (el) => {
+      const key = el.dataset.key as SortKey;
+      if (!SORT_KEYS.includes(key)) return;
+      this.filters.sort = toggleSort(this.filters.sort, key);
+      this.paperPage = 1;
+      this.render();
+    },
     "all-papers": () => {
       this.filters.starred = false;
+      this.paperPage = 1;
       this.render();
     },
     "starred-papers": () => {
       this.filters.starred = true;
+      this.paperPage = 1;
       this.render();
     },
     "task-filter": (el) => {
@@ -406,6 +428,7 @@ export class App {
       const name = speciesNameFor(this.state.papers, el.dataset.label ?? "");
       if (!name) return;
       this.filters.species = name;
+      this.paperPage = 1;
       this.navigate("papers");
     },
     "new-dataset": () => datasetModal(this),
@@ -491,10 +514,20 @@ export class App {
       location.reload();
       return;
     }
+    if (target instanceof HTMLSelectElement && "pageSize" in target.dataset) {
+      const size = Number(target.value);
+      if (PAGE_SIZES.includes(size)) {
+        this.paperPageSize = size;
+        localStorage.setItem("bibliocell-page-size", String(size));
+      }
+      this.paperPage = 1;
+      this.render();
+    }
     if (target instanceof HTMLSelectElement && target.dataset.filter) {
       const key = target.dataset.filter as keyof Filters;
       if (key !== "starred" && key in this.filters) {
         this.filters[key] = target.value;
+        this.paperPage = 1;
         this.render();
       }
     }
@@ -535,8 +568,10 @@ export class App {
       const { id, value, selectionStart } = target;
       clearTimeout(this.searchTimer);
       this.searchTimer = setTimeout(() => {
-        if (id === "paper-search") this.filters.search = value;
-        else this.datasetSearch = value;
+        if (id === "paper-search") {
+          this.filters.search = value;
+          this.paperPage = 1;
+        } else this.datasetSearch = value;
         this.render();
         const input = document.getElementById(id);
         if (input instanceof HTMLInputElement) {
@@ -563,6 +598,7 @@ export class App {
     if (e.key === "Enter" && target instanceof HTMLInputElement && target.id === "global-search") {
       e.preventDefault();
       this.filters = { ...emptyFilters(), search: target.value, sort: this.filters.sort };
+      this.paperPage = 1;
       this.navigate("papers");
       return;
     }

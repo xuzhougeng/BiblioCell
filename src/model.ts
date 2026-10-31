@@ -169,6 +169,55 @@ export function speciesNameFor(papers: Paper[], label: string): string {
   return "";
 }
 
+/** Sort keys that map to clickable table columns; "newest" (收录时间) stays toolbar-only. */
+export type SortKey = "title" | "species" | "modality" | "year";
+export const SORT_KEYS: SortKey[] = ["title", "species", "modality", "year"];
+const SORT_DEFAULT_DIRS: Record<SortKey, "asc" | "desc"> = { title: "asc", species: "asc", modality: "asc", year: "desc" };
+
+export const SORT_OPTIONS: [string, string][] = [
+  ["newest", "最近收录"],
+  ["year-desc", "发表时间 ↓"], ["year-asc", "发表时间 ↑"],
+  ["title-asc", "标题 A→Z"], ["title-desc", "标题 Z→A"],
+  ["species-asc", "研究对象 A→Z"], ["species-desc", "研究对象 Z→A"],
+  ["modality-asc", "技术 A→Z"], ["modality-desc", "技术 Z→A"],
+];
+
+export const sortParts = (sort: string): { key: SortKey | "added"; dir: "asc" | "desc" } => {
+  const [key, dir] = sort.split("-");
+  return { key: (SORT_KEYS as string[]).includes(key ?? "") ? key as SortKey : "added", dir: dir === "desc" ? "desc" : "asc" };
+};
+
+/** toggleSort flips the direction when the column is already active, otherwise applies its default. */
+export function toggleSort(current: string, key: SortKey): string {
+  const now = sortParts(current);
+  if (now.key === key) return `${key}-${now.dir === "asc" ? "desc" : "asc"}`;
+  return `${key}-${SORT_DEFAULT_DIRS[key]}`;
+}
+
+/** textCmp orders by a display string in either direction; blank values always sink to the end. */
+const textCmp = (get: (p: Paper) => string, dir: 1 | -1) => (a: Paper, b: Paper): number => {
+  const va = get(a).trim();
+  const vb = get(b).trim();
+  if (!va && !vb) return 0;
+  if (!va || !vb) return va ? -1 : 1;
+  return va.localeCompare(vb, "zh-CN") * dir;
+};
+const yearCmp = (dir: 1 | -1) => (a: Paper, b: Paper): number => {
+  const ya = a.year == null ? null : Number(a.year);
+  const yb = b.year == null ? null : Number(b.year);
+  if (ya === null && yb === null) return 0;
+  if (ya === null || yb === null) return ya === null ? 1 : -1;
+  return (ya - yb) * dir;
+};
+
+const SORTERS: Record<string, (a: Paper, b: Paper) => number> = {
+  newest: (a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")),
+  "year-asc": yearCmp(1), "year-desc": yearCmp(-1),
+  "title-asc": textCmp((p) => p.title, 1), "title-desc": textCmp((p) => p.title, -1),
+  "species-asc": textCmp((p) => speciesDisplay(p), 1), "species-desc": textCmp((p) => speciesDisplay(p), -1),
+  "modality-asc": textCmp((p) => joinList(p.modalities), 1), "modality-desc": textCmp((p) => joinList(p.modalities), -1),
+};
+
 export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
   const q = filters.search.trim().toLocaleLowerCase();
   return papers
@@ -190,11 +239,39 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
         && (!filters.source || p.source === filters.source)
         && (!filters.starred || p.starred);
     })
-    .sort((a, b) => filters.sort === "year-desc"
-      ? (Number(b.year) || 0) - (Number(a.year) || 0)
-      : filters.sort === "title"
-        ? a.title.localeCompare(b.title, "zh-CN")
-        : String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
+    .sort(SORTERS[filters.sort] ?? SORTERS.newest!);
+}
+
+export const PAGE_SIZES = [10, 50, 100];
+
+export interface PaperPage {
+  page: number;
+  count: number;
+  start: number;
+  end: number;
+}
+
+/** paperPage clamps a requested 1-based page against the filtered total and returns its slice bounds. */
+export function paperPage(total: number, size: number, requested: number): PaperPage {
+  const per = PAGE_SIZES.includes(size) ? size : PAGE_SIZES[0]!;
+  const count = Math.max(1, Math.ceil(total / per));
+  const page = Math.min(Math.max(1, Math.floor(requested) || 1), count);
+  const start = (page - 1) * per;
+  return { page, count, start, end: Math.min(start + per, total) };
+}
+
+/** pageList lists pager buttons: first, last and a window around the current page, with gaps between. */
+export function pageList(page: number, count: number): (number | "gap")[] {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i + 1);
+  const wanted = [...new Set([1, count, page - 1, page, page + 1])].filter((n) => n >= 1 && n <= count).sort((a, b) => a - b);
+  const list: (number | "gap")[] = [];
+  let prev = 0;
+  for (const n of wanted) {
+    if (n - prev > 1) list.push("gap");
+    list.push(n);
+    prev = n;
+  }
+  return list;
 }
 
 export const paperDatasets = (datasets: Dataset[], paperId: string): Dataset[] =>
