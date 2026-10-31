@@ -8,7 +8,7 @@
       "name": "mygo-maintenance",
       "source": {
         "source": "local",
-        "path": "./mygo-maintenance"
+        "path": "./plugins/codex/mygo-maintenance"
       },
       "policy": {
         "installation": "AVAILABLE",
