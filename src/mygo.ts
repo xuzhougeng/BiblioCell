@@ -8,6 +8,8 @@ export interface Config {
   storagePath: string;
   fontSize: number;
   mcpToken: string;
+  ncbiApiKey: string;
+  crossrefEmail: string;
 }
 
 export interface Dataset {

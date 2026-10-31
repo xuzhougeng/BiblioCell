@@ -554,6 +554,7 @@ export class App {
   private onKeydown(e: KeyboardEvent): void {
     const target = e.target instanceof HTMLElement ? e.target : null;
     if (e.key === "Escape") {
+      e.preventDefault(); // Otherwise the web view passes the key on and macOS beeps.
       if ($("#modal-root .modal")) this.closeModal();
       else if (this.drawer) this.closeDrawer();
       else document.body.classList.remove("nav-open");

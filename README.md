@@ -34,7 +34,7 @@
 
 设置保存在 mygo 用户数据目录的 `settings.json`。Windows 默认配置文件为 `%APPDATA%\BiblioCell\settings.json`，默认存放文件夹为同一目录。页面分别显示配置的文件夹和本次运行实际使用的文件夹。
 
-存放文件夹可以整体迁移：退出应用后把它复制或移动到其他位置（包括其他电脑），在设置中选择新位置即可继续使用。数据库内不保存文件夹位置，附件的 `resources.local_path` 只存相对存放文件夹的路径，读取时拒绝任何跳出该文件夹的路径。字号和 MCP Token 属于本机偏好，保存在 `settings.json`，不随文件夹迁移。
+存放文件夹可以整体迁移：退出应用后把它复制或移动到其他位置（包括其他电脑），在设置中选择新位置即可继续使用。数据库内不保存文件夹位置，附件的 `resources.local_path` 只存相对存放文件夹的路径，读取时拒绝任何跳出该文件夹的路径。字号、MCP Token 和来源凭证属于本机偏好，保存在 `settings.json`，不随文件夹迁移。
 
 旧版设置中的 `databasePath` 会在启动时自动转换为存放文件夹。如果数据库用了其他文件名，会在原文件夹内改名为 `bibliocell.sqlite`；同名文件已存在时不覆盖，保留旧设置并改用默认文件夹，需要手动处理。
 
@@ -50,6 +50,14 @@
 - **bioRxiv**：扫描最近 30 天的预印本，在本地按题目、摘要和分类匹配关键词。
 - **GEO / SRA / ENA**：可选择仓库，保存 accession、标题和官方页面作为数据线索，不自动创建或关联数据集。
 - **CNCB GSA**：站点会要求浏览器安全检查，因此仅提供官方手动入口，不绕过验证抓取。
+
+来源配置窗口里可以填写提高限额的凭证，都是选填，修改后下一次同步生效：
+
+- **NCBI API Key**：PubMed 和 GEO / SRA 共用，请求上限从每秒 3 次提高到 10 次。ENA 不使用。
+- **Crossref 联系邮箱**：作为 `mailto` 发送，进入 polite 池。
+- Europe PMC、bioRxiv、ENA 未接入凭证。
+
+凭证保存在本机的 `settings.json`，不写入数据库，不随存放文件夹迁移，也不会通过 MCP 或 `sql` 读到。命令行用 `settings set -ncbi-api-key KEY -crossref-email EMAIL` 设置。
 
 自动更新默认关闭，此时只有点击“同步”才会访问远程公开 API。开启后，桌面应用运行期间每分钟检查一次，按设定频率逐个更新已启用的来源：
 
@@ -193,7 +201,7 @@ echo '{"paperId":"P-xxxx","role":"generated","evidenceText":"..."}' | ./BiblioCe
 ./BiblioCell sources sync pubmed
 ./BiblioCell sources auto -enabled=true -hours 24
 ./BiblioCell settings get
-./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN>
+./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN> -ncbi-api-key <KEY> -crossref-email <EMAIL>
 ./BiblioCell mcp
 ./BiblioCell serve -addr 127.0.0.1:37841
 ./BiblioCell sql "select id, title from papers order by added_at desc limit 5"

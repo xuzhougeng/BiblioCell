@@ -53,7 +53,7 @@ Commands:
   sources auto [-enabled=BOOL] [-hours N]
                                       show or set the schedule the desktop app runs
   settings get                        current settings.json
-  settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN]
+  settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN] [-ncbi-api-key KEY] [-crossref-email EMAIL]
   mcp                                 MCP endpoint and bearer token
   serve [-addr HOST:PORT]             run the MCP server without a window, until interrupted
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
@@ -384,7 +384,7 @@ func (c *cli) sources(ctx context.Context, args []string) error {
 		if len(rest) != 1 {
 			return errors.New("usage: sources sync ID")
 		}
-		return c.print(c.store.SyncSource(ctx, rest[0]))
+		return c.print(c.store.SyncSource(ctx, rest[0], sourceCredentials(c.settings)))
 	case "set":
 		if len(rest) == 0 {
 			return errors.New("usage: sources set ID [flags]")
@@ -433,6 +433,8 @@ func (c *cli) configure(args []string) error {
 		flags.StringVar(&config.StoragePath, "storage", config.StoragePath, "absolute folder for the SQLite database and paper files, used on next start")
 		flags.IntVar(&config.FontSize, "font-size", config.FontSize, "interface font size, 12-20")
 		flags.StringVar(&config.MCPToken, "mcp-token", config.MCPToken, "MCP bearer token, used on next start")
+		flags.StringVar(&config.NCBIAPIKey, "ncbi-api-key", config.NCBIAPIKey, "NCBI API key for PubMed, GEO and SRA")
+		flags.StringVar(&config.CrossrefEmail, "crossref-email", config.CrossrefEmail, "contact email for Crossref's polite pool")
 		if err := flags.Parse(rest); err != nil {
 			return err
 		}

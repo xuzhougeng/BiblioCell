@@ -57,7 +57,7 @@ func main() {
 			}
 		}
 
-		stopUpdates = store.StartSourceUpdates(func() {
+		stopUpdates = store.StartSourceUpdates(sourceCredentials(settingsStore), func() {
 			automation, err := store.SourceAutomation(context.Background())
 			if err != nil {
 				log.Printf("read source automation: %v", err)
@@ -102,6 +102,14 @@ func main() {
 
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// sourceCredentials reads the saved keys at each use, so edits need no restart.
+func sourceCredentials(store *settings.Store) func() library.SourceCredentials {
+	return func() library.SourceCredentials {
+		config := store.Get()
+		return library.SourceCredentials{NCBIAPIKey: config.NCBIAPIKey, CrossrefEmail: config.CrossrefEmail}
 	}
 }
 

@@ -200,7 +200,7 @@ func (l *Library) SyncSource(id string) (library.SyncResult, error) {
 	if l.store == nil {
 		return library.SyncResult{}, errors.New("library database is not ready")
 	}
-	return l.store.SyncSource(context.Background(), id)
+	return l.store.SyncSource(context.Background(), id, sourceCredentials(l.settings))
 }
 
 // sourcesChanged tells the window a background update started or finished.

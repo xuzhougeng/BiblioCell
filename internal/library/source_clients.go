@@ -24,12 +24,21 @@ const (
 	maxRemoteBytes = 16 << 20
 )
 
-type remoteHarvester struct {
-	client *http.Client
+// SourceCredentials raise the rate limits of the sources that offer it.
+type SourceCredentials struct {
+	NCBIAPIKey    string
+	CrossrefEmail string
 }
 
-func newRemoteHarvester() *remoteHarvester {
-	return &remoteHarvester{client: &http.Client{Timeout: 60 * time.Second}}
+type remoteHarvester struct {
+	client      *http.Client
+	credentials func() SourceCredentials
+}
+
+// newRemoteHarvester reads credentials at each request, so an edit applies to
+// the next sync without a restart.
+func newRemoteHarvester(credentials func() SourceCredentials) *remoteHarvester {
+	return &remoteHarvester{client: &http.Client{Timeout: 60 * time.Second}, credentials: credentials}
 }
 
 func (h *remoteHarvester) Harvest(ctx context.Context, config SourceConfig) ([]harvestRecord, error) {
@@ -58,6 +67,11 @@ func (h *remoteHarvester) get(ctx context.Context, endpoint string) ([]byte, err
 	req.Header.Set("User-Agent", "BiblioCell/0.1 (personal research library; manual metadata sync)")
 	resp, err := h.client.Do(req)
 	if err != nil {
+		// Drop the URL: it can carry a key, and this message is saved with the run.
+		var requestError *url.Error
+		if errors.As(err, &requestError) {
+			err = requestError.Err
+		}
 		return nil, fmt.Errorf("contact remote source: %w", err)
 	}
 	defer resp.Body.Close()
@@ -70,6 +84,10 @@ func (h *remoteHarvester) get(ctx context.Context, endpoint string) ([]byte, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet := strings.Join(strings.Fields(string(body)), " ")
+		// NCBI repeats a rejected key in its error body.
+		if key := h.credentials().NCBIAPIKey; key != "" {
+			snippet = strings.ReplaceAll(snippet, key, "[hidden]")
+		}
 		if len(snippet) > 240 {
 			snippet = snippet[:240]
 		}
@@ -89,6 +107,14 @@ func (h *remoteHarvester) getJSON(ctx context.Context, endpoint string, target a
 	return nil
 }
 
+// ncbiURL builds an E-utilities request, with the API key when there is one.
+func (h *remoteHarvester) ncbiURL(tool string, params url.Values) string {
+	if key := h.credentials().NCBIAPIKey; key != "" {
+		params.Set("api_key", key)
+	}
+	return ncbiEUtilsURL + tool + "?" + params.Encode()
+}
+
 type eSearchResponse struct {
 	Result struct {
 		IDs []string `json:"idlist"`
@@ -101,7 +127,7 @@ func (h *remoteHarvester) searchNCBI(ctx context.Context, database, query string
 		"retmax": {strconv.Itoa(limit)}, "sort": {"pub date"},
 	}
 	var response eSearchResponse
-	if err := h.getJSON(ctx, ncbiEUtilsURL+"esearch.fcgi?"+params.Encode(), &response); err != nil {
+	if err := h.getJSON(ctx, h.ncbiURL("esearch.fcgi", params), &response); err != nil {
 		return nil, fmt.Errorf("search NCBI %s: %w", database, err)
 	}
 	return response.Result.IDs, nil
@@ -155,7 +181,7 @@ func (h *remoteHarvester) harvestPubMed(ctx context.Context, config SourceConfig
 		return []harvestRecord{}, err
 	}
 	params := url.Values{"db": {"pubmed"}, "id": {strings.Join(ids, ",")}, "retmode": {"xml"}}
-	body, err := h.get(ctx, ncbiEUtilsURL+"efetch.fcgi?"+params.Encode())
+	body, err := h.get(ctx, h.ncbiURL("efetch.fcgi", params))
 	if err != nil {
 		return nil, fmt.Errorf("fetch PubMed records: %w", err)
 	}
@@ -273,6 +299,9 @@ func (h *remoteHarvester) harvestCrossref(ctx context.Context, config SourceConf
 	params := url.Values{
 		"query.bibliographic": {config.Query}, "rows": {strconv.Itoa(config.MaxResults)},
 		"select": {"DOI,title,author,published,container-title,abstract,type,URL"},
+	}
+	if email := h.credentials().CrossrefEmail; email != "" {
+		params.Set("mailto", email)
 	}
 	var response struct {
 		Message struct {

@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -693,7 +697,7 @@ func TestRemoteConnectorsLive(t *testing.T) {
 			configs = append(configs, configured)
 		}
 	}
-	harvester := newRemoteHarvester()
+	harvester := newRemoteHarvester(func() SourceCredentials { return SourceCredentials{} })
 	for _, config := range configs {
 		name := config.ID
 		if config.Provider != "" {
@@ -713,6 +717,75 @@ func TestRemoteConnectorsLive(t *testing.T) {
 			}
 			t.Logf("received %d record(s), first external ID %s", len(records), records[0].ExternalID)
 		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func TestHarvesterSendsCredentials(t *testing.T) {
+	credentials := SourceCredentials{NCBIAPIKey: "ncbi-secret", CrossrefEmail: "me@example.org"}
+	harvester := newRemoteHarvester(func() SourceCredentials { return credentials })
+	requests := []*url.URL{}
+	harvester.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests = append(requests, request.URL)
+		body := `{"esearchresult":{"idlist":["1"]},"result":{}}`
+		if strings.Contains(request.URL.Path, "efetch") {
+			body = `<PubmedArticleSet></PubmedArticleSet>`
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	ctx := context.Background()
+	for _, config := range []SourceConfig{
+		{ID: "pubmed", Query: "plant", MaxResults: 1},
+		{ID: "sequence-repositories", Provider: "geo", Query: "plant", MaxResults: 1},
+		{ID: "sequence-repositories", Provider: "sra", Query: "plant", MaxResults: 1},
+	} {
+		if _, err := harvester.Harvest(ctx, config); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(requests) != 6 {
+		t.Fatalf("made %d NCBI requests, want 6", len(requests))
+	}
+	for _, request := range requests {
+		if request.Query().Get("api_key") != credentials.NCBIAPIKey {
+			t.Errorf("%s sent no API key", request.Path)
+		}
+	}
+
+	requests = requests[:0]
+	if _, err := harvester.Harvest(ctx, SourceConfig{ID: "crossref", Query: "plant", MaxResults: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if got := requests[0].Query().Get("mailto"); got != credentials.CrossrefEmail {
+		t.Errorf("Crossref mailto = %q", got)
+	}
+
+	requests = requests[:0]
+	if _, err := harvester.Harvest(ctx, SourceConfig{ID: "europe-pmc", Query: "plant", MaxResults: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if query := requests[0].RawQuery; strings.Contains(query, "secret") || strings.Contains(query, "example.org") {
+		t.Errorf("Europe PMC received another service's credentials: %s", query)
+	}
+
+	// The error ends up in harvest_runs, shown in the app and readable over SQL.
+	harvester.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})
+	_, err := harvester.Harvest(ctx, SourceConfig{ID: "pubmed", Query: "plant", MaxResults: 1})
+	if err == nil || strings.Contains(err.Error(), credentials.NCBIAPIKey) {
+		t.Errorf("failure exposes the key or was lost: %v", err)
+	}
+	harvester.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"error":"API key invalid","api-key":"ncbi-secret"}`
+		return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	_, err = harvester.Harvest(ctx, SourceConfig{ID: "pubmed", Query: "plant", MaxResults: 1})
+	if err == nil || strings.Contains(err.Error(), credentials.NCBIAPIKey) {
+		t.Errorf("rejected key is repeated or was lost: %v", err)
 	}
 }
 

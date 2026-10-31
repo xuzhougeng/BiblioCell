@@ -337,8 +337,8 @@ var ErrSyncBusy = errors.New("另一项来源更新正在运行，请稍后再�
 const sourceRunLimit = 15 * time.Minute
 
 // SyncSource performs one fetch and atomically commits its local records.
-func (s *Store) SyncSource(ctx context.Context, id string) (SyncResult, error) {
-	return s.syncSource(ctx, id, newRemoteHarvester())
+func (s *Store) SyncSource(ctx context.Context, id string, credentials func() SourceCredentials) (SyncResult, error) {
+	return s.syncSource(ctx, id, newRemoteHarvester(credentials))
 }
 
 func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarvester) (SyncResult, error) {

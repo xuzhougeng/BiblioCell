@@ -34,7 +34,7 @@ func (h *remoteHarvester) harvestGEO(ctx context.Context, config SourceConfig) (
 	var response struct {
 		Result map[string]json.RawMessage `json:"result"`
 	}
-	if err := h.getJSON(ctx, ncbiEUtilsURL+"esummary.fcgi?"+params.Encode(), &response); err != nil {
+	if err := h.getJSON(ctx, h.ncbiURL("esummary.fcgi", params), &response); err != nil {
 		return nil, fmt.Errorf("fetch GEO metadata: %w", err)
 	}
 	records := make([]harvestRecord, 0, len(ids))
@@ -76,7 +76,7 @@ func (h *remoteHarvester) harvestSRA(ctx context.Context, config SourceConfig) (
 	var response struct {
 		Result map[string]json.RawMessage `json:"result"`
 	}
-	if err := h.getJSON(ctx, ncbiEUtilsURL+"esummary.fcgi?"+params.Encode(), &response); err != nil {
+	if err := h.getJSON(ctx, h.ncbiURL("esummary.fcgi", params), &response); err != nil {
 		return nil, fmt.Errorf("fetch SRA metadata: %w", err)
 	}
 	records := make([]harvestRecord, 0, len(ids))

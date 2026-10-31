@@ -140,8 +140,8 @@ func (s *Store) SaveSourceAutomation(ctx context.Context, enabled bool, interval
 
 // StartSourceUpdates runs due sources in the background until stop is called.
 // onChange fires when a run starts and when it ends, on the background goroutine.
-func (s *Store) StartSourceUpdates(onChange func()) (stop func()) {
-	return s.startSourceUpdates(newRemoteHarvester(), sourceCheckEvery, onChange)
+func (s *Store) StartSourceUpdates(credentials func() SourceCredentials, onChange func()) (stop func()) {
+	return s.startSourceUpdates(newRemoteHarvester(credentials), sourceCheckEvery, onChange)
 }
 
 func (s *Store) startSourceUpdates(harvester sourceHarvester, every time.Duration, onChange func()) (stop func()) {

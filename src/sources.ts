@@ -27,6 +27,14 @@ const QUERY_HINTS: Record<string, string> = {
   "sequence-repositories": 'GEO / SRA 使用 NCBI 检索语法；ENA 使用 Portal API 语法，例如 description="*single*" AND tax_tree(33090)。',
 };
 
+/** SOURCE_CREDENTIALS are the per-machine settings that raise a source's rate limit. */
+const NCBI_CREDENTIAL = { name: "ncbiApiKey", label: "NCBI API Key", type: "password" } as const;
+const SOURCE_CREDENTIALS: Record<string, { name: "ncbiApiKey" | "crossrefEmail"; label: string; type: string; hint: string }> = {
+  pubmed: { ...NCBI_CREDENTIAL, hint: "选填。在 NCBI 账户设置中生成，请求上限从每秒 3 次提高到 10 次；与 GEO / SRA 共用。" },
+  "sequence-repositories": { ...NCBI_CREDENTIAL, hint: "选填。在 NCBI 账户设置中生成，请求上限从每秒 3 次提高到 10 次；与 PubMed 共用，ENA 不使用。" },
+  crossref: { name: "crossrefEmail", label: "联系邮箱", type: "email", hint: "选填。Crossref 没有免费 API Key，提供邮箱即可进入 polite 池，获得更高限额。" },
+};
+
 const COMMON_QUERY = '("single cell"[All Fields] OR "single-cell"[All Fields] OR "single nucleus"[All Fields]) AND (plant[All Fields] OR Arabidopsis[Organism])';
 const PROVIDER_DEFAULT_QUERIES: Record<string, string> = { geo: `${COMMON_QUERY} AND gse[ETYP]`, sra: COMMON_QUERY, ena: 'description="*single*" AND tax_tree(33090)' };
 
@@ -86,7 +94,11 @@ export function sourceConfigModal(app: App, id: string): void {
   const provider = source.id === "sequence-repositories"
     ? `<label class="form-field full-width"><span>检索仓库</span><select class="input" name="provider">${option("geo", "GEO（NCBI）", source.provider)}${option("sra", "SRA（NCBI）", source.provider)}${option("ena", "ENA（European Nucleotide Archive）", source.provider)}</select></label>`
     : "";
-  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">启用此来源</label><p>启用后可手动同步；开启自动更新时也会按频率访问。</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>检索式 / 关键词 <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>单次最多保存</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label></div><p id="form-error" class="form-error" role="alert"></p></form>`;
+  const credential = SOURCE_CREDENTIALS[id];
+  const credentialField = credential
+    ? `<label class="form-field full-width"><span>${esc(credential.label)}</span><input class="input" name="${credential.name}" type="${credential.type}" value="${esc(app.env.settings[credential.name])}" maxlength="256" autocomplete="off" spellcheck="false"><small class="form-hint">${esc(credential.hint)}只保存在本机，不写入数据库。</small></label>`
+    : "";
+  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">启用此来源</label><p>启用后可手动同步；开启自动更新时也会按频率访问。</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>检索式 / 关键词 <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>单次最多保存</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label>${credentialField}</div><p id="form-error" class="form-error" role="alert"></p></form>`;
   app.showModal(`配置 ${source.name}`, body, `<button class="btn btn-secondary" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="source-config-form">${I("check", 16)} 保存配置</button>`, true);
 }
 
@@ -114,7 +126,12 @@ export function saveSourceConfig(app: App, form: HTMLFormElement): void {
   }
   const button = $<HTMLButtonElement>('button[form="source-config-form"]');
   if (button) button.disabled = true;
-  Library.saveSourceConfig(config).then((status) => {
+  const credential = SOURCE_CREDENTIALS[config.id];
+  const value = credential ? text(data, credential.name) : "";
+  const savedCredential = credential && value !== app.env.settings[credential.name]
+    ? Library.saveSettings({ ...app.env.settings, [credential.name]: value }).then((result) => { app.env.settings = result.settings; })
+    : Promise.resolve();
+  savedCredential.then(() => Library.saveSourceConfig(config)).then((status) => {
     app.env.sources = app.env.sources.map((item) => (item.id === status.id ? status : item));
     app.closeModal();
     app.render();

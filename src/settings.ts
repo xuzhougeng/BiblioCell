@@ -46,7 +46,7 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   if (!app.env.desktop) return;
   const data = new FormData(form);
   const button = $<HTMLButtonElement>("button[type=submit]", form);
-  const next: Config = { storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken") };
+  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken") };
   if (!next.storagePath) {
     setStatus("请填写存放文件夹的绝对路径。");
     return;
