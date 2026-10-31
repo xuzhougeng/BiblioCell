@@ -1,97 +1,63 @@
 import "./style.css";
-import "./legacy/styles.css";
-import "./legacy/components.css";
-import "./legacy/demo-data.js";
 
 import { isMyGo } from "mygo-runtime";
-import { Library, type Config, type Dataset, type Paper, type SourceConfig } from "./mygo";
+import { Library } from "./mygo.ts";
+import { App, type Env } from "./app.ts";
+import { demoState } from "./demo-data.ts";
+import { applyFontSize, initShell } from "./shell.ts";
+import { localStore, sqliteStore } from "./store.ts";
 
 const badge = document.querySelector<HTMLSpanElement>("#runtime-badge");
 const message = document.querySelector<HTMLSpanElement>("#runtime-message");
-const demoPreferred = localStorage.getItem("bibliocell-demo-mode") !== "false";
+const setRuntime = (badgeText: string, messageText: string) => {
+  if (badge) badge.textContent = badgeText;
+  if (message) message.textContent = messageText;
+};
 
-function applyFontSize(value: number): void {
-  const fontSize = Math.min(20, Math.max(12, Math.round(value) || 15));
-  document.documentElement.style.setProperty("--font-scale", String(fontSize / 15));
+const previewEnv = (): Env => ({
+  desktop: false, real: false,
+  settings: { databasePath: "", fontSize: 15, mcpToken: "" },
+  mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
+  status: null, sources: [],
+});
+
+/** startDemo loads the browser-only library; a broken localStorage still shows the seeds plus a warning. */
+async function startDemo(env: Env): Promise<void> {
+  const store = localStore(localStorage);
+  let warning = "";
+  const initial = await store.load().catch(() => {
+    warning = "本地存储暂不可用，操作后请导出 JSON 备份。";
+    return demoState();
+  });
+  new App({ store, env, initial, warning }).start();
 }
 
-Object.assign(window, { PLANT_APPLY_FONT_SIZE: applyFontSize });
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "无法读取 Go 后端状态。";
-}
-
-async function boot() {
+async function boot(): Promise<void> {
+  initShell();
   if (!isMyGo()) {
     applyFontSize(15);
-    Object.assign(window, {
-      PLANT_DESKTOP: false,
-      PLANT_REAL_MODE: false,
-      PLANT_SETTINGS: { databasePath: "", fontSize: 15, mcpToken: "" },
-    });
-    if (badge) badge.textContent = "Demo · 浏览器预览";
-    if (message) message.textContent = "当前为虚构演示数据；打开桌面应用后可切换到真实 SQLite 数据库。";
-    await import("./legacy/app.js");
+    setRuntime("Demo · 浏览器预览", "当前为虚构演示数据；打开桌面应用后可切换到真实 SQLite 数据库。");
+    await startDemo(previewEnv());
     return;
   }
 
-  const realMode = !demoPreferred;
-  let saveQueue: Promise<unknown> = Promise.resolve();
-  const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
-    const next = saveQueue.catch(() => {}).then(operation);
-    saveQueue = next;
-    return next;
-  };
-  Object.assign(window, {
-    PLANT_DESKTOP: true,
-    PLANT_SAVE_SETTINGS: (next: Config) => Library.saveSettings(next),
-    PLANT_CHOOSE_DATABASE_PATH: () => Library.chooseDatabasePath(),
-    PLANT_LIST_SOURCES: () => Library.listSources(),
-    PLANT_SAVE_SOURCE_CONFIG: (next: SourceConfig) => Library.saveSourceConfig(next),
-    PLANT_SYNC_SOURCE: (id: string) => enqueue(() => Library.syncSource(id)),
-  });
+  const realMode = localStorage.getItem("bibliocell-demo-mode") === "false";
   try {
-    const [status, mcp, settings, sources] = await Promise.all([
-      Library.status(),
-      Library.mcpInfo(),
-      Library.getSettings(),
-      Library.listSources(),
-    ]);
-    const mcpText = mcp.enabled ? `MCP ${mcp.endpoint}` : "MCP 未启动";
+    const [status, mcp, settings, sources] = await Promise.all([Library.status(), Library.mcpInfo(), Library.getSettings(), Library.listSources()]);
     applyFontSize(settings.fontSize);
-    Object.assign(window, {
-      PLANT_MCP_INFO: mcp,
-      PLANT_SETTINGS: settings,
-      PLANT_STATUS: status,
-      PLANT_SOURCES: sources,
-    });
-
+    const env: Env = { desktop: true, real: realMode, settings, mcp, status, sources };
     if (realMode) {
-      const [papers, datasets] = await Promise.all([Library.listPapers(), Library.listDatasets()]);
-      Object.assign(window, {
-        PLANT_REAL_MODE: true,
-        PLANT_INITIAL_STATE: { schemaVersion: 1, papers, datasets, resources: [], activities: [] },
-        PLANT_SAVE_PAPERS: (next: Paper[]): Promise<void> => enqueue(() => Library.savePapers(next)),
-        PLANT_SAVE_DATASETS: (next: Dataset[]): Promise<void> => enqueue(() => Library.saveDatasets(next)),
-      });
-      if (badge) badge.textContent = "真实数据库";
-      if (message) {
-        message.textContent = `SQLite 中的 ${papers.length} 篇文献、${datasets.length} 组数据集 · ${mcpText} · 附件暂仅在 Demo 中开放。`;
-      }
+      const initial = await sqliteStore.load();
+      setRuntime("真实数据库", `SQLite 中的 ${initial.papers.length} 篇文献、${initial.datasets.length} 组数据集；附件暂仅在 Demo 中开放，MCP 连接信息见设置页。`);
+      new App({ store: sqliteStore, env, initial }).start();
     } else {
-      Object.assign(window, { PLANT_REAL_MODE: false });
-      if (badge) badge.textContent = "Demo 模式";
-      if (message) {
-        message.textContent = `虚构示例仅保存在浏览器，不会写入正式库（现有 ${status.paperCount} 篇）· ${mcpText}`;
-      }
+      setRuntime("Demo 模式", `虚构示例仅保存在浏览器，不会写入正式库（现有 ${status.paperCount} 篇）。`);
+      await startDemo(env);
     }
-    await import("./legacy/app.js");
   } catch (error) {
-    if (badge) badge.textContent = "后端连接失败";
-    if (message) message.textContent = errorText(error);
+    setRuntime("后端连接失败", error instanceof Error ? error.message : "无法读取 Go 后端状态。");
     if (!realMode) {
-      Object.assign(window, { PLANT_REAL_MODE: false });
-      await import("./legacy/app.js");
+      await startDemo(previewEnv());
       return;
     }
     const content = document.querySelector<HTMLDivElement>("#app-content");

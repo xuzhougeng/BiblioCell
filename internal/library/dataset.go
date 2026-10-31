@@ -219,18 +219,8 @@ func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 	if err := normalizeDataset(d); err != nil {
 		return err
 	}
-	firstOrgan := ""
-	if len(d.Organs) > 0 {
-		firstOrgan = d.Organs[0]
-	}
-	firstModality := "unknown"
-	if len(d.Modalities) > 0 {
-		firstModality = legacyDatasetModality(d.Modalities[0])
-	}
-	firstPlatform := ""
-	if len(d.Platforms) > 0 {
-		firstPlatform = d.Platforms[0]
-	}
+	// The legacy single-value columns (tissue_text, modality, technology) are
+	// no longer written; the *_json arrays are authoritative.
 	var cells any
 	if d.CellsReported != nil {
 		cells = *d.CellsReported
@@ -238,24 +228,22 @@ func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO datasets(
 			id, title, description, notes, species_json, organs_json, modalities_json,
-			platforms_json, tissue_text, modality, technology, n_cells_reported,
+			platforms_json, n_cells_reported,
 			cell_count_unit, cell_count_scope, raw_availability, matrix_availability,
 			annotation_availability, curation_level, first_seen_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title, description = excluded.description, notes = excluded.notes,
 			species_json = excluded.species_json, organs_json = excluded.organs_json,
 			modalities_json = excluded.modalities_json, platforms_json = excluded.platforms_json,
-			tissue_text = excluded.tissue_text, modality = excluded.modality,
-			technology = excluded.technology, n_cells_reported = excluded.n_cells_reported,
+			n_cells_reported = excluded.n_cells_reported,
 			cell_count_unit = excluded.cell_count_unit, cell_count_scope = excluded.cell_count_scope,
 			raw_availability = excluded.raw_availability,
 			matrix_availability = excluded.matrix_availability,
 			annotation_availability = excluded.annotation_availability,
 			curation_level = excluded.curation_level, updated_at = excluded.updated_at`,
 		d.ID, d.Title, nullableString(d.Description), d.Notes, speciesJSONArray(d.Species),
-		jsonArray(d.Organs), jsonArray(d.Modalities), jsonArray(d.Platforms),
-		nullableString(firstOrgan), firstModality, nullableString(firstPlatform), cells,
+		jsonArray(d.Organs), jsonArray(d.Modalities), jsonArray(d.Platforms), cells,
 		nullableString(d.CellCountUnit), nullableString(d.CellCountScope),
 		d.Availability, d.MatrixAvailability, d.AnnotationAvailability,
 		d.CurationLevel, d.AddedAt, d.UpdatedAt)
@@ -543,31 +531,6 @@ func canonicalDatasetModalities(values []string) []string {
 		}
 	}
 	return values
-}
-
-func legacyDatasetModality(value string) string {
-	switch canonicalDatasetModalities([]string{value})[0] {
-	case "scRNA-seq":
-		return "scRNA"
-	case "snRNA-seq":
-		return "snRNA"
-	case "scATAC-seq":
-		return "scATAC"
-	case "snATAC-seq":
-		return "snATAC"
-	case "scDNA-seq":
-		return "scDNA"
-	case "scMethyl-seq":
-		return "scMethyl"
-	case "Multiome":
-		return "multiome"
-	case "long-read":
-		return "longread"
-	case "mixed":
-		return "mixed"
-	default:
-		return "other"
-	}
 }
 
 func nullableString(value string) any {

@@ -70,13 +70,15 @@ func TestDatasetRoundTripAndAssociationPreservation(t *testing.T) {
 	if len(first.Repositories) != 1 || first.Repository != "geo" || first.Accession != "GSE100" {
 		t.Errorf("repository mapping = %+v", first.Repositories)
 	}
-	var tissue, modality, technology string
+	// The deprecated single-value columns are no longer written.
+	var tissue, technology sql.NullString
+	var modality string
 	if err := store.db.QueryRow("SELECT tissue_text, modality, technology FROM datasets WHERE id = 'DS-one'").
 		Scan(&tissue, &modality, &technology); err != nil {
 		t.Fatal(err)
 	}
-	if tissue != "root" || modality != "scRNA" || technology != "10x Genomics Chromium" {
-		t.Errorf("legacy columns = %q / %q / %q", tissue, modality, technology)
+	if tissue.Valid || modality != "unknown" || technology.Valid {
+		t.Errorf("deprecated columns were written: %v / %q / %v", tissue, modality, technology)
 	}
 
 	// Changing a shared accession must not mutate the other dataset's record.

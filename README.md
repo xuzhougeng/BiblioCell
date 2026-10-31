@@ -126,9 +126,16 @@ BiblioCell/
 │   └── *_test.go            # 数据库与 MCP 端到端测试
 ├── internal/settings/       # 设置校验、默认值与原子 JSON 持久化
 ├── src/
-│   ├── main.ts              # Demo / 真实模式与前端入口
-│   ├── legacy/              # 从 v0.1 迁移的页面逻辑和样式
+│   ├── main.ts              # 入口：Demo / 真实模式判断与启动
+│   ├── app.ts               # 页面状态、渲染循环与事件委托
+│   ├── model.ts             # 纯逻辑：筛选、待补事项、DOI 规范化、导入校验、CSV
+│   ├── store.ts             # 持久化：SQLite（经 Go）与 localStorage（Demo）两种实现
+│   ├── views.ts / drawer.ts / forms.ts / sources.ts / settings.ts  # 各页面、抽屉与弹窗
+│   ├── ui.ts / icons.ts / shell.ts  # HTML 片段构造、图标与侧栏等静态外壳
+│   ├── demo-data.ts         # 明确标记的虚构演示数据
+│   ├── style.css            # 单一样式表（外壳与设置页 → 基础 → 组件）
 │   └── mygo.ts              # mygo generate 生成的类型化客户端
+├── tests/                   # node:test 纯逻辑测试（npm test）
 ├── public/                  # 图标、设计文档与可下载资料
 ├── resources/               # 应用图标
 ├── mygo.config.ts           # mygo 开发、构建和应用元数据
@@ -146,7 +153,7 @@ npm install
 npm run dev
 ```
 
-`mygo dev` 会生成 `src/mygo.ts`、启动 Vite，并打开桌面应用。普通浏览器也可以通过 `npm run dev:web` 预览 Demo，但无法连接 Go 后端、真实数据库或 MCP。
+`mygo dev` 会生成 `src/mygo.ts`、启动 Vite，并打开桌面应用。普通浏览器也可以通过 `npm run dev:web` 预览 Demo，但无法连接 Go 后端、真实数据库或 MCP。`npm run typecheck` 做 TypeScript 严格检查，`npm test` 运行 `tests/` 下的纯逻辑测试（Node 22.6+ 自带类型剥离，无需额外依赖）。
 
 ## 验证与构建
 

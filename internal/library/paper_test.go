@@ -2,6 +2,8 @@ package library
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
 )
 
@@ -62,15 +64,16 @@ func TestPaperAddEditAndPreserveMCPRecords(t *testing.T) {
 		t.Errorf("ArticleTypes = %+v", saved.ArticleTypes)
 	}
 
-	// The legacy single-value columns keep carrying the first entry so
-	// hand-written SQL against the published schema stays meaningful.
-	var speciesText, speciesLabel, articleType string
+	// The deprecated single-value columns are no longer written; the JSON
+	// arrays above are the only source of truth.
+	var speciesText, speciesLabel sql.NullString
+	var articleType string
 	if err := store.db.QueryRow("SELECT species_text, species_label, article_type FROM papers WHERE id = ?", saved.ID).
 		Scan(&speciesText, &speciesLabel, &articleType); err != nil {
 		t.Fatalf("read legacy columns: %v", err)
 	}
-	if speciesText != "Arabidopsis thaliana" || speciesLabel != "拟南芥" || articleType != "original" {
-		t.Errorf("legacy columns = %q / %q / %q", speciesText, speciesLabel, articleType)
+	if speciesText.Valid || speciesLabel.Valid || articleType != "unknown" {
+		t.Errorf("deprecated columns were written: %v / %v / %q", speciesText, speciesLabel, articleType)
 	}
 
 	papers[0].Notes = "keep this note"
@@ -162,5 +165,8 @@ func TestUpdatePaperReplacesMultiValueLists(t *testing.T) {
 	}
 	if len(reread.ArticleTypes) != 1 || reread.ArticleTypes[0] != "综述" {
 		t.Errorf("reread ArticleTypes = %+v", reread.ArticleTypes)
+	}
+	if _, err := store.GetPaper(ctx, "P-missing"); !errors.Is(err, ErrPaperNotFound) {
+		t.Errorf("GetPaper(missing) error = %v, want ErrPaperNotFound", err)
 	}
 }

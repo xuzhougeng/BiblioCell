@@ -29,8 +29,9 @@ CREATE TABLE IF NOT EXISTS papers (
     platforms_json TEXT NOT NULL DEFAULT '[]'
         CHECK (json_valid(platforms_json) AND json_type(platforms_json) = 'array'),
     conditions_text TEXT,
-    -- 物种与文章类型是多值字段；species_json / article_types_json 是权威存储，
-    -- species_text / species_label / article_type 仅保留兼容值（数组首项）。
+    -- 物种与文章类型是多值字段；species_json / article_types_json 是权威存储。
+    -- species_text / species_label / article_type 已废弃：应用不再写入，仅为读取
+    -- 旧库（迁移回填时取其值）而保留列定义；新记录保持 NULL / 'unknown'。
     species_json TEXT NOT NULL DEFAULT '[]'
         CHECK (json_valid(species_json) AND json_type(species_json) = 'array'),
     species_text TEXT,
@@ -115,8 +116,9 @@ CREATE TABLE IF NOT EXISTS datasets (
     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
     description TEXT,
     notes TEXT NOT NULL DEFAULT '',
-    -- 多值研究范围以 JSON 为权威存储；tissue_text / modality / technology
-    -- 继续保存数组首项，供旧查询兼容。dataset_taxa 是可选的标准化物种补充。
+    -- 多值研究范围以 JSON 为权威存储。tissue_text / modality / technology 已废弃：
+    -- 应用不再写入，仅为读取旧库（迁移回填时取其值）而保留列定义，新记录保持
+    -- NULL / 'unknown'。dataset_taxa 是可选的标准化物种补充。
     species_json TEXT NOT NULL DEFAULT '[]'
         CHECK (json_valid(species_json) AND json_type(species_json) = 'array'),
     organs_json TEXT NOT NULL DEFAULT '[]'
