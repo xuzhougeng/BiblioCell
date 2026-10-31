@@ -1,0 +1,20 @@
+{
+  "name": "biblio-cell",
+  "interface": {
+    "displayName": "BiblioCell"
+  },
+  "plugins": [
+    {
+      "name": "mygo-maintenance",
+      "source": {
+        "source": "local",
+        "path": "./mygo-maintenance"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

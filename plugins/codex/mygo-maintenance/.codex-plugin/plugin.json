@@ -1,0 +1,30 @@
+{
+  "name": "mygo-maintenance",
+  "version": "0.1.0",
+  "description": "Maintain Go applications built on github.com/egoist/mygo: UI lifetimes, widget identity, threading, and testing conventions.",
+  "author": {
+    "name": "xuzhougeng"
+  },
+  "homepage": "https://github.com/xuzhougeng/BiblioCell",
+  "repository": "https://github.com/xuzhougeng/BiblioCell",
+  "keywords": [
+    "mygo",
+    "go",
+    "golang",
+    "ui",
+    "desktop",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "MyGo Maintenance",
+    "shortDescription": "Maintain MyGo apps with safe UI lifetimes",
+    "longDescription": "Skill for maintaining Go applications built on github.com/egoist/mygo. Covers UI lifetime and identity rules, input and action semantics, threading, and the testing conventions to follow before changing MyGo APIs.",
+    "developerName": "xuzhougeng",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ]
+  }
+}
