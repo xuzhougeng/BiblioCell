@@ -7,7 +7,7 @@
 #runtime-message { min-width: 0 }
 .heading-actions[hidden] { display: none }
 .real-mode [data-action="import-json"], .real-mode [data-action="add-resource"], .real-mode [data-action="reset-demo"] { display: none !important }
-.sidebar-settings { margin: 0 3px 12px }
+.sidebar-settings { margin-bottom: 12px }
 /* 侧栏折叠按钮:置于顶栏左端,ghost 样式;悬停 tooltip"折叠侧栏/展开侧栏" */
 .sidebar-collapse {
   display: inline-flex;
@@ -34,7 +34,6 @@
   .sidebar-collapsed .brand > span, .sidebar-collapsed .nav-label, .sidebar-collapsed .nav-item > span:not([data-icon]) { display: none }
   .sidebar-collapsed .nav-item { justify-content: center; padding: 0 }
   .sidebar-collapsed .nav-item > [data-icon] { margin: 0 }
-  .sidebar-collapsed .sidebar-settings { margin-right: 0; margin-left: 0 }
   .sidebar-collapsed .toast { left: calc(50% + 38px) }
 }
 
@@ -208,6 +207,7 @@ th { font-weight: 600 }
 .nav-list { display: flex; flex-direction: column; gap: 5px }
 .nav-item { height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 13px; border-radius: 5px; color: #56614e; font-size: calc(15px * var(--font-scale, 1)); font-weight: 550; transition: background 0.15s, color 0.15s }
 .nav-item > [data-icon] { opacity: 0.85; display: flex }
+.nav-item > [data-icon] svg { width: 20px; height: 20px }
 .nav-item:hover { background: rgba(42, 64, 47, 0.08); color: #2f3a2e }
 .nav-item.active { background: var(--primary-deep); color: #f4efe2; font-weight: 700 }
 .nav-item.active > [data-icon] { opacity: 1 }
