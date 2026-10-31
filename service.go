@@ -96,6 +96,14 @@ func (l *Library) ImportPaperFiles(ctx context.Context, paperID, resourceType st
 	return files, nil
 }
 
+// FetchFulltext stores an open-access PDF for a paper.
+func (l *Library) FetchFulltext(paperID string) (library.FulltextResult, error) {
+	if l.store == nil {
+		return library.FulltextResult{}, errors.New("library database is not ready")
+	}
+	return l.store.FetchFulltext(context.Background(), paperID, sourceCredentials(l.settings))
+}
+
 // OpenPaperFile opens a stored file with its default application.
 func (l *Library) OpenPaperFile(id string) error {
 	if l.store == nil {

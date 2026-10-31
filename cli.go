@@ -37,6 +37,7 @@ Commands:
   papers attach ID [-type fulltext|supplement] FILE...
                                       copy files into the storage folder
   papers files ID                     files attached to a paper
+  papers fetch ID                     download an open-access PDF through PMC or Unpaywall
   papers undo BATCH                   remove an import batch, keeping what a person worked on
   datasets list [-q TEXT] [-status S] [-limit N] [-offset N]
                                       datasets with repositories and papers
@@ -53,7 +54,7 @@ Commands:
   sources auto [-enabled=BOOL] [-hours N]
                                       show or set the schedule the desktop app runs
   settings get                        current settings.json
-  settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN] [-ncbi-api-key KEY] [-crossref-email EMAIL]
+  settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN] [-ncbi-api-key KEY] [-contact-email EMAIL]
   mcp                                 MCP endpoint and bearer token
   serve [-addr HOST:PORT]             run the MCP server without a window, until interrupted
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
@@ -255,6 +256,11 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 			files = append(files, file)
 		}
 		return c.print(files, nil)
+	case "fetch":
+		if len(rest) != 1 {
+			return errors.New("usage: papers fetch ID")
+		}
+		return c.print(c.store.FetchFulltext(ctx, rest[0], sourceCredentials(c.settings)))
 	case "files":
 		if len(rest) != 1 {
 			return errors.New("usage: papers files ID")
@@ -276,7 +282,7 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 		}
 		return c.print(c.store.UndoImport(ctx, rest[0]))
 	}
-	return errors.New("usage: papers list|get|add|import|update|attach|files|undo")
+	return errors.New("usage: papers list|get|add|import|update|attach|fetch|files|undo")
 }
 
 func (c *cli) datasets(ctx context.Context, args []string) error {
@@ -360,7 +366,7 @@ func (c *cli) serve(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	server, err := library.StartMCP(c.store, *address, c.settings.Get().MCPToken)
+	server, err := library.StartMCP(c.store, *address, c.settings.Get().MCPToken, sourceCredentials(c.settings))
 	if err != nil {
 		return fmt.Errorf("start MCP server: %w", err)
 	}
@@ -434,7 +440,7 @@ func (c *cli) configure(args []string) error {
 		flags.IntVar(&config.FontSize, "font-size", config.FontSize, "interface font size, 12-20")
 		flags.StringVar(&config.MCPToken, "mcp-token", config.MCPToken, "MCP bearer token, used on next start")
 		flags.StringVar(&config.NCBIAPIKey, "ncbi-api-key", config.NCBIAPIKey, "NCBI API key for PubMed, GEO and SRA")
-		flags.StringVar(&config.CrossrefEmail, "crossref-email", config.CrossrefEmail, "contact email for Crossref's polite pool")
+		flags.StringVar(&config.ContactEmail, "contact-email", config.ContactEmail, "contact email for Crossref's polite pool")
 		if err := flags.Parse(rest); err != nil {
 			return err
 		}

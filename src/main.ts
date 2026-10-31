@@ -16,7 +16,7 @@ const setRuntime = (badgeText: string, messageText: string) => {
 
 const previewEnv = (): Env => ({
   desktop: false, real: false,
-  settings: { storagePath: "", fontSize: 15, mcpToken: "", ncbiApiKey: "", crossrefEmail: "" },
+  settings: { storagePath: "", fontSize: 15, mcpToken: "", ncbiApiKey: "", contactEmail: "" },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],
   automation: { enabled: false, intervalHours: 24, running: false, lastRunAt: "", nextRunAt: "", added: 0, skipped: 0, failures: [] },

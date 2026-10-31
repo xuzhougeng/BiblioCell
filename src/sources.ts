@@ -29,10 +29,10 @@ const QUERY_HINTS: Record<string, string> = {
 
 /** SOURCE_CREDENTIALS are the per-machine settings that raise a source's rate limit. */
 const NCBI_CREDENTIAL = { name: "ncbiApiKey", label: "NCBI API Key", type: "password" } as const;
-const SOURCE_CREDENTIALS: Record<string, { name: "ncbiApiKey" | "crossrefEmail"; label: string; type: string; hint: string }> = {
+const SOURCE_CREDENTIALS: Record<string, { name: "ncbiApiKey" | "contactEmail"; label: string; type: string; hint: string }> = {
   pubmed: { ...NCBI_CREDENTIAL, hint: "选填。在 NCBI 账户设置中生成，请求上限从每秒 3 次提高到 10 次；与 GEO / SRA 共用。" },
   "sequence-repositories": { ...NCBI_CREDENTIAL, hint: "选填。在 NCBI 账户设置中生成，请求上限从每秒 3 次提高到 10 次；与 PubMed 共用，ENA 不使用。" },
-  crossref: { name: "crossrefEmail", label: "联系邮箱", type: "email", hint: "选填。Crossref 没有免费 API Key，提供邮箱即可进入 polite 池，获得更高限额。" },
+  crossref: { name: "contactEmail", label: "联系邮箱", type: "email", hint: "选填。Crossref 没有免费 API Key，提供邮箱即可进入 polite 池，获得更高限额；Unpaywall 查找开放全文也用它。" },
 };
 
 const COMMON_QUERY = '("single cell"[All Fields] OR "single-cell"[All Fields] OR "single nucleus"[All Fields]) AND (plant[All Fields] OR Arabidopsis[Organism])';

@@ -54,10 +54,17 @@
 来源配置窗口里可以填写提高限额的凭证，都是选填，修改后下一次同步生效：
 
 - **NCBI API Key**：PubMed 和 GEO / SRA 共用，请求上限从每秒 3 次提高到 10 次。ENA 不使用。
-- **Crossref 联系邮箱**：作为 `mailto` 发送，进入 polite 池。
+- **联系邮箱**：在 Crossref 配置中填写。作为 `mailto` 发送给 Crossref，进入 polite 池；Unpaywall 查询全文时也要用它。
 - Europe PMC、bioRxiv、ENA 未接入凭证。
 
-凭证保存在本机的 `settings.json`，不写入数据库，不随存放文件夹迁移，也不会通过 MCP 或 `sql` 读到。命令行用 `settings set -ncbi-api-key KEY -crossref-email EMAIL` 设置。
+凭证保存在本机的 `settings.json`，不写入数据库，不随存放文件夹迁移，也不会通过 MCP 或 `sql` 读到。命令行用 `settings set -ncbi-api-key KEY -contact-email EMAIL` 设置。
+
+文献详情的“资料”页可以点“获取开放全文”，agent 用 MCP 的 `fetch_fulltext`，命令行用 `papers fetch ID`。按 DOI 或 PMID 依次尝试：
+
+1. **PMC 开放获取子集**：经 Europe PMC 查到 PMCID，再从 NCBI 公开的 S3 存储桶下载。
+2. **Unpaywall**：遍历它列出的开放 PDF 地址，需要联系邮箱。
+
+只接受 https 链接和真正的 PDF，单个文件上限 200 MiB，保存时记录来源地址和许可证。已有全文的文献不会重复下载。Europe PMC 和 PMC 网页的 PDF 入口有人机验证，出版社网站也可能拦截，这些情况都按失败处理，不会绕过；订阅内容和 Sci-Hub 一类渠道不接入，需要时手动导入。
 
 自动更新默认关闭，此时只有点击“同步”才会访问远程公开 API。开启后，桌面应用运行期间每分钟检查一次，按设定频率逐个更新已启用的来源：
 
@@ -106,6 +113,7 @@ http://127.0.0.1:37841/mcp
 | `add_evidence` | 按字段记录提取依据：摘录和来源，供人核对，需要写权限 |
 | `list_evidence` | 读取证据及人的判断 |
 | `attach_file` | 把存放文件夹 `inbox/` 中的文件移入文库并挂到文献上，需要写权限 |
+| `fetch_fulltext` | 通过 PMC 和 Unpaywall 查找开放获取 PDF 并保存，需要写权限 |
 | `list_files` | 列出文献的附件，路径相对存放文件夹 |
 
 `list_papers` 可按 `query`、`screening`、`source`、`batchId`、`needsReview` 筛选，用 `limit`（最大 500）和 `offset` 翻页，`total` 是匹配总数。`list_datasets` 同样分页。
@@ -201,7 +209,7 @@ echo '{"paperId":"P-xxxx","role":"generated","evidenceText":"..."}' | ./BiblioCe
 ./BiblioCell sources sync pubmed
 ./BiblioCell sources auto -enabled=true -hours 24
 ./BiblioCell settings get
-./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN> -ncbi-api-key <KEY> -crossref-email <EMAIL>
+./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN> -ncbi-api-key <KEY> -contact-email <EMAIL>
 ./BiblioCell mcp
 ./BiblioCell serve -addr 127.0.0.1:37841
 ./BiblioCell sql "select id, title from papers order by added_at desc limit 5"

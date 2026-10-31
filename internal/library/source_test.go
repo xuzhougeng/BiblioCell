@@ -697,7 +697,7 @@ func TestRemoteConnectorsLive(t *testing.T) {
 			configs = append(configs, configured)
 		}
 	}
-	harvester := newRemoteHarvester(func() SourceCredentials { return SourceCredentials{} })
+	harvester := newRemoteHarvester(noCredentials)
 	for _, config := range configs {
 		name := config.ID
 		if config.Provider != "" {
@@ -725,7 +725,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
 
 func TestHarvesterSendsCredentials(t *testing.T) {
-	credentials := SourceCredentials{NCBIAPIKey: "ncbi-secret", CrossrefEmail: "me@example.org"}
+	credentials := SourceCredentials{NCBIAPIKey: "ncbi-secret", ContactEmail: "me@example.org"}
 	harvester := newRemoteHarvester(func() SourceCredentials { return credentials })
 	requests := []*url.URL{}
 	harvester.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -759,7 +759,7 @@ func TestHarvesterSendsCredentials(t *testing.T) {
 	if _, err := harvester.Harvest(ctx, SourceConfig{ID: "crossref", Query: "plant", MaxResults: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if got := requests[0].Query().Get("mailto"); got != credentials.CrossrefEmail {
+	if got := requests[0].Query().Get("mailto"); got != credentials.ContactEmail {
 		t.Errorf("Crossref mailto = %q", got)
 	}
 
@@ -786,6 +786,120 @@ func TestHarvesterSendsCredentials(t *testing.T) {
 	_, err = harvester.Harvest(ctx, SourceConfig{ID: "pubmed", Query: "plant", MaxResults: 1})
 	if err == nil || strings.Contains(err.Error(), credentials.NCBIAPIKey) {
 		t.Errorf("rejected key is repeated or was lost: %v", err)
+	}
+}
+
+func noCredentials() SourceCredentials { return SourceCredentials{} }
+
+func pdfResponse(body string) *http.Response {
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}
+}
+
+func TestFetchFulltext(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "library.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	paper, err := store.AddPaper(ctx, Paper{Title: "Open paper", DOI: "10.1000/open", Source: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bare, err := store.AddPaper(ctx, Paper{Title: "No identifiers", Source: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	email := ""
+	unpaywallBody := `{"oa_locations":[{"url_for_pdf":null,"url_for_landing_page":"https://example.org/page"},` +
+		`{"url_for_pdf":"https://blocked.example/a.pdf","license":"cc-by"},` +
+		`{"url_for_pdf":"http://plain.example/a.pdf"},` +
+		`{"url_for_pdf":"https://publisher.example/a.pdf","license":"cc-by"}]}`
+	harvester := newRemoteHarvester(func() SourceCredentials { return SourceCredentials{ContactEmail: email} })
+	requested := []string{}
+	harvester.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requested = append(requested, request.URL.Host)
+		switch request.URL.Host {
+		case "www.ebi.ac.uk":
+			return pdfResponse(`{"resultList":{"result":[{"pmcid":"PMC1"}]}}`), nil
+		case "pmc-oa-opendata.s3.amazonaws.com":
+			return pdfResponse(`<ListBucketResult><Contents><Key>PMC1.1/PMC1.1.json</Key></Contents></ListBucketResult>`), nil
+		case "api.unpaywall.org":
+			if request.URL.Query().Get("email") != email || request.URL.Path != "/v2/10.1000/open" {
+				t.Errorf("Unpaywall request = %s", request.URL)
+			}
+			return pdfResponse(unpaywallBody), nil
+		case "blocked.example":
+			return pdfResponse("<html>Just a moment...</html>"), nil
+		case "plain.example":
+			if request.URL.Scheme != "https" {
+				t.Errorf("requested %s", request.URL)
+			}
+			return &http.Response{StatusCode: 429, Body: io.NopCloser(strings.NewReader(""))}, nil
+		case "publisher.example":
+			return pdfResponse("%PDF-1.7 body"), nil
+		}
+		t.Errorf("unexpected request to %s", request.URL)
+		return nil, errors.New("unexpected request")
+	})
+
+	if _, err := store.fetchFulltext(ctx, bare.ID, harvester); !errors.Is(err, ErrNoFulltext) {
+		t.Errorf("paper without identifiers: %v", err)
+	}
+	if _, err := store.fetchFulltext(ctx, paper.ID, harvester); !errors.Is(err, ErrNoFulltext) || !strings.Contains(err.Error(), "联系邮箱") {
+		t.Errorf("without email: %v", err)
+	}
+
+	email = "me@example.org"
+	result, err := store.fetchFulltext(ctx, paper.ID, harvester)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Source != "Unpaywall" || result.URL != "https://publisher.example/a.pdf" || result.File.Type != "fulltext" {
+		t.Errorf("result = %+v", result)
+	}
+	var link, license, status string
+	if err := store.db.QueryRowContext(ctx, "SELECT url, license, access_status FROM resources WHERE id = ?", result.File.ID).
+		Scan(&link, &license, &status); err != nil {
+		t.Fatal(err)
+	}
+	if link != result.URL || license != "cc-by" || status != "available" {
+		t.Errorf("provenance = %s %s %s", link, license, status)
+	}
+	stored, err := store.GetPaper(ctx, paper.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Fulltext != "stored" {
+		t.Errorf("paper fulltext = %q", stored.Fulltext)
+	}
+
+	requested = requested[:0]
+	again, err := store.fetchFulltext(ctx, paper.ID, harvester)
+	if err != nil || again.Source != "" || again.File.ID != result.File.ID || len(requested) != 0 {
+		t.Errorf("second fetch = %+v, %v, requests %v", again, err, requested)
+	}
+}
+
+func TestPMCCandidatePicksLatestPDF(t *testing.T) {
+	harvester := newRemoteHarvester(noCredentials)
+	harvester.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "www.ebi.ac.uk" {
+			return pdfResponse(`{"resultList":{"result":[{"pmcid":"PMC7","license":"cc by"}]}}`), nil
+		}
+		if got := request.URL.Query().Get("prefix"); got != "PMC7." {
+			t.Errorf("prefix = %q", got)
+		}
+		return pdfResponse(`<ListBucketResult><Contents><Key>PMC7.10/PMC7.10.pdf</Key></Contents>` +
+			`<Contents><Key>PMC7.2/PMC7.2.pdf</Key></Contents><Contents><Key>PMC7.2/PMC7.2.xml</Key></Contents></ListBucketResult>`), nil
+	})
+	candidate, err := harvester.pmcCandidate(context.Background(), Paper{PMID: "123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate == nil || !strings.HasSuffix(candidate.url, "PMC7.10/PMC7.10.pdf") || candidate.license != "cc by" {
+		t.Errorf("candidate = %+v", candidate)
 	}
 }
 

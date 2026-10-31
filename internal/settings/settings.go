@@ -26,10 +26,10 @@ type Config struct {
 	StoragePath string `json:"storagePath"`
 	FontSize    int    `json:"fontSize"`
 	MCPToken    string `json:"mcpToken"`
-	// NCBIAPIKey and CrossrefEmail raise source rate limits. They live here, not
+	// NCBIAPIKey and ContactEmail identify this user to public APIs. They live here, not
 	// in the database, so they stay on this machine when the folder moves.
-	NCBIAPIKey    string `json:"ncbiApiKey"`
-	CrossrefEmail string `json:"crossrefEmail"`
+	NCBIAPIKey   string `json:"ncbiApiKey"`
+	ContactEmail string `json:"contactEmail"`
 }
 
 // DatabasePath returns the SQLite file inside the storage folder.
@@ -93,7 +93,7 @@ func (s *Store) Save(config Config) error {
 	config.StoragePath = filepath.Clean(strings.TrimSpace(config.StoragePath))
 	config.MCPToken = strings.TrimSpace(config.MCPToken)
 	config.NCBIAPIKey = strings.TrimSpace(config.NCBIAPIKey)
-	config.CrossrefEmail = strings.TrimSpace(config.CrossrefEmail)
+	config.ContactEmail = strings.TrimSpace(config.ContactEmail)
 	if err := Validate(config); err != nil {
 		return err
 	}
@@ -161,9 +161,9 @@ func Validate(config Config) error {
 	if len(config.NCBIAPIKey) > 256 || strings.ContainsFunc(config.NCBIAPIKey, func(r rune) bool { return r < 33 || r > 126 }) {
 		return errors.New("NCBI API key must be at most 256 visible ASCII characters")
 	}
-	if config.CrossrefEmail != "" {
-		if address, err := mail.ParseAddress(config.CrossrefEmail); err != nil || address.Address != config.CrossrefEmail {
-			return errors.New("Crossref contact must be a plain email address")
+	if config.ContactEmail != "" {
+		if address, err := mail.ParseAddress(config.ContactEmail); err != nil || address.Address != config.ContactEmail {
+			return errors.New("contact email must be a plain email address")
 		}
 	}
 	return nil

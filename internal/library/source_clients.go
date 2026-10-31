@@ -26,8 +26,8 @@ const (
 
 // SourceCredentials raise the rate limits of the sources that offer it.
 type SourceCredentials struct {
-	NCBIAPIKey    string
-	CrossrefEmail string
+	NCBIAPIKey   string
+	ContactEmail string
 }
 
 type remoteHarvester struct {
@@ -58,21 +58,34 @@ func (h *remoteHarvester) Harvest(ctx context.Context, config SourceConfig) ([]h
 	}
 }
 
-func (h *remoteHarvester) get(ctx context.Context, endpoint string) ([]byte, error) {
+func (h *remoteHarvester) newRequest(ctx context.Context, endpoint string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create remote request: %w", err)
 	}
-	req.Header.Set("Accept", "application/json, application/xml, text/xml;q=0.9, */*;q=0.1")
 	req.Header.Set("User-Agent", "BiblioCell/0.1 (personal research library; manual metadata sync)")
+	return req, nil
+}
+
+// plainRequestError drops the URL: it can carry a key, and this message is saved
+// with the run.
+func plainRequestError(err error) error {
+	var requestError *url.Error
+	if errors.As(err, &requestError) {
+		return requestError.Err
+	}
+	return err
+}
+
+func (h *remoteHarvester) get(ctx context.Context, endpoint string) ([]byte, error) {
+	req, err := h.newRequest(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json, application/xml, text/xml;q=0.9, */*;q=0.1")
 	resp, err := h.client.Do(req)
 	if err != nil {
-		// Drop the URL: it can carry a key, and this message is saved with the run.
-		var requestError *url.Error
-		if errors.As(err, &requestError) {
-			err = requestError.Err
-		}
-		return nil, fmt.Errorf("contact remote source: %w", err)
+		return nil, fmt.Errorf("contact remote source: %w", plainRequestError(err))
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxRemoteBytes+1))
@@ -300,7 +313,7 @@ func (h *remoteHarvester) harvestCrossref(ctx context.Context, config SourceConf
 		"query.bibliographic": {config.Query}, "rows": {strconv.Itoa(config.MaxResults)},
 		"select": {"DOI,title,author,published,container-title,abstract,type,URL"},
 	}
-	if email := h.credentials().CrossrefEmail; email != "" {
+	if email := h.credentials().ContactEmail; email != "" {
 		params.Set("mailto", email)
 	}
 	var response struct {

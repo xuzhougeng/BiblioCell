@@ -481,7 +481,7 @@ func TestAttachInboxFileStaysInsideTheInbox(t *testing.T) {
 func TestStartMCPRefusesNonLoopbackAddresses(t *testing.T) {
 	store, _ := agentStore(t)
 	for _, address := range []string{"0.0.0.0:0", "192.168.1.2:0", "example.org:0", "nonsense"} {
-		if server, err := StartMCP(store, address, testMCPToken); err == nil {
+		if server, err := StartMCP(store, address, testMCPToken, noCredentials); err == nil {
 			server.Close(context.Background())
 			t.Errorf("StartMCP(%q) succeeded", address)
 		}
@@ -492,7 +492,7 @@ func TestMCPAgentWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	store, storage := agentStore(t)
-	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken, noCredentials)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,6 +609,7 @@ func TestMCPAgentWorkflow(t *testing.T) {
 		"link_dataset":   {"datasetId": added.Dataset.ID, "paperId": paperID, "evidenceText": "x"},
 		"add_evidence":   {"evidence": []map[string]any{{"paperId": paperID, "field": "x", "excerpt": "x", "sourceUrl": "https://example.org"}}},
 		"attach_file":    {"paperId": paperID, "name": "paper.pdf"},
+		"fetch_fulltext": {"paperId": paperID},
 	} {
 		result, err := reader.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
 		if err == nil && !result.IsError {

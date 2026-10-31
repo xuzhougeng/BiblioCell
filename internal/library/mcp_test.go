@@ -36,7 +36,7 @@ func TestMCPAgentCanOnlyPropose(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken, noCredentials)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestMCPAddAndListPapers(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	defer store.Close()
-	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken, noCredentials)
 	if err != nil {
 		t.Fatalf("startMCP() error = %v", err)
 	}
@@ -210,7 +210,7 @@ func TestMCPSchemaResourcesAndAtomicImport(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	defer store.Close()
-	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken, noCredentials)
 	if err != nil {
 		t.Fatalf("startMCP() error = %v", err)
 	}
@@ -312,7 +312,7 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddPaper() error = %v", err)
 	}
-	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken)
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken, noCredentials)
 	if err != nil {
 		t.Fatalf("startMCP() error = %v", err)
 	}

@@ -23,6 +23,20 @@ export const fileActions = (app: App): Record<string, (el: HTMLElement, id: stri
       button.disabled = false;
     }
   },
+  "fetch-fulltext": async (el, id) => {
+    const button = el as HTMLButtonElement;
+    button.disabled = true;
+    app.toast("正在查找开放全文…");
+    try {
+      const result = await Library.fetchFulltext(id);
+      await app.reload();
+      app.toast(result.source ? `已从 ${result.source} 保存全文。` : "这篇文献已有全文。");
+    } catch (error) {
+      app.toast(errorMessage(error, "获取失败，请检查网络后重试。"), true);
+    } finally {
+      button.disabled = false;
+    }
+  },
   "open-file": (_el, id) => {
     Library.openPaperFile(id).catch((error: unknown) => {
       app.toast(`无法打开文件：${errorMessage(error, "请重试。")}`, true);

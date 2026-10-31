@@ -47,7 +47,7 @@ func main() {
 		if configuredToken == "" {
 			log.Printf("MCP authentication unavailable: no bearer token")
 		} else {
-			mcpServer, err = library.StartMCP(store, library.MCPAddress, configuredToken)
+			mcpServer, err = library.StartMCP(store, library.MCPAddress, configuredToken, sourceCredentials(settingsStore))
 			if err != nil {
 				log.Printf("MCP server unavailable on %s: %v", library.MCPAddress, err)
 			} else {
@@ -109,7 +109,7 @@ func main() {
 func sourceCredentials(store *settings.Store) func() library.SourceCredentials {
 	return func() library.SourceCredentials {
 		config := store.Get()
-		return library.SourceCredentials{NCBIAPIKey: config.NCBIAPIKey, CrossrefEmail: config.CrossrefEmail}
+		return library.SourceCredentials{NCBIAPIKey: config.NCBIAPIKey, ContactEmail: config.ContactEmail}
 	}
 }
 

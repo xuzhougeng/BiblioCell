@@ -75,8 +75,8 @@ func TestStoreRejectsInvalidChanges(t *testing.T) {
 		{StoragePath: original.StoragePath, FontSize: MaxFontSize + 1},
 		{StoragePath: original.StoragePath, FontSize: 15, MCPToken: "too short"},
 		{StoragePath: original.StoragePath, FontSize: 15, NCBIAPIKey: "has space"},
-		{StoragePath: original.StoragePath, FontSize: 15, CrossrefEmail: "not an address"},
-		{StoragePath: original.StoragePath, FontSize: 15, CrossrefEmail: "Me <me@example.org>"},
+		{StoragePath: original.StoragePath, FontSize: 15, ContactEmail: "not an address"},
+		{StoragePath: original.StoragePath, FontSize: 15, ContactEmail: "Me <me@example.org>"},
 	} {
 		if err := store.Save(config); err == nil {
 			t.Errorf("Save(%+v) succeeded, want validation error", config)

@@ -9,7 +9,7 @@ export interface Config {
   fontSize: number;
   mcpToken: string;
   ncbiApiKey: string;
-  crossrefEmail: string;
+  contactEmail: string;
 }
 
 export interface Dataset {
@@ -79,6 +79,13 @@ export interface Evidence {
   extractor: string;
   status: string;
   observedAt: string;
+}
+
+export interface FulltextResult {
+  file: PaperFile;
+  source: string;
+  url: string;
+  license: string;
 }
 
 export interface HarvestRun {
@@ -241,6 +248,10 @@ export const Library = {
   /** ChooseStoragePath opens a native directory picker for the storage folder. */
   chooseStoragePath(): Promise<string> {
     return call("Library.ChooseStoragePath");
+  },
+  /** FetchFulltext stores an open-access PDF for a paper. */
+  fetchFulltext(paperID: string): Promise<FulltextResult> {
+    return call("Library.FetchFulltext", paperID);
   },
   /** GetSettings returns persisted desktop preferences. */
   getSettings(): Promise<Config> {

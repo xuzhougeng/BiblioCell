@@ -163,6 +163,10 @@ type listFilesInput struct {
 	PaperID string `json:"paperId" jsonschema:"Stable ID of the paper"`
 }
 
+type fetchFulltextInput struct {
+	PaperID string `json:"paperId" jsonschema:"Paper that should receive the PDF"`
+}
+
 type listFilesOutput struct {
 	Files []PaperFile `json:"files"`
 }
@@ -196,7 +200,7 @@ func addWriteTool[In, Out any](server *mcp.Server, name, description string, han
 
 // StartMCP starts a local Streamable HTTP MCP server for the real database. It
 // serves loopback addresses only: the bearer token travels unencrypted.
-func StartMCP(store *Store, address, token string) (*MCPServer, error) {
+func StartMCP(store *Store, address, token string, credentials func() SourceCredentials) (*MCPServer, error) {
 	if len(token) < 32 {
 		return nil, errors.New("a secure MCP write token is required")
 	}
@@ -275,6 +279,7 @@ func StartMCP(store *Store, address, token string) (*MCPServer, error) {
 				"Record what you extract with add_evidence: a short excerpt and its source, per field, for the person checking it",
 				"Only a person verifies evidence, datasets, repository records, and paper links; list_evidence shows their verdicts",
 				"Drop a file into inboxPath, then call attach_file with its name; it moves into the library",
+				"fetch_fulltext stores an open-access PDF by DOI or PMID; when it fails, leave the paper for a person rather than scraping publisher pages",
 				"screening and reviewedAt are read-only: a person decides in the desktop app; send proposedScreening with proposedReason instead",
 				"proposedScreening=excluded requires a non-empty proposedReason",
 				"Once reviewedAt is set, update_paper accepts only proposedScreening and proposedReason",
@@ -284,7 +289,7 @@ func StartMCP(store *Store, address, token string) (*MCPServer, error) {
 			AvailableTools: []string{
 				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "undo_import",
 				"list_datasets", "get_dataset", "add_dataset", "update_dataset", "link_dataset",
-				"add_evidence", "list_evidence", "attach_file", "list_files",
+				"add_evidence", "list_evidence", "attach_file", "fetch_fulltext", "list_files",
 			},
 			InboxPath:        store.inboxPath(),
 			DemoDataIncluded: false,
@@ -412,6 +417,10 @@ func StartMCP(store *Store, address, token string) (*MCPServer, error) {
 		return nil, evidenceOutput{Evidence: evidence}, err
 	})
 
+	addWriteTool(server, "fetch_fulltext", "Find an open-access PDF for a paper through PMC and Unpaywall and store it; returns the existing file if it has full text; requires Bearer token write access",
+		func(ctx context.Context, input fetchFulltextInput) (FulltextResult, error) {
+			return store.FetchFulltext(ctx, input.PaperID, credentials)
+		})
 	addWriteTool(server, "attach_file", "Move a file from the inbox into the library and attach it to a paper; requires Bearer token write access",
 		func(ctx context.Context, input attachFileInput) (PaperFile, error) {
 			if input.Type == "" {
