@@ -1,7 +1,7 @@
-// "更新与来源" page: connector cards, configuration, records and manual sync.
+// "更新与来源" page: automatic updates, connector cards, configuration, records and manual sync.
 import type { App } from "./app.ts";
-import { Library, type SourceConfig, type SourceStatus } from "./mygo.ts";
-import { arr, dateText, esc, safeURL } from "./model.ts";
+import { Library, events, type SourceConfig, type SourceStatus } from "./mygo.ts";
+import { arr, dateText, esc, nextRunText, safeURL, shortTime } from "./model.ts";
 import { enqueue } from "./store.ts";
 import { $, I, badge, empty, errorMessage, option, setFormError, text } from "./ui.ts";
 
@@ -30,23 +30,42 @@ const QUERY_HINTS: Record<string, string> = {
 const COMMON_QUERY = '("single cell"[All Fields] OR "single-cell"[All Fields] OR "single nucleus"[All Fields]) AND (plant[All Fields] OR Arabidopsis[Organism])';
 const PROVIDER_DEFAULT_QUERIES: Record<string, string> = { geo: `${COMMON_QUERY} AND gse[ETYP]`, sra: COMMON_QUERY, ena: 'description="*single*" AND tax_tree(33090)' };
 
+const INTERVALS: [number, string][] = [[6, "每 6 小时"], [12, "每 12 小时"], [24, "每天"], [72, "每 3 天"], [168, "每周"]];
+
+function renderAutomation(app: App): string {
+  const automation = app.env.automation;
+  const disabled = app.env.real ? "" : " disabled";
+  // Another interval can come from the command line.
+  const choices = INTERVALS.some(([hours]) => hours === automation.intervalHours) ? INTERVALS : [...INTERVALS, [automation.intervalHours, `每 ${automation.intervalHours} 小时`] as [number, string]];
+  const facts = [
+    ["上次更新", automation.lastRunAt ? shortTime(automation.lastRunAt) : "尚未运行"],
+    ["下次更新", nextRunText(automation)],
+    ["新增", `${automation.added} 条`],
+    ["跳过（去重）", `${automation.skipped} 条`],
+  ].map(([label, value]) => `<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join("");
+  const failures = automation.failures.map((failure) => `<p class="source-error" role="alert"><strong>${esc(failure.source)}</strong>：${esc(failure.message || "同步失败，请检查配置和网络。")}</p>`).join("");
+  return `<section class="panel automation-panel"><div class="panel-header"><div><h2>自动更新</h2><p>应用运行时按频率更新已启用的来源；关闭期间错过的更新，下次启动时补跑。</p></div><input class="settings-switch" id="automation-enabled" type="checkbox" role="switch" aria-label="自动更新" ${automation.enabled ? "checked" : ""}${disabled}></div>`
+    + `<div class="automation-body"><label class="automation-interval"><span>更新频率</span><select class="input" id="automation-interval"${disabled}>${choices.map(([hours, label]) => `<option value="${hours}"${hours === automation.intervalHours ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label><dl class="automation-facts">${facts}</dl></div>`
+    + `<div class="automation-notes"><p class="muted">新增与跳过是各来源最近一次运行的合计，手动同步也计入。</p>${failures}</div></section>`;
+}
+
 export function renderSources(app: App): string {
   const realMode = app.env.real;
   const items = app.env.sources.length ? app.env.sources : FALLBACK_SOURCES;
   const notice = realMode
-    ? "公开 API 仅在点击“同步”时访问，不会后台定时拉取。新文献进入“待判断”，重复 DOI / PMID 保留原记录；仓库结果只保存为 accession 线索。"
+    ? "自动更新开启后才会在后台访问公开 API，否则只在点击“同步”时访问。新文献进入“待判断”；按 DOI、PMID、题目判定已存在的记录会跳过，不改动人工内容；仓库结果只保存为 accession 线索。"
     : "来源同步只写入真实 SQLite 数据库。请先在设置中关闭 Demo 演示模式，再配置和运行同步。";
   const cards = items.map((source) => {
-    const running = app.syncing.has(source.id);
-    const failed = source.lastRun?.status === "failed";
+    const run = source.lastRun;
+    const running = app.syncing.has(source.id) || run?.status === "running";
+    const failed = run?.status === "failed";
     const stateLabel = !source.supported ? "手动入口" : running ? "同步中" : !source.enabled ? "已停用" : failed ? "上次失败" : "已配置";
     const stateColor = failed ? "amber" : source.supported && source.enabled ? "green" : "gray";
-    const last = source.lastSuccessAt
-      ? `最近成功：${new Date(source.lastSuccessAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}`
-      : "最近同步：尚未成功";
+    const counts = run?.status === "succeeded" ? ` · 新增 ${source.kind === "repository" ? run.recordsNew : run.papersAdded} · 跳过 ${run.duplicates}` : "";
+    const last = source.lastSuccessAt ? `最近成功：${shortTime(source.lastSuccessAt)}${counts}` : "最近同步：尚未成功";
     const query = source.id === "sequence-repositories" ? `${String(source.provider || "geo").toUpperCase()} · ${source.query}` : source.query;
     const actions = source.supported
-      ? `<button class="btn btn-secondary" data-action="configure-source" data-id="${esc(source.id)}"${!realMode || running ? " disabled" : ""}>配置</button><button class="btn btn-primary" data-action="sync-source" data-id="${esc(source.id)}"${!realMode || !source.enabled || running ? " disabled" : ""}>${I(running ? "clock" : "refresh", 15)}${running ? " 正在同步" : " 同步"}</button>`
+      ? `<button class="btn btn-secondary" data-action="configure-source" data-id="${esc(source.id)}"${!realMode || running ? " disabled" : ""}>配置</button><button class="btn btn-primary" data-action="sync-source" data-id="${esc(source.id)}"${!realMode || !source.enabled || running || app.env.automation.running ? " disabled" : ""}>${I(running ? "clock" : "refresh", 15)}${running ? " 正在同步" : " 同步"}</button>`
       : "";
     return `<section class="source-card"><div class="source-heading"><span class="source-letter">${esc(source.name.slice(0, 1))}</span><div><h3>${esc(source.name)}</h3><p class="muted">${source.kind === "repository" ? "数据仓库" : "文献元数据"}</p></div>${badge(stateLabel, stateColor)}</div><p class="source-description">${esc(source.description)}</p>`
       + (source.supported ? `<div class="source-query" title="${esc(query)}"><code>${esc(query || "查询待配置")}</code></div>` : "")
@@ -58,7 +77,7 @@ export function renderSources(app: App): string {
   const activityList = activities.length
     ? `<div class="activity-list">${activities.slice(0, 20).map((a) => `<div class="activity-item"><span class="activity-dot"></span><div><p>${esc(a.message)}</p><span class="muted">${dateText(a.at)} · ${new Date(a.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span></div></div>`).join("")}</div>`
     : empty("暂无整理活动", "添加文献、保存笔记、导入数据或同步来源后，可以在这里查看记录。");
-  return `<div class="notice-box">${I("info", 18)}<span>${notice}</span></div><div class="source-grid">${cards}</div><section class="panel activity-panel"><div class="panel-header"><div><h2>整理活动</h2><p class="muted">记录当前会话中的整理与同步操作</p></div><button class="text-link" data-action="export-json">${I("download", 15)} 导出备份</button></div>${activityList}</section>`;
+  return `<div class="notice-box">${I("info", 18)}<span>${notice}</span></div>${renderAutomation(app)}<div class="source-grid">${cards}</div><section class="panel activity-panel"><div class="panel-header"><div><h2>整理活动</h2><p class="muted">记录当前会话中的整理与同步操作</p></div><button class="text-link" data-action="export-json">${I("download", 15)} 导出备份</button></div>${activityList}</section>`;
 }
 
 export function sourceConfigModal(app: App, id: string): void {
@@ -67,7 +86,7 @@ export function sourceConfigModal(app: App, id: string): void {
   const provider = source.id === "sequence-repositories"
     ? `<label class="form-field full-width"><span>检索仓库</span><select class="input" name="provider">${option("geo", "GEO（NCBI）", source.provider)}${option("sra", "SRA（NCBI）", source.provider)}${option("ena", "ENA（European Nucleotide Archive）", source.provider)}</select></label>`
     : "";
-  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">允许手动同步</label><p>只有点击同步按钮才会发起网络请求。</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>检索式 / 关键词 <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>单次最多保存</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label></div><p id="form-error" class="form-error" role="alert"></p></form>`;
+  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">启用此来源</label><p>启用后可手动同步；开启自动更新时也会按频率访问。</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>检索式 / 关键词 <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>单次最多保存</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label></div><p id="form-error" class="form-error" role="alert"></p></form>`;
   app.showModal(`配置 ${source.name}`, body, `<button class="btn btn-secondary" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="source-config-form">${I("check", 16)} 保存配置</button>`, true);
 }
 
@@ -129,7 +148,7 @@ export async function syncSource(app: App, id: string): Promise<void> {
   app.render();
   try {
     const result = await enqueue(() => Library.syncSource(id));
-    app.env.sources = app.env.sources.map((item) => (item.id === id ? result.status : item));
+    await refreshSources(app);
     await app.reload();
     const source = app.env.sources.find((item) => item.id === id);
     const message = `${source ? source.name : id} 同步完成：${result.recordsSeen} 条外部记录，新增 ${result.papersAdded} 篇文献，${result.duplicates} 条已存在。`;
@@ -137,13 +156,37 @@ export async function syncSource(app: App, id: string): Promise<void> {
     app.toast(message);
   } catch (error) {
     app.toast(`同步失败：${errorMessage(error, "请检查网络和来源配置。")}`, true);
-    try {
-      app.env.sources = await Library.listSources();
-    } catch {
-      // Keep the stale list; the next render still shows the failure toast.
-    }
+    await refreshSources(app);
   } finally {
     app.syncing.delete(id);
     app.render();
   }
+}
+
+export async function refreshSources(app: App): Promise<void> {
+  try {
+    [app.env.sources, app.env.automation] = await Promise.all([Library.listSources(), Library.sourceAutomation()]);
+  } catch {
+    // Keep the stale list; the next render still shows the failure toast.
+  }
+}
+
+export function saveAutomation(app: App): void {
+  if (!app.env.real) return;
+  const enabled = $<HTMLInputElement>("#automation-enabled")?.checked ?? false;
+  const hours = Number($<HTMLSelectElement>("#automation-interval")?.value);
+  Library.saveSourceAutomation(enabled, hours).then((automation) => {
+    app.env.automation = automation;
+    app.toast(enabled ? "自动更新已开启。" : "自动更新已关闭。");
+  }).catch((error: unknown) => {
+    app.toast(`保存失败：${errorMessage(error, "请重试。")}`, true);
+  }).finally(() => app.render());
+}
+
+/** watchSources shows what background updates do while the window is open. */
+export function watchSources(app: App): void {
+  events.sourcesChanged.on((automation) => {
+    app.env.automation = automation;
+    void refreshSources(app).then(() => app.refresh());
+  });
 }

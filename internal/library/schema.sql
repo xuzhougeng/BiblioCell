@@ -1,4 +1,4 @@
--- BiblioCell · schema v7
+-- BiblioCell · schema v8
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 CREATE TABLE IF NOT EXISTS papers (
     id TEXT PRIMARY KEY NOT NULL,
     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+    -- 题目匹配键：只留小写字母和数字，缺标识符时用来去重。
+    -- 不设唯一约束：同题不同 DOI 或 PMID 是两篇文献，例如预印本与正式发表版。
+    title_key TEXT NOT NULL DEFAULT '',
     abstract TEXT,
     authors_json TEXT NOT NULL DEFAULT '[]'
         CHECK (json_valid(authors_json) AND json_type(authors_json) = 'array'),
@@ -56,8 +59,9 @@ CREATE TABLE IF NOT EXISTS papers (
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
--- DOI 存裸 DOI：小写、去空格，不存 https://doi.org/ 前缀。
--- 标识符缺失时不插入占位符；(namespace, value) 是跨文献的唯一键。
+-- DOI 存裸 DOI：小写、去空格，不存 https://doi.org/ 前缀；PMID 不存标签和链接。
+-- 标识符缺失时不插入占位符；(namespace, value) 是跨文献的唯一键，
+-- 所有写入都先规范化再落库，所以同一篇文献的 DOI / PMID 不会以两种写法并存。
 CREATE TABLE IF NOT EXISTS paper_identifiers (
     paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
     namespace TEXT NOT NULL CHECK (namespace IN ('doi','pmid','pmcid','biorxiv','arxiv','other')),
@@ -311,6 +315,15 @@ CREATE TABLE IF NOT EXISTS source_states (
     CHECK ((committed_watermark IS NULL AND committed_cursor IS NULL) OR last_successful_run_id IS NOT NULL)
 );
 
+-- 自动更新只有一份设置，随数据库保存；各来源何时运行由 harvest_runs 决定。
+CREATE TABLE IF NOT EXISTS source_automation (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    interval_hours INTEGER NOT NULL DEFAULT 24 CHECK (interval_hours BETWEEN 1 AND 720)
+);
+INSERT OR IGNORE INTO source_automation(id) VALUES (1);
+
+-- papers_added 是本次新建的文献数，duplicates 是因已存在而跳过的记录数。
 CREATE TABLE IF NOT EXISTS harvest_runs (
     id TEXT PRIMARY KEY NOT NULL,
     source_id TEXT NOT NULL REFERENCES source_states(source_id),
@@ -327,6 +340,8 @@ CREATE TABLE IF NOT EXISTS harvest_runs (
     records_seen INTEGER NOT NULL DEFAULT 0 CHECK (records_seen >= 0),
     records_new INTEGER NOT NULL DEFAULT 0 CHECK (records_new >= 0),
     records_updated INTEGER NOT NULL DEFAULT 0 CHECK (records_updated >= 0),
+    papers_added INTEGER NOT NULL DEFAULT 0 CHECK (papers_added >= 0),
+    duplicates INTEGER NOT NULL DEFAULT 0 CHECK (duplicates >= 0),
     error_message TEXT,
     UNIQUE (id, source_id),
     CHECK (window_start IS NULL OR window_end IS NULL OR window_start <= window_end),
@@ -403,6 +418,7 @@ CREATE INDEX IF NOT EXISTS idx_evidence_dataset ON field_evidence(target_dataset
 
 CREATE INDEX IF NOT EXISTS idx_papers_date ON papers(online_date DESC);
 CREATE INDEX IF NOT EXISTS idx_papers_first_seen ON papers(first_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_papers_title_key ON papers(title_key);
 CREATE INDEX IF NOT EXISTS idx_curation_screening ON paper_curation(screening_status, priority);
 CREATE INDEX IF NOT EXISTS idx_curation_reading ON paper_curation(reading_status);
 CREATE INDEX IF NOT EXISTS idx_datasets_modality ON datasets(modality, curation_level);
@@ -469,5 +485,6 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (5, '公开来源配置、手动同步与外部记录快照'),
        (6, '区分人工决定与 agent 提议，记录真实核查时间'),
        (7, 'agent 导入批次与数据集人工核实时间');
-PRAGMA user_version = 7;
+-- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
+PRAGMA user_version = 8;
 COMMIT;

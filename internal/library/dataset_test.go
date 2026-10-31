@@ -231,8 +231,8 @@ func TestOpenMigratesV3Datasets(t *testing.T) {
 	if chemistry != "v3" || notes != "" {
 		t.Errorf("chemistry or notes changed: %q / %q", chemistry, notes)
 	}
-	if SchemaVersion != 7 {
-		t.Errorf("SchemaVersion = %d, want 7", SchemaVersion)
+	if SchemaVersion != 8 {
+		t.Errorf("SchemaVersion = %d, want 8", SchemaVersion)
 	}
 }
 

@@ -1,5 +1,5 @@
 // Pure data logic shared by the UI and the node:test suite. No DOM access here.
-import type { Dataset, DatasetPaperLink, DatasetRepository, Evidence, Paper, PaperFile, SpeciesEntry } from "./mygo.ts";
+import type { Dataset, DatasetPaperLink, DatasetRepository, Evidence, Paper, PaperFile, SourceAutomation, SpeciesEntry } from "./mygo.ts";
 
 export interface Resource {
   id: string;
@@ -96,8 +96,19 @@ export const dateText = (value: string): string => {
   return isNaN(d.getTime()) ? "日期待补" : d.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).replaceAll("/", ".");
 };
 
+export const shortTime = (value: string): string =>
+  new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+/** nextRunText says when updates run next. A due source waits for the next check, under a minute away. */
+export function nextRunText(automation: Pick<SourceAutomation, "enabled" | "running" | "nextRunAt">, now = Date.now()): string {
+  if (automation.running) return "正在更新";
+  if (!automation.enabled) return "未开启";
+  if (!automation.nextRunAt) return "没有已启用的来源";
+  return Date.parse(automation.nextRunAt) <= now ? "即将开始" : shortTime(automation.nextRunAt);
+}
+
 export const normalizeDOI = (value: unknown): string =>
-  String(value ?? "").trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "").replace(/^doi:\s*/i, "").trim().toLowerCase();
+  String(value ?? "").trim().toLowerCase().replace(/^(?:(?:https?:\/\/)?(?:dx\.|www\.)?doi\.org\/|doi[:\s]\s*)/, "").trim().replace(/[.,;]+$/, "");
 export const validDOI = (value: string): boolean => !value || /^10\.\d{4,9}\/[^\s<>"']+$/i.test(value);
 export const uid = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 export const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;

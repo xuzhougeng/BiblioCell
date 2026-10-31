@@ -50,6 +50,8 @@ Commands:
   sources list                        connector configurations and last runs
   sources set ID [-enabled=BOOL] [-query TEXT] [-max N] [-provider geo|sra|ena]
   sources sync ID                     fetch one source now
+  sources auto [-enabled=BOOL] [-hours N]
+                                      show or set the schedule the desktop app runs
   settings get                        current settings.json
   settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN]
   mcp                                 MCP endpoint and bearer token
@@ -404,8 +406,20 @@ func (c *cli) sources(ctx context.Context, args []string) error {
 			return err
 		}
 		return c.print(c.store.SaveSourceConfig(ctx, config))
+	case "auto":
+		current, err := c.store.SourceAutomation(ctx)
+		if err != nil {
+			return err
+		}
+		flags := flag.NewFlagSet("sources auto", flag.ContinueOnError)
+		enabled := flags.Bool("enabled", current.Enabled, "update enabled sources while the desktop app runs")
+		hours := flags.Int("hours", current.IntervalHours, "hours between updates, 1-720")
+		if err := flags.Parse(rest); err != nil {
+			return err
+		}
+		return c.print(c.store.SaveSourceAutomation(ctx, *enabled, *hours))
 	}
-	return errors.New("usage: sources list|set|sync")
+	return errors.New("usage: sources list|set|sync|auto")
 }
 
 func (c *cli) configure(args []string) error {

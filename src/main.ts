@@ -19,6 +19,7 @@ const previewEnv = (): Env => ({
   settings: { storagePath: "", fontSize: 15, mcpToken: "" },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],
+  automation: { enabled: false, intervalHours: 24, running: false, lastRunAt: "", nextRunAt: "", added: 0, skipped: 0, failures: [] },
 });
 
 /** startDemo loads the browser-only library; a broken localStorage still shows the seeds plus a warning. */
@@ -43,9 +44,9 @@ async function boot(): Promise<void> {
 
   const realMode = localStorage.getItem("bibliocell-demo-mode") === "false";
   try {
-    const [status, mcp, settings, sources] = await Promise.all([Library.status(), Library.mcpInfo(), Library.getSettings(), Library.listSources()]);
+    const [status, mcp, settings, sources, automation] = await Promise.all([Library.status(), Library.mcpInfo(), Library.getSettings(), Library.listSources(), Library.sourceAutomation()]);
     applyFontSize(settings.fontSize);
-    const env: Env = { desktop: true, real: realMode, settings, mcp, status, sources };
+    const env: Env = { desktop: true, real: realMode, settings, mcp, status, sources, automation };
     if (realMode) {
       const initial = await sqliteStore.load();
       setRuntime("真实数据库", "文献与数据集来自本机 SQLite；MCP 连接信息见设置页。");

@@ -1,5 +1,5 @@
 // Application state, rendering and event delegation.
-import type { Config, MCPInfo, Paper, SourceStatus, Status } from "./mygo.ts";
+import type { Config, MCPInfo, Paper, SourceAutomation, SourceStatus, Status } from "./mygo.ts";
 import { demoState } from "./demo-data.ts";
 import { renderDrawer } from "./drawer.ts";
 import type { Evidence } from "./mygo.ts";
@@ -12,7 +12,7 @@ import {
   PAGES, READING, SCREEN, clone, csvText, decideScreening, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   speciesNameFor, tasksFor, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type TaskRow, type TaskType,
 } from "./model.ts";
-import { applyProviderDefault, renderSources, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource } from "./sources.ts";
+import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
 import { previewFontSize, renderSettings, saveSettings, settingsActions } from "./settings.ts";
 import { SaveRejected, type LibraryStore } from "./store.ts";
@@ -27,6 +27,7 @@ export interface Env {
   mcp: MCPInfo;
   status: Status | null;
   sources: SourceStatus[];
+  automation: SourceAutomation;
 }
 
 export interface AppOptions {
@@ -87,9 +88,8 @@ export class App {
       }
     });
     // Agents write while the window sits in the background; show their work on return.
-    if (this.env.real) window.addEventListener("focus", () => {
-      if (!this.drawer && !$("#modal-root .modal")) void this.reload();
-    });
+    if (this.env.real) window.addEventListener("focus", () => void refreshSources(this).then(() => this.refresh()));
+    if (this.env.desktop) watchSources(this);
     this.render();
     if (this.warning) this.toast(this.warning, true);
   }
@@ -135,6 +135,12 @@ export class App {
     } catch (error) {
       this.toast(`刷新失败：${errorMessage(error, "请重新打开应用。")}`, true);
     }
+  }
+  /** refresh shows background writes, unless that would pull the page from under the person. */
+  refresh(): void {
+    if (this.drawer || $("#modal-root .modal") || document.activeElement?.matches("#app-content input, #app-content textarea, #app-content select")) return;
+    if (this.env.real) void this.reload();
+    else this.render();
   }
   logActivity(message: string, kind = "edit"): void {
     this.state.activities.unshift({ id: uid("act"), message, kind, at: nowISO() });
@@ -474,6 +480,10 @@ export class App {
     if (!(target instanceof HTMLElement)) return;
     if (target instanceof HTMLSelectElement && target.matches('#source-config-form [name="provider"]')) {
       applyProviderDefault(target);
+      return;
+    }
+    if (target.id === "automation-enabled" || target.id === "automation-interval") {
+      saveAutomation(this);
       return;
     }
     if (target.id === "demo-mode" && target instanceof HTMLInputElement) {

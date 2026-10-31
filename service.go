@@ -203,6 +203,25 @@ func (l *Library) SyncSource(id string) (library.SyncResult, error) {
 	return l.store.SyncSource(context.Background(), id)
 }
 
+// sourcesChanged tells the window a background update started or finished.
+var sourcesChanged = mygo.NewEvent[library.SourceAutomation]("sourcesChanged")
+
+// SourceAutomation returns the update schedule and the latest runs' results.
+func (l *Library) SourceAutomation() (library.SourceAutomation, error) {
+	if l.store == nil {
+		return library.SourceAutomation{}, errors.New("library database is not ready")
+	}
+	return l.store.SourceAutomation(context.Background())
+}
+
+// SaveSourceAutomation persists the update schedule.
+func (l *Library) SaveSourceAutomation(enabled bool, intervalHours int) (library.SourceAutomation, error) {
+	if l.store == nil {
+		return library.SourceAutomation{}, errors.New("library database is not ready")
+	}
+	return l.store.SaveSourceAutomation(context.Background(), enabled, intervalHours)
+}
+
 // GetSettings returns persisted desktop preferences.
 func (l *Library) GetSettings() (settings.Config, error) {
 	if l.settings == nil {

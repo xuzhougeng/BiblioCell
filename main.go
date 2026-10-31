@@ -26,6 +26,7 @@ func main() {
 
 	var store *library.Store
 	var mcpServer *library.MCPServer
+	var stopUpdates func()
 	mygo.App.WhenReady(func() {
 		dataDir, err := mygo.App.Path(mygo.PathUserData)
 		if err != nil {
@@ -56,6 +57,17 @@ func main() {
 			}
 		}
 
+		stopUpdates = store.StartSourceUpdates(func() {
+			automation, err := store.SourceAutomation(context.Background())
+			if err != nil {
+				log.Printf("read source automation: %v", err)
+				return
+			}
+			if err := sourcesChanged.Broadcast(automation); err != nil {
+				log.Printf("announce source update: %v", err)
+			}
+		})
+
 		mygo.NewWindow(mygo.WindowOptions{
 			Title:           "BiblioCell",
 			Width:           1440,
@@ -71,6 +83,9 @@ func main() {
 	// OnQuit, not after Run: a relaunch starts the next instance before Run
 	// returns, and that instance needs the MCP port.
 	mygo.App.OnQuit(func() {
+		if stopUpdates != nil {
+			stopUpdates() // Before the store closes: a run may be writing its result.
+		}
 		if mcpServer != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			if err := mcpServer.Close(ctx); err != nil {

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoState } from "../src/demo-data.ts";
-import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterPapers, normalizeDOI, normalizeDataset, prepareImport, tasksFor, validDOI } from "../src/model.ts";
+import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterPapers, nextRunText, normalizeDOI, normalizeDataset, prepareImport, shortTime, tasksFor, validDOI } from "../src/model.ts";
 
 test("esc neutralizes HTML metacharacters and tolerates null", () => {
   assert.equal(esc(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
@@ -62,10 +62,21 @@ test("fileSize switches from KB to MB", () => {
   assert.equal(fileSize(5 * 1024 * 1024), "5.0 MB");
 });
 
+test("nextRunText covers every automation state", () => {
+  const now = Date.parse("2026-11-01T12:00:00Z");
+  const base = { enabled: true, running: false, nextRunAt: "2026-11-02T12:00:00Z" };
+  assert.equal(nextRunText({ ...base, running: true }, now), "正在更新");
+  assert.equal(nextRunText({ ...base, enabled: false }, now), "未开启");
+  assert.equal(nextRunText({ ...base, nextRunAt: "" }, now), "没有已启用的来源");
+  assert.equal(nextRunText({ ...base, nextRunAt: "2026-11-01T11:59:00Z" }, now), "即将开始");
+  assert.equal(nextRunText(base, now), shortTime(base.nextRunAt));
+});
+
 test("normalizeDOI strips resolver prefixes and lowercases", () => {
   assert.equal(normalizeDOI(" https://doi.org/10.1000/ABC "), "10.1000/abc");
   assert.equal(normalizeDOI("http://dx.doi.org/10.1000/abc"), "10.1000/abc");
   assert.equal(normalizeDOI("DOI: 10.1000/abc"), "10.1000/abc");
+  assert.equal(normalizeDOI("https://www.doi.org/10.1000/abc."), "10.1000/abc");
   assert.equal(normalizeDOI(undefined), "");
   assert.ok(validDOI(""));
   assert.ok(validDOI("10.1000/abc.123"));

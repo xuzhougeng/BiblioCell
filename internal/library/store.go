@@ -10,12 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	_ "modernc.org/sqlite"
 )
 
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 //go:embed schema.sql
 var schemaSQL string
@@ -120,12 +119,16 @@ var columnMigrations = []columnMigration{
 			UPDATE datasets SET reviewed_at = updated_at
 			WHERE curation_level IN ('files_verified', 'matrix_standardized', 'reprocessed')`,
 	},
+	// rekeyPapers fills title_key: the normalization lives in Go, not in SQL.
+	{table: "papers", column: "title_key", ddl: "TEXT NOT NULL DEFAULT ''"},
+	{table: "harvest_runs", column: "papers_added", ddl: "INTEGER NOT NULL DEFAULT 0 CHECK (papers_added >= 0)"},
+	{table: "harvest_runs", column: "duplicates", ddl: "INTEGER NOT NULL DEFAULT 0 CHECK (duplicates >= 0)"},
 }
 
 // healColumns adds missing columns to existing tables and backfills JSON
 // values from legacy fields. Fresh databases are left entirely to schema.sql.
 func healColumns(db *sql.DB) error {
-	for _, table := range []string{"papers", "datasets", "source_states", "paper_curation"} {
+	for _, table := range []string{"papers", "datasets", "source_states", "paper_curation", "harvest_runs"} {
 		rows, err := db.Query("PRAGMA table_info(" + table + ")")
 		if err != nil {
 			return fmt.Errorf("read %s columns: %w", table, err)
@@ -170,12 +173,96 @@ func healColumns(db *sql.DB) error {
 	return nil
 }
 
+// rekeyPapers brings rows from before schema v8 up to the matching rules: it
+// fills title_key and rewrites identifiers in their normalized form. It merges
+// and deletes nothing. When a rewrite would clash, two papers already hold the
+// same identifier, so the variant moves to the 'other' namespace and both stay
+// editable; whether they are one paper is a person's call. Its schema_migrations
+// row commits with the data, so a failed run repeats on the next Open.
+func rekeyPapers(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin paper rekey: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var done bool
+	if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 8)").Scan(&done); err != nil {
+		return fmt.Errorf("check paper rekey: %w", err)
+	}
+	if done {
+		return nil
+	}
+
+	titles, err := stringPairs(tx, "SELECT id, title FROM papers WHERE title_key = ''")
+	if err != nil {
+		return fmt.Errorf("read paper titles: %w", err)
+	}
+	for _, row := range titles {
+		if _, err := tx.Exec("UPDATE papers SET title_key = ? WHERE id = ?", titleKey(row[1]), row[0]); err != nil {
+			return fmt.Errorf("fill title key %s: %w", row[0], err)
+		}
+	}
+
+	identifiers, err := stringPairs(tx, "SELECT namespace, value FROM paper_identifiers WHERE namespace IN ('doi', 'pmid')")
+	if err != nil {
+		return fmt.Errorf("read paper identifiers: %w", err)
+	}
+	for _, row := range identifiers {
+		namespace, value := row[0], row[1]
+		normalized := normalizeDOI(value)
+		if namespace == "pmid" {
+			normalized = normalizePMID(value)
+		}
+		if normalized == value {
+			continue
+		}
+		result, err := tx.Exec("UPDATE OR IGNORE paper_identifiers SET value = ? WHERE namespace = ? AND value = ?", normalized, namespace, value)
+		if err != nil {
+			return fmt.Errorf("normalize %s %s: %w", namespace, value, err)
+		}
+		if changed, err := result.RowsAffected(); err != nil {
+			return fmt.Errorf("normalize %s %s: %w", namespace, value, err)
+		} else if changed > 0 {
+			continue
+		}
+		if _, err := tx.Exec("UPDATE OR IGNORE paper_identifiers SET namespace = 'other' WHERE namespace = ? AND value = ?", namespace, value); err != nil {
+			return fmt.Errorf("set aside %s %s: %w", namespace, value, err)
+		}
+	}
+	if _, err := tx.Exec("INSERT INTO schema_migrations(version, description) VALUES (8, '来源自动更新设置、题目匹配键与运行去重计数')"); err != nil {
+		return fmt.Errorf("record paper rekey: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit paper rekey: %w", err)
+	}
+	return nil
+}
+
+// stringPairs reads a two-column query completely, so the caller can write
+// inside the same transaction afterwards.
+func stringPairs(tx *sql.Tx, query string) ([][2]string, error) {
+	rows, err := tx.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	pairs := [][2]string{}
+	for rows.Next() {
+		var pair [2]string
+		if err := rows.Scan(&pair[0], &pair[1]); err != nil {
+			return nil, err
+		}
+		pairs = append(pairs, pair)
+	}
+	return pairs, rows.Err()
+}
+
 // Store owns the application's SQLite database.
 type Store struct {
-	db           *sql.DB
-	path         string
-	integrity    string // PRAGMA integrity_check result from Open; Open fails unless it is "ok"
-	sourceSyncMu sync.Mutex
+	db        *sql.DB
+	path      string
+	integrity string // PRAGMA integrity_check result from Open; Open fails unless it is "ok"
 }
 
 const (
@@ -239,6 +326,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return nil, fmt.Errorf("initialize schema: %w", err)
+	}
+	if err := rekeyPapers(db); err != nil {
+		return nil, err
 	}
 	store := &Store{db: db, path: path}
 	if err := store.ensureSourceStates(context.Background()); err != nil {

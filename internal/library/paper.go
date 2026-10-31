@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // SpeciesEntry pairs a scientific species name with its display label.
@@ -92,7 +93,11 @@ var ErrDuplicatePaper = errors.New("paper already exists")
 // ErrHumanReviewed indicates an agent edit of a paper a person already decided on.
 var ErrHumanReviewed = errors.New("paper was reviewed by a person; only proposedScreening and proposedReason can change")
 
-var doiPattern = regexp.MustCompile(`^10\.\d{4,9}/\S+$`)
+var (
+	doiPattern        = regexp.MustCompile(`^10\.\d{4,9}/\S+$`)
+	doiPrefixPattern  = regexp.MustCompile(`^(?:(?:https?://)?(?:dx\.|www\.)?doi\.org/|doi[:\s]\s*)`)
+	pmidPrefixPattern = regexp.MustCompile(`^(?:(?:https?://)?(?:www\.)?(?:pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov/pubmed)/|pmid[:\s]\s*)`)
+)
 
 // paperSelect is the shared projection for ListPapers and GetPaper; callers
 // append their own WHERE / ORDER BY clause.
@@ -617,12 +622,12 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO papers(
-			id, title, abstract, authors_json, journal, organs_json, modalities_json,
+			id, title, title_key, abstract, authors_json, journal, organs_json, modalities_json,
 			platforms_json, issue_year, publication_state,
 			article_types_json, species_json, source, import_batch_id, first_seen_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			title = excluded.title, abstract = excluded.abstract,
+			title = excluded.title, title_key = excluded.title_key, abstract = excluded.abstract,
 			authors_json = excluded.authors_json, journal = excluded.journal,
 			organs_json = excluded.organs_json, modalities_json = excluded.modalities_json,
 			platforms_json = excluded.platforms_json, issue_year = excluded.issue_year,
@@ -630,7 +635,7 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 			article_types_json = excluded.article_types_json,
 			species_json = excluded.species_json, source = excluded.source,
 			updated_at = excluded.updated_at`,
-		p.ID, p.Title, p.Abstract, authors, p.Journal, organs, modalities,
+		p.ID, p.Title, titleKey(p.Title), p.Abstract, authors, p.Journal, organs, modalities,
 		platforms, year, p.PublicationStatus,
 		jsonArray(articleTypes), species, p.Source, nullableString(p.BatchID), p.AddedAt, p.UpdatedAt)
 	if err != nil {
@@ -685,7 +690,7 @@ func normalizePaper(p *Paper) {
 	p.ID = strings.TrimSpace(p.ID)
 	p.Title = strings.TrimSpace(p.Title)
 	p.DOI = normalizeDOI(p.DOI)
-	p.PMID = strings.TrimSpace(p.PMID)
+	p.PMID = normalizePMID(p.PMID)
 	p.Authors = strings.Join(jsonStrings(jsonArray(strings.Split(p.Authors, ";"))), "; ")
 	p.Journal = strings.TrimSpace(p.Journal)
 	p.Species = cleanSpecies(p.Species)
@@ -719,12 +724,28 @@ func normalizePaper(p *Paper) {
 	p.IsDemo = false
 }
 
+// normalizeDOI returns the bare lowercase DOI, without a link or label around it
+// or the punctuation a citation leaves behind.
 func normalizeDOI(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	for _, prefix := range []string{"https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:"} {
-		value = strings.TrimPrefix(value, prefix)
-	}
-	return strings.TrimSpace(value)
+	value = doiPrefixPattern.ReplaceAllString(strings.ToLower(strings.TrimSpace(value)), "")
+	return strings.TrimRight(strings.TrimSpace(value), ".,;")
+}
+
+// normalizePMID returns the bare PMID from a label or a PubMed link.
+func normalizePMID(value string) string {
+	value = pmidPrefixPattern.ReplaceAllString(strings.ToLower(strings.TrimSpace(value)), "")
+	return strings.TrimRight(strings.TrimSpace(value), "/.,;")
+}
+
+// titleKey reduces a title to its lowercase letters and digits, so markup,
+// punctuation, and hyphenation cannot hide a duplicate.
+func titleKey(title string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, stripMarkup(title))
 }
 
 func newPaperID() (string, error) {

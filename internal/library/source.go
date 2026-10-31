@@ -31,6 +31,8 @@ type HarvestRun struct {
 	RecordsSeen    int    `json:"recordsSeen"`
 	RecordsNew     int    `json:"recordsNew"`
 	RecordsUpdated int    `json:"recordsUpdated"`
+	PapersAdded    int    `json:"papersAdded"`
+	Duplicates     int    `json:"duplicates"`
 	ErrorMessage   string `json:"errorMessage"`
 }
 
@@ -280,10 +282,10 @@ func (s *Store) SourceStatus(ctx context.Context, id string) (SourceStatus, erro
 	var run HarvestRun
 	err = s.db.QueryRowContext(ctx, `
 		SELECT id, status, started_at, coalesce(finished_at, ''), records_seen,
-		       records_new, records_updated, coalesce(error_message, '')
+		       records_new, records_updated, papers_added, duplicates, coalesce(error_message, '')
 		FROM harvest_runs WHERE source_id = ? ORDER BY started_at DESC, id DESC LIMIT 1`, id).
 		Scan(&run.ID, &run.Status, &run.StartedAt, &run.FinishedAt, &run.RecordsSeen,
-			&run.RecordsNew, &run.RecordsUpdated, &run.ErrorMessage)
+			&run.RecordsNew, &run.RecordsUpdated, &run.PapersAdded, &run.Duplicates, &run.ErrorMessage)
 	if err == nil {
 		status.LastRun = &run
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -326,7 +328,15 @@ type sourceHarvester interface {
 	Harvest(context.Context, SourceConfig) ([]harvestRecord, error)
 }
 
-// SyncSource performs one manual fetch and atomically commits its local records.
+// ErrSyncBusy means another update is running, from this process or from the CLI.
+var ErrSyncBusy = errors.New("另一项来源更新正在运行，请稍后再试")
+
+// sourceRunLimit bounds one run: each remote request times out within a minute
+// and bioRxiv, the longest connector, makes about ten. A run still open after
+// that belongs to a process that died, so it no longer blocks anything.
+const sourceRunLimit = 15 * time.Minute
+
+// SyncSource performs one fetch and atomically commits its local records.
 func (s *Store) SyncSource(ctx context.Context, id string) (SyncResult, error) {
 	return s.syncSource(ctx, id, newRemoteHarvester())
 }
@@ -342,8 +352,6 @@ func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarve
 	if !definition.supported {
 		return SyncResult{}, errors.New("this source only offers a manual official link")
 	}
-	s.sourceSyncMu.Lock()
-	defer s.sourceSyncMu.Unlock()
 
 	status, err := s.SourceStatus(ctx, id)
 	if err != nil {
@@ -362,11 +370,21 @@ func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarve
 	if err != nil {
 		return SyncResult{}, err
 	}
-	startedAt := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := s.db.ExecContext(ctx, `
+	now := time.Now().UTC()
+	// One statement, so the check and the claim cannot be split by another
+	// process: a manual, scheduled, or CLI update each find the others here.
+	started, err := s.db.ExecContext(ctx, `
 		INSERT INTO harvest_runs(id, source_id, status, query_text, started_at)
-		VALUES(?, ?, 'running', ?, ?)`, runID, id, config.Query, startedAt); err != nil {
+		SELECT ?, ?, 'running', ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM harvest_runs WHERE status = 'running' AND started_at > ?)`,
+		runID, id, config.Query, now.Format(time.RFC3339Nano), now.Add(-sourceRunLimit).Format(time.RFC3339Nano))
+	if err != nil {
 		return SyncResult{}, fmt.Errorf("start source run: %w", err)
+	}
+	if claimed, err := started.RowsAffected(); err != nil {
+		return SyncResult{}, fmt.Errorf("start source run: %w", err)
+	} else if claimed == 0 {
+		return SyncResult{}, ErrSyncBusy
 	}
 
 	records, harvestErr := harvester.Harvest(ctx, config)
@@ -395,6 +413,9 @@ func (s *Store) failSourceRun(runID string, runErr error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	message := runErr.Error()
+	if errors.Is(runErr, context.Canceled) {
+		message = "应用退出，本次更新已中断"
+	}
 	if len(message) > 4000 {
 		message = message[:4000]
 	}
@@ -424,10 +445,30 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 			return SyncResult{}, fmt.Errorf("source record %s has invalid JSON", record.ExternalID)
 		}
 		hash := sha256.Sum256(payload)
+
+		var previous int
+		if err := tx.QueryRowContext(ctx,
+			"SELECT count(*) FROM source_records WHERE source_id = ? AND external_id = ?",
+			sourceID, record.ExternalID).Scan(&previous); err != nil {
+			return SyncResult{}, fmt.Errorf("check source record %s: %w", record.ExternalID, err)
+		}
 		paperID := ""
-		if record.Paper != nil {
+		if previous > 0 {
+			// The first sighting settled which paper this is. A person may since
+			// have corrected that paper's title or DOI, or an undo removed it;
+			// matching again would bring back what they changed.
+			if err := tx.QueryRowContext(ctx, `
+				SELECT coalesce(paper_id, '') FROM source_records WHERE source_id = ? AND external_id = ?
+				ORDER BY last_seen_at DESC LIMIT 1`, sourceID, record.ExternalID).Scan(&paperID); err != nil {
+				return SyncResult{}, fmt.Errorf("read source record %s: %w", record.ExternalID, err)
+			}
+			result.Duplicates++
+		} else if record.Paper != nil {
 			paper := *record.Paper
 			normalizePaper(&paper)
+			if !doiPattern.MatchString(paper.DOI) {
+				paper.DOI = "" // One malformed DOI must not fail every future run.
+			}
 			paperID, err = existingPaperID(ctx, tx, paper)
 			if err != nil {
 				return SyncResult{}, err
@@ -443,16 +484,13 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 				}
 				result.PapersAdded++
 			} else {
+				if err := fillPaperIdentifiers(ctx, tx, paperID, paper); err != nil {
+					return SyncResult{}, fmt.Errorf("fill paper identifiers %s: %w", record.ExternalID, err)
+				}
 				result.Duplicates++
 			}
 		}
 
-		var previous int
-		if err := tx.QueryRowContext(ctx,
-			"SELECT count(*) FROM source_records WHERE source_id = ? AND external_id = ?",
-			sourceID, record.ExternalID).Scan(&previous); err != nil {
-			return SyncResult{}, fmt.Errorf("check source record %s: %w", record.ExternalID, err)
-		}
 		recordID, err := newLocalID("SR")
 		if err != nil {
 			return SyncResult{}, err
@@ -492,8 +530,10 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE harvest_runs SET status = 'succeeded', finished_at = ?, records_seen = ?,
-			records_new = ?, records_updated = ? WHERE id = ? AND status = 'running'`,
-		now, result.RecordsSeen, result.RecordsNew, result.RecordsUpdated, runID); err != nil {
+			records_new = ?, records_updated = ?, papers_added = ?, duplicates = ?
+		WHERE id = ? AND status = 'running'`,
+		now, result.RecordsSeen, result.RecordsNew, result.RecordsUpdated,
+		result.PapersAdded, result.Duplicates, runID); err != nil {
 		return SyncResult{}, fmt.Errorf("finish source run: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -507,32 +547,42 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 	return result, nil
 }
 
+// existingPaperID finds the paper a normalized record describes, most certain
+// match first: DOI, PMID, then title. The title only stands in for a missing
+// identifier, so it never joins papers whose DOIs or PMIDs differ, such as a
+// preprint and its journal version, or whose years are more than one apart.
 func existingPaperID(ctx context.Context, tx *sql.Tx, paper Paper) (string, error) {
-	if paper.DOI != "" {
+	for _, identifier := range [][2]string{{"doi", paper.DOI}, {"pmid", paper.PMID}} {
+		if identifier[1] == "" {
+			continue
+		}
 		var id string
 		err := tx.QueryRowContext(ctx,
-			"SELECT paper_id FROM paper_identifiers WHERE namespace = 'doi' AND value = ?", paper.DOI).Scan(&id)
+			"SELECT paper_id FROM paper_identifiers WHERE namespace = ? AND value = ?", identifier[0], identifier[1]).Scan(&id)
 		if err == nil {
 			return id, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("check harvested DOI: %w", err)
+			return "", fmt.Errorf("check harvested %s: %w", identifier[0], err)
 		}
 	}
-	if paper.PMID != "" {
-		var id string
-		err := tx.QueryRowContext(ctx,
-			"SELECT paper_id FROM paper_identifiers WHERE namespace = 'pmid' AND value = ?", paper.PMID).Scan(&id)
-		if err == nil {
-			return id, nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("check harvested PMID: %w", err)
-		}
+	key := titleKey(paper.Title)
+	if key == "" {
+		return "", nil
+	}
+	var year any
+	if paper.Year != nil {
+		year = *paper.Year
 	}
 	var id string
-	err := tx.QueryRowContext(ctx,
-		"SELECT id FROM papers WHERE lower(trim(title)) = lower(trim(?)) LIMIT 1", paper.Title).Scan(&id)
+	err := tx.QueryRowContext(ctx, `
+		SELECT p.id FROM papers p
+		WHERE p.title_key = ?1
+		  AND (?2 IS NULL OR p.issue_year IS NULL OR abs(p.issue_year - ?2) <= 1)
+		  AND NOT EXISTS (SELECT 1 FROM paper_identifiers i WHERE i.paper_id = p.id AND (
+		      (i.namespace = 'doi' AND ?3 <> '' AND i.value <> ?3) OR
+		      (i.namespace = 'pmid' AND ?4 <> '' AND i.value <> ?4)))
+		ORDER BY p.first_seen_at, p.id LIMIT 1`, key, year, paper.DOI, paper.PMID).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
@@ -540,6 +590,45 @@ func existingPaperID(ctx context.Context, tx *sql.Tx, paper Paper) (string, erro
 		return "", fmt.Errorf("check harvested title: %w", err)
 	}
 	return "", nil
+}
+
+// fillPaperIdentifiers records the identifiers a matched paper lacks, so that a
+// source knowing only one of them still finds it. It never replaces a value and
+// leaves a paper a person has reviewed exactly as they left it.
+func fillPaperIdentifiers(ctx context.Context, tx *sql.Tx, paperID string, paper Paper) error {
+	current, err := readPaper(ctx, tx, paperID)
+	if err != nil {
+		return err
+	}
+	if current.ReviewedAt != "" {
+		return nil
+	}
+	for _, identifier := range []struct{ namespace, have, incoming string }{
+		{"doi", current.DOI, paper.DOI}, {"pmid", current.PMID, paper.PMID},
+	} {
+		if identifier.have != "" || identifier.incoming == "" {
+			continue
+		}
+		// Ignored when another paper holds it: two existing papers are then the
+		// same one, which is a person's call rather than a reason to stop the run.
+		added, err := tx.ExecContext(ctx,
+			"INSERT OR IGNORE INTO paper_identifiers(paper_id, namespace, value, raw_value) VALUES(?, ?, ?, ?)",
+			paperID, identifier.namespace, identifier.incoming, identifier.incoming)
+		if err != nil {
+			return err
+		}
+		if count, err := added.RowsAffected(); err != nil {
+			return err
+		} else if count == 0 {
+			continue
+		}
+		// UpdatePaper compares updated_at, so an agent patching the older copy
+		// retries instead of erasing this identifier.
+		if _, err := tx.ExecContext(ctx, "UPDATE papers SET updated_at = ? WHERE id = ?", paper.UpdatedAt, paperID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newLocalID(prefix string) (string, error) {
