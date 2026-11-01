@@ -2,6 +2,18 @@
 
 基于原始网页原型开发的 Go 桌面应用，使用 [mygo](https://github.com/egoist/mygo) 提供原生窗口和类型化 Go ↔ TypeScript 调用，使用纯 Go SQLite 保存正式数据。
 
+## 界面预览
+
+在线体验（Demo 数据，浏览器预览版，修改只保存在你自己的浏览器里）：**https://xuzhougeng.github.io/BiblioCell/**
+
+| 总览 · 收录与整理进度 | 文献库 · 筛选、排序与分页 |
+|:---:|:---:|
+| ![总览](docs/screenshots/overview.png) | ![文献库](docs/screenshots/papers.png) |
+| **文献详情 · 摘要与收录判断** | **数据集 · 仓库编号与关联文献** |
+| ![文献详情](docs/screenshots/paper-drawer.png) | ![数据集](docs/screenshots/datasets.png) |
+| **数据集详情 · Accession 直达仓库** | **待补事项 · 按整理状态生成** |
+| ![数据集详情](docs/screenshots/dataset-drawer.png) | ![待补事项](docs/screenshots/tasks.png) |
+
 ## 两种数据模式
 
 应用默认启用 **Demo 模式**：

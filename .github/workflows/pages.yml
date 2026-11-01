@@ -1,0 +1,46 @@
+# 把浏览器预览版（Demo 数据）发布到 GitHub Pages。
+# 纯静态前端：不经 Go 后端，文献与数据集为 localStorage 中的虚构演示数据。
+name: Deploy demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["src/**", "public/**", "index.html", "package.json", "package-lock.json", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只保留一次部署，新的推送取消进行中的旧部署。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      # 项目页部署在 /BiblioCell/ 子路径下，构建时注入 base。
+      - run: npx vite build --base=/BiblioCell/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
