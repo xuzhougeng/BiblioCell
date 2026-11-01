@@ -76,7 +76,7 @@ export function renderDrawer(app: App): string | null {
     const tab = app.drawerTab;
     let body = "";
     if (tab === "overview") {
-      body = `<div class="drawer-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? "未读")}${demoBadge(p)}<button class="btn btn-secondary" data-action="edit-paper" data-id="${esc(p.id)}">编辑信息</button></div>`
+      body = `<div class="drawer-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? "未读")}${demoBadge(p)}<button class="btn btn-secondary" data-action="edit-paper" data-id="${esc(p.id)}">编辑信息</button><button class="btn btn-danger" data-action="delete-paper" data-id="${esc(p.id)}">删除</button></div>`
         + `<div class="detail-grid">${detail("研究物种", esc(speciesDisplay(p) || "待补"), `<small>${esc(joinList(speciesNames(p)))}</small>`)}${detail("组织 / 部位", esc(joinList(p.organs) || "待补"))}${detail("测序类型", esc(joinList(p.modalities) || "待补"))}${detail("测序平台", esc(joinList(p.platforms) || "待补"))}${detail("发表年份", esc(p.year || "待补"))}${detail("文献类型", esc(joinList(p.articleTypes) || "待判断"))}${detail("发表状态", PUBLICATION_LABELS[p.publicationStatus] ?? "尚未确认")}</div>`
         + `<section class="detail-section"><h3>摘要</h3><p class="abstract-text">${esc(p.abstract || "摘要尚未补充。先保留这条文献，之后可以继续完善。")}</p></section>`
         + `<section class="detail-section"><h3>主题标签</h3><div class="tag-list">${arr(p.tags).length ? arr(p.tags).map((t) => `<span class="tag">${esc(t)}</span>`).join("") : '<span class="muted">暂未设置标签</span>'}</div></section>`

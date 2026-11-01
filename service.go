@@ -55,6 +55,14 @@ func (l *Library) ListPapers() ([]library.Paper, error) {
 	return l.store.ListPapers(context.Background())
 }
 
+// DeletePaper removes a paper and its stored attachments, preserving datasets.
+func (l *Library) DeletePaper(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.DeletePaper(context.Background(), id)
+}
+
 // SavePaperEdits stores what a person changed and returns the titles of papers
 // left unsaved because another writer changed the same fields.
 func (l *Library) SavePaperEdits(edits []library.PaperEdit) ([]string, error) {

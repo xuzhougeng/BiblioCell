@@ -250,6 +250,10 @@ export const Library = {
   chooseStoragePath(): Promise<string> {
     return call("Library.ChooseStoragePath");
   },
+  /** DeletePaper removes a paper and its stored attachments, preserving datasets. */
+  deletePaper(id: string): Promise<void> {
+    return call("Library.DeletePaper", id);
+  },
   /** FetchFulltext stores an open-access PDF for a paper. */
   fetchFulltext(paperID: string): Promise<FulltextResult> {
     return call("Library.FetchFulltext", paperID);

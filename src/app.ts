@@ -15,7 +15,8 @@ import {
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
 import { previewFontSize, renderSettings, saveSettings, settingsActions } from "./settings.ts";
-import { SaveRejected, type LibraryStore } from "./store.ts";
+import { Library } from "./mygo.ts";
+import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
 import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
 import { renderDatasets, renderOverview, renderPapers, renderSchema, renderTasks } from "./views.ts";
 
@@ -72,6 +73,8 @@ export class App {
   private modalLastFocus: Element | null = null;
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private warning: string;
+  private deleting = false;
+  private contextRow: HTMLElement | null = null;
 
   constructor(options: AppOptions) {
     this.store = options.store;
@@ -85,6 +88,31 @@ export class App {
   }
 
   start(): void {
+    document.addEventListener("contextmenu", (e) => {
+      const row = e.target instanceof Element ? e.target.closest<HTMLElement>('tr[data-action="open-paper"]') : null;
+      if (!row || this.drawer || $("#modal-root .modal")) return;
+      e.preventDefault();
+      this.closeContextMenu();
+      row.focus();
+      this.contextRow = row;
+      const menu = document.createElement("div");
+      menu.id = "paper-context-menu";
+      menu.className = "paper-context-menu";
+      menu.setAttribute("role", "menu");
+      const button = document.createElement("button");
+      button.className = "btn btn-danger";
+      button.textContent = "删除文献";
+      button.setAttribute("role", "menuitem");
+      button.dataset.action = "delete-paper";
+      button.dataset.id = row.dataset.id;
+      menu.appendChild(button);
+      document.body.appendChild(menu);
+      menu.style.left = Math.max(0, Math.min(e.clientX, innerWidth - menu.offsetWidth)) + "px";
+      menu.style.top = Math.max(0, Math.min(e.clientY, innerHeight - menu.offsetHeight)) + "px";
+      button.focus();
+    });
+    window.addEventListener("resize", () => this.closeContextMenu());
+    document.addEventListener("scroll", () => this.closeContextMenu(), true);
     document.addEventListener("click", (e) => this.onClick(e));
     document.addEventListener("submit", (e) => this.onSubmit(e));
     document.addEventListener("change", (e) => this.onChange(e));
@@ -102,6 +130,48 @@ export class App {
     if (this.env.desktop) watchSources(this);
     this.render();
     if (this.warning) this.toast(this.warning, true);
+  }
+
+  private closeContextMenu(): void {
+    const menu = $("#paper-context-menu");
+    if (menu?.contains(document.activeElement)) this.contextRow?.focus();
+    menu?.remove();
+    this.contextRow = null;
+  }
+
+  private requestDeletePaper(id: string): void {
+    const paper = this.paperById(id);
+    if (!paper) return;
+    this.showModal("删除文献", '<p>确定删除《' + esc(paper.title) + '》？</p><p>将删除文献、笔记、相关证据和保存的附件副本，并解除数据集关联。数据集及原始导入文件会保留。此操作无法撤销。</p>', '<button class="btn btn-secondary" data-action="close-modal">取消</button><button class="btn btn-danger" data-action="confirm-delete-paper" data-id="' + esc(id) + '">确认删除</button>');
+  }
+
+  private async deletePaper(id: string, button: HTMLElement): Promise<void> {
+    if (this.deleting || !this.paperById(id)) return;
+    this.deleting = true;
+    button.setAttribute("disabled", "");
+    try {
+      if (this.env.real) await enqueue(() => Library.deletePaper(id));
+      const next = clone(this.state);
+      const fileIds = new Set(next.resources.filter(r => r.paperId === id).map(r => r.id));
+      next.papers = next.papers.filter(p => p.id !== id);
+      next.resources = next.resources.filter(r => r.paperId !== id);
+      next.evidence = (next.evidence ?? []).filter(e => e.paperId !== id && !fileIds.has(e.fileId));
+      next.datasets.forEach(d => { d.paperLinks = d.paperLinks.filter(l => l.paperId !== id); });
+      if (!this.env.real) await this.store.save(next, this.saved);
+      this.state = next;
+      this.saved = clone(next);
+      this.edits++;
+      this.closeModal();
+      if (this.drawer?.type === "paper" && this.drawer.id === id) this.closeDrawer();
+      this.render();
+      if (this.env.real) await this.reload();
+      this.toast("文献已删除。");
+    } catch (error) {
+      this.toast(errorMessage(error, "删除失败，请重试。"), true);
+    } finally {
+      this.deleting = false;
+      button.removeAttribute("disabled");
+    }
   }
 
   // ---- queries ----
@@ -159,6 +229,7 @@ export class App {
 
   // ---- rendering ----
   render(): void {
+    this.closeContextMenu();
     const content = $("#app-content");
     if (!content) return;
     const renderers: Record<Page, () => string> = {
@@ -366,6 +437,8 @@ export class App {
       $$<HTMLElement>(".species-row", rows).at(-1)?.querySelector<HTMLInputElement>("[name=speciesName]")?.focus();
     },
     "remove-species-row": (el) => el.closest(".species-row")?.remove(),
+    "delete-paper": (_el, id) => this.requestDeletePaper(id),
+    "confirm-delete-paper": (el, id) => { void this.deletePaper(id, el); },
     "open-paper": (_el, id) => this.openPaper(id),
     "open-dataset": (_el, id) => this.openDataset(id),
     "close-drawer": () => this.closeDrawer(),
@@ -500,6 +573,7 @@ export class App {
 
   private onClick(e: MouseEvent): void {
     const target = e.target;
+    this.closeContextMenu();
     if (!(target instanceof Element)) return;
     // Anchors navigate by themselves; the row or card around them must not also open.
     if (target.closest("a[href]")) return;
@@ -633,6 +707,11 @@ export class App {
 
   private onKeydown(e: KeyboardEvent): void {
     const target = e.target instanceof HTMLElement ? e.target : null;
+    if ($("#paper-context-menu")) {
+      if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); this.closeContextMenu(); }
+      if (e.key !== "Enter" && e.key !== " ") e.preventDefault();
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault(); // Otherwise the web view passes the key on and macOS beeps.
       if ($("#modal-root .modal")) this.closeModal();
