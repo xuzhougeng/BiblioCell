@@ -47,12 +47,13 @@ export interface Filters {
   fulltext: string;
   screening: string;
   source: string;
+  preprint: string;
   starred: boolean;
   sort: string;
 }
 
 export const emptyFilters = (): Filters => ({
-  search: "", species: "", organ: "", year: "", modality: "", platform: "", fulltext: "", screening: "", source: "", starred: false, sort: "newest",
+  search: "", species: "", organ: "", year: "", modality: "", platform: "", fulltext: "", screening: "", source: "", preprint: "", starred: false, sort: "newest",
 });
 
 export const SCREEN: Record<string, string> = { included: "已纳入", pending: "待判断", uncertain: "证据不足", excluded: "相关 / 排除" };
@@ -237,6 +238,7 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
         && (!filters.fulltext || p.fulltext === filters.fulltext)
         && (!filters.screening || p.screening === filters.screening)
         && (!filters.source || p.source === filters.source)
+        && (!filters.preprint || (filters.preprint === "yes" ? p.publicationStatus === "preprint" : p.publicationStatus !== "preprint"))
         && (!filters.starred || p.starred);
     })
     .sort(SORTERS[filters.sort] ?? SORTERS.newest!);

@@ -144,7 +144,7 @@ export function renderPapers(app: App): string {
   // Writing the clamped page back keeps state valid as filters or edits shrink the list.
   const info = paperPage(items.length, app.paperPageSize, app.paperPage);
   app.paperPage = info.page;
-  const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening", "source"] as const;
+  const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening", "source", "preprint"] as const;
   const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0);
   const entries = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
   return `<div class="section-toolbar"><div class="view-tabs"><button class="view-tab ${filters.starred ? "" : "active"}" data-action="all-papers">全部文献 <span>${papers.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} 我的收藏 <span>${papers.filter((p) => p.starred).length}</span></button></div><button class="btn btn-secondary" data-action="export-csv">${I("download", 16)} 导出列表</button></div>`
@@ -158,6 +158,7 @@ export function renderPapers(app: App): string {
     + selectFilter(filters, "fulltext", "全文情况", entries(FULL))
     + selectFilter(filters, "screening", "收录状态", entries(SCREEN))
     + selectFilter(filters, "source", "全部来源", uniqueValues(papers, "source"))
+    + selectFilter(filters, "preprint", "是否为 preprint（全部）", [{ value: "yes", label: "是（预印本）" }, { value: "no", label: "否（未标记为预印本）" }])
     + (filterCount || filters.search ? `<button class="text-link" data-action="clear-filters">清空${filterCount ? ` (${filterCount})` : ""}</button>` : "")
     + `</div>${paperTable(items.slice(info.start, info.end), app, false, filters.sort)}<div class="table-footer"><span>显示 ${items.length ? `${info.start + 1}–${info.end}` : 0} / ${items.length} 篇文献</span><span class="muted footer-hint">↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
 }
