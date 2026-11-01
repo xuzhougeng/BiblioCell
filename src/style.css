@@ -223,6 +223,11 @@ th { font-weight: 600 }
 .app-main { margin-left: var(--sidebar-width); min-height: 100vh }
 .topbar { position: sticky; top: 0; z-index: 40; height: 60px; border-bottom: 3px double var(--line-strong); padding: 0 40px; display: flex; align-items: center; justify-content: space-between; background: var(--surface-deep) }
 .topbar-right { display: flex; align-items: center; margin-left: auto }
+/* 在线演示顶栏的 GitHub 入口,ghost 图标样式与折叠侧栏按钮一致 */
+.topbar-link { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 38px; height: 38px; margin-right: 14px; border-radius: 5px; color: #76715e; transition: background 150ms ease, color 150ms ease }
+.topbar-link:hover { background: rgba(42, 64, 47, 0.08); color: #4c5342 }
+.topbar-link svg { width: 20px; height: 20px }
+.topbar-link[hidden] { display: none }
 .global-search { width: 320px; display: flex; gap: 10px; align-items: center; color: #76715e; border-bottom: 1.5px solid var(--line-strong); padding: 6px 2px }
 .global-search input { width: 100%; min-width: 0; border: 0; background: transparent; font-size: calc(14.5px * var(--font-scale, 1)); padding: 4px 0; color: var(--text-strong); outline: none }
 .global-search input::placeholder { color: #767260 }

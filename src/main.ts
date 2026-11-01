@@ -37,6 +37,8 @@ async function boot(): Promise<void> {
   initShell();
   if (!isMyGo()) {
     applyFontSize(15);
+    // 浏览器预览（在线演示）顶栏显示仓库入口；桌面应用本身就在仓库里运行。
+    document.getElementById("repo-link")?.removeAttribute("hidden");
     setRuntime("Demo · 浏览器预览", "当前为虚构演示数据；打开桌面应用后可切换到真实 SQLite 数据库。");
     await startDemo(previewEnv());
     return;
