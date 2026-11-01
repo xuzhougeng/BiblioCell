@@ -173,6 +173,38 @@ func healColumns(db *sql.DB) error {
 	return nil
 }
 
+// ensurePaperView recreates v_paper_overview when the stored view predates the
+// fulltext_url column. Like healColumns it checks the actual schema instead of
+// trusting user_version: CREATE VIEW IF NOT EXISTS cannot upgrade a view in
+// place, so the outdated view is dropped and schema.sql recreates it right
+// after. A fresh database has no view yet, where the drop is a no-op.
+func ensurePaperView(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(v_paper_overview)")
+	if err != nil {
+		return fmt.Errorf("read paper view columns: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return fmt.Errorf("read paper view column: %w", err)
+		}
+		if name == "fulltext_url" {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read paper view columns: %w", err)
+	}
+	if _, err := db.Exec("DROP VIEW IF EXISTS v_paper_overview"); err != nil {
+		return fmt.Errorf("upgrade paper view: %w", err)
+	}
+	return nil
+}
+
 // rekeyPapers brings rows from before schema v8 up to the matching rules: it
 // fills title_key and rewrites identifiers in their normalized form. It merges
 // and deletes nothing. When a rewrite would clash, two papers already hold the
@@ -322,6 +354,9 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("unsupported database schema version %d", version)
 	}
 	if err := healColumns(db); err != nil {
+		return nil, err
+	}
+	if err := ensurePaperView(db); err != nil {
 		return nil, err
 	}
 	if _, err := db.Exec(schemaSQL); err != nil {

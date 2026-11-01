@@ -128,6 +128,81 @@ func TestPaperRejectsInvalidArticleType(t *testing.T) {
 	}
 }
 
+func TestListPapersCarriesFulltextEntryURL(t *testing.T) {
+	store, err := Open(t.TempDir() + "/bibliocell.sqlite")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	added, err := store.AddPaper(ctx, Paper{Title: "Linked fulltext entry", DOI: "10.1000/linked"})
+	if err != nil {
+		t.Fatalf("AddPaper() error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+		INSERT INTO resources (id, resource_type, title, url, access_status)
+		VALUES ('r-entry', 'fulltext', '出版社全文入口', 'https://example.org/paper.pdf', 'available')`); err != nil {
+		t.Fatalf("insert entry resource: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, "INSERT INTO paper_resources (paper_id, resource_id) VALUES (?, 'r-entry')", added.ID); err != nil {
+		t.Fatalf("attach entry resource: %v", err)
+	}
+
+	papers, err := store.ListPapers(ctx)
+	if err != nil {
+		t.Fatalf("ListPapers() error = %v", err)
+	}
+	if len(papers) != 1 {
+		t.Fatalf("paper count = %d, want 1", len(papers))
+	}
+	if papers[0].Fulltext != "linked" {
+		t.Errorf("Fulltext = %q, want linked", papers[0].Fulltext)
+	}
+	if papers[0].FulltextURL != "https://example.org/paper.pdf" {
+		t.Errorf("FulltextURL = %q, want the recorded entry link", papers[0].FulltextURL)
+	}
+}
+
+func TestOpenUpgradesPaperViewPredatingFulltextURL(t *testing.T) {
+	path := t.TempDir() + "/bibliocell.sqlite"
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := store.AddPaper(ctx, Paper{Title: "Before the view gained a column", DOI: "10.1000/old-view"}); err != nil {
+		t.Fatalf("AddPaper() error = %v", err)
+	}
+	// Recreate the pre-fulltext_url view shape, as an older database holds it.
+	if _, err := store.db.ExecContext(ctx, `DROP VIEW v_paper_overview`); err != nil {
+		t.Fatalf("drop view: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+		CREATE VIEW v_paper_overview AS
+		SELECT p.*, c.screening_status, c.reading_status, c.starred, c.tags_json, c.notes, 'missing' AS fulltext_status
+		FROM papers p JOIN paper_curation c ON c.paper_id = p.id`); err != nil {
+		t.Fatalf("recreate outdated view: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	// Reopening notices the missing column and rebuilds the view from schema.sql.
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen after view downgrade: %v", err)
+	}
+	defer reopened.Close()
+	papers, err := reopened.ListPapers(ctx)
+	if err != nil {
+		t.Fatalf("ListPapers() error = %v", err)
+	}
+	if len(papers) != 1 || papers[0].FulltextURL != "" {
+		t.Fatalf("papers = %+v, want one paper with an empty entry link", papers)
+	}
+}
+
 func TestUpdatePaperReplacesMultiValueLists(t *testing.T) {
 	store, err := Open(t.TempDir() + "/bibliocell.sqlite")
 	if err != nil {

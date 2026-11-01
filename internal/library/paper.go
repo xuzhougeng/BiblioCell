@@ -51,6 +51,9 @@ type Paper struct {
 	ProposedReason    string         `json:"proposedReason"`
 	Reading           string         `json:"reading"`
 	Fulltext          string         `json:"fulltext"`
+	// FulltextURL is the entry link behind a "linked" fulltext status, read
+	// from the resources table; the view keeps it in sync with attachments.
+	FulltextURL       string         `json:"fulltextUrl"`
 	Starred           bool           `json:"starred"`
 	Source            string         `json:"source"`
 	BatchID           string         `json:"batchId"`
@@ -107,7 +110,7 @@ const paperSelect = `
 		       coalesce(species_json, '[]'),
 		       organs_json, modalities_json, coalesce(platforms_json, '[]'), coalesce(source, ''),
 		       first_seen_at, updated_at, screening_status, coalesce(screening_reason, ''),
-		       reading_status, starred, tags_json, notes, fulltext_status,
+		       reading_status, starred, tags_json, notes, fulltext_status, coalesce(fulltext_url, ''),
 		       coalesce(screening_reviewed_at, ''), proposed_screening, proposed_reason,
 		       coalesce(import_batch_id, ''),
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'doi'), ''),
@@ -146,7 +149,7 @@ func scanPaper(rows *sql.Rows) (Paper, error) {
 		&year, &p.PublicationStatus, &articleTypes,
 		&species, &organs, &modalities, &platforms, &p.Source,
 		&p.AddedAt, &p.UpdatedAt, &p.Screening, &p.ScreeningReason,
-		&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext,
+		&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext, &p.FulltextURL,
 		&p.ReviewedAt, &p.ProposedScreening, &p.ProposedReason, &p.BatchID, &p.DOI, &p.PMID,
 	); err != nil {
 		return Paper{}, fmt.Errorf("read paper: %w", err)
@@ -297,7 +300,7 @@ func recordDecision(p *Paper) {
 
 // serverPaperFields are never taken from a desktop edit: the database owns them.
 var serverPaperFields = map[string]bool{
-	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "reviewedAt": true, "batchId": true, "isDemo": true,
+	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "fulltextUrl": true, "reviewedAt": true, "batchId": true, "isDemo": true,
 }
 
 // mergeFields applies what changed from before to after onto current, field by

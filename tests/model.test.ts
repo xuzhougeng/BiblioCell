@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoState } from "../src/demo-data.ts";
-import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterDatasets, filterPapers, nextRunText, normalizeDOI, normalizeDataset, pageList, paperPage, prepareImport, shortTime, speciesDisplay, tasksFor, toggleSort, validDOI } from "../src/model.ts";
+import { changedItems, csvText, datasetLocation, decideScreening, emptyFilters, esc, fileSize, filterDatasets, filterPapers, nextRunText, normalizeDOI, normalizeDataset, pageList, paperPage, prepareImport, repositoryURL, shortTime, speciesDisplay, tasksFor, toggleSort, validDOI } from "../src/model.ts";
 
 test("esc neutralizes HTML metacharacters and tolerates null", () => {
   assert.equal(esc(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
@@ -212,4 +212,17 @@ test("filterDatasets matches own fields, repositories and linked paper titles", 
   const withRepo = normalizeDataset({ id: "DS-GEO", title: "geo row", repository: "geo", accession: "GSE123456" });
   assert.deepEqual(filterDatasets([withRepo], "gse123456", title).map((d) => d.id), ["DS-GEO"]);
   assert.deepEqual(filterDatasets([withRepo], "拟南芥", title), []);
+});
+
+test("repositoryURL prefers the recorded url and falls back to known repositories", () => {
+  assert.equal(repositoryURL({ repository: "geo", accession: "GSE123456", url: "https://example.org/data" }), "https://example.org/data");
+  assert.equal(repositoryURL({ repository: "geo", accession: "GSE123456", url: "" }), "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE123456");
+  assert.equal(repositoryURL({ repository: "GEO", accession: "GSE1", url: "" }), "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE1");
+  assert.equal(repositoryURL({ repository: "ena", accession: "ERP123", url: "" }), "https://www.ebi.ac.uk/ena/browser/view/ERP123");
+  assert.equal(repositoryURL({ repository: "zenodo", accession: "1234567", url: "" }), "https://zenodo.org/records/1234567");
+  assert.equal(repositoryURL({ repository: "geo", accession: "", url: "" }), "", "no accession means no location");
+  assert.equal(repositoryURL({ repository: "other", accession: "X1", url: "" }), "", "unknown repositories stay unlinkable");
+  assert.equal(repositoryURL({ repository: "geo", accession: "GSE1", url: "javascript:alert(1)" }), "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE1", "an unsafe url falls back to the repository link");
+  assert.equal(datasetLocation(normalizeDataset({ id: "DS", title: "t", repository: "sra", accession: "SRR000001" })), "https://www.ncbi.nlm.nih.gov/sra/?term=SRR000001");
+  assert.equal(datasetLocation(normalizeDataset({ id: "DS2", title: "t" })), "");
 });

@@ -34,7 +34,7 @@ export function demoState(): LibraryState {
       species: r[1].map(([name, label]) => ({ name, label })),
       organs: r[2], modalities: r[3], platforms: r[4],
       articleTypes: i === 13 ? ["相关资料"] : i === 3 ? ["原创研究", "方法研究"] : i === 10 || i === 12 ? ["方法研究"] : ["原创研究"],
-      year: r[5], screening: r[6], fulltext: r[7], reading: r[8], starred: r[9],
+      year: r[5], screening: r[6], fulltext: r[7], fulltextUrl: "", reading: r[8], starred: r[9],
       reviewedAt: "", proposedScreening: "", proposedReason: "", batchId: "",
       doi: "", pmid: "", authors: `示例研究组 ${String.fromCharCode(65 + i)}`,
       journal: i === 3 || i === 10 || i === 12 ? "方法研究 · 示例" : "原创研究 · 示例",
@@ -52,12 +52,17 @@ export function demoState(): LibraryState {
   const links = [[0], [1], [4], [5], [6], [7], [9], [12]];
   const datasets: Dataset[] = links.map((indexes, i) => {
     const p = paperAt(indexes[0] ?? 0);
+    // The first demo dataset carries a fictional repository record, so the
+    // accession chips and repo links have something to show in the preview.
+    const repositories = i === 0
+      ? [{ id: "DEMO-REPO-001", repository: "geo", accession: "GSE000001", recordKind: "", url: "https://www.ncbi.nlm.nih.gov/geo/", publicStatus: "public", mappingScope: "exact", evidenceUrl: "", evidenceText: "示例编号，点击跳转 GEO 官网首页。", verified: false }]
+      : [];
     return {
       id: `DEMO-DS-${String(i + 1).padStart(3, "0")}`,
       title: `${p.species.map((s) => s.label).join("·")} · ${p.organs[0] ?? ""} · ${p.modalities[0] ?? ""}`,
-      description: "", notes: "这是演示数据集，尚未关联真实仓库编号或文件。",
+      description: "", notes: i === 0 ? "演示数据集：编号为虚构示例，点击后跳转 GEO 官网首页。" : "这是演示数据集，尚未关联真实仓库编号或文件。",
       species: p.species.slice(0, 1), organs: p.organs.slice(0, 1), modalities: p.modalities.slice(0, 1), platforms: [],
-      repositories: [], repository: "", accession: "",
+      repositories, repository: repositories[0]?.repository ?? "", accession: repositories[0]?.accession ?? "",
       status: i < 3 ? "identified" : "pending", curationLevel: "",
       availability: "unknown", matrixAvailability: "unknown", annotationAvailability: "unknown",
       cellsReported: null, cellCountUnit: "", cellCountScope: "",

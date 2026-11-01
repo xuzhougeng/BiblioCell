@@ -134,6 +134,7 @@ export interface Paper {
   proposedReason: string;
   reading: string;
   fulltext: string;
+  fulltextUrl: string;
   starred: boolean;
   source: string;
   batchId: string;

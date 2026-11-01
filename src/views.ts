@@ -1,8 +1,8 @@
 // Page renderers for overview, papers, datasets, tasks and schema.
 import type { App } from "./app.ts";
-import type { Dataset, Paper } from "./mygo.ts";
+import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
+  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
   type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
@@ -30,15 +30,39 @@ export function taskGroups(ts: TaskRow[]): string {
   return groups || '<p class="muted task-empty">暂无待补事项。</p>';
 }
 
-/** datasetChips shows a paper's linked datasets as accession chips that open the dataset drawer. */
+/** datasetChips shows a paper's linked datasets; a chip opens the dataset's web location, or its drawer when none is known. */
 function datasetChips(app: App, p: Paper): string {
   const linked = app.paperDatasets(p.id);
   if (!linked.length) return '<span class="muted">未关联</span>';
   const chips = linked.slice(0, 2).map((d) => {
     const label = d.accession || (d.repository ? d.repository.toUpperCase() : "") || d.title;
-    return `<button class="link-chip" data-action="open-dataset" data-id="${esc(d.id)}" title="${esc(d.title)}"><span class="link-chip-title">${esc(label)}</span></button>`;
+    const url = datasetLocation(d);
+    return url
+      ? `<a class="link-chip" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(d.title)} · 在仓库中打开"><span class="link-chip-title">${esc(label)}</span>${I("arrow-up-right", 12)}</a>`
+      : `<button class="link-chip" data-action="open-dataset" data-id="${esc(d.id)}" title="${esc(d.title)}"><span class="link-chip-title">${esc(label)}</span></button>`;
   }).join("");
   return `${chips}${linked.length > 2 ? `<span class="link-more">+${linked.length - 2}</span>` : ""}`;
+}
+
+/** fulltextEntry resolves where a linked fulltext opens: the recorded entry, or the DOI landing page. */
+function fulltextEntry(app: App, p: Paper): string {
+  if (p.fulltext !== "linked") return "";
+  const resource = app.paperResources(p.id).find((r) => r.type === "fulltext" && safeURL(r.url));
+  if (resource) return safeURL(resource.url);
+  return p.doi ? `https://doi.org/${encodeURI(p.doi)}` : "";
+}
+
+/** fulltextCell makes the status actionable: open the stored PDF file, or follow the recorded entry link. */
+function fulltextCell(app: App, p: Paper): string {
+  if (p.fulltext === "stored") {
+    const file = app.paperResources(p.id).find((r) => r.localPath && r.type === "fulltext");
+    if (file) return `<button class="fulltext-status is-link" data-action="open-file" data-id="${esc(file.id)}" title="打开已保存的全文文件">${fullBadge(p.fulltext)}${I("file", 12)}</button>`;
+    return `<span class="fulltext-status">${fullBadge(p.fulltext)}</span>`;
+  }
+  const url = p.fulltext === "linked" ? safeURL(p.fulltextUrl) || fulltextEntry(app, p) : "";
+  return url
+    ? `<a class="fulltext-status is-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="打开全文入口">${fullBadge(p.fulltext)}${I("arrow-up-right", 12)}</a>`
+    : `<span class="fulltext-status">${fullBadge(p.fulltext)}</span>`;
 }
 
 export function paperTable(items: Paper[], app: App, compact = false, sort = ""): string {
@@ -58,7 +82,7 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
     + `<td><div class="species-label">${esc(speciesDisplay(p) || "物种待补")}</div><div class="species-name">${esc(joinList(p.organs) || "组织待补")}</div></td>`
     + (compact ? "" : `<td class="link-cell">${datasetChips(app, p)}</td>`)
     + `<td>${modalityBadges(p)}</td>`
-    + (compact ? "" : `<td><span class="fulltext-status">${fullBadge(p.fulltext)}</span></td>`)
+    + (compact ? "" : `<td>${fulltextCell(app, p)}</td>`)
     + `<td>${screenBadge(p.screening)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`,
   ).join("");
   const head = `<tr><th class="col-star"><span class="sr-only">收藏</span></th>${th("文献", "title")}${compact ? "" : th("发表时间", "year")}${th("研究对象", "species")}${compact ? "" : "<th>关联数据集</th>"}${th("技术", "modality")}${compact ? "" : "<th>全文</th>"}<th>收录状态</th><th class="col-arrow"></th></tr>`;
@@ -149,13 +173,19 @@ export function datasetTable(items: Dataset[], app: App): string {
       `<button class="link-chip" data-action="open-paper" data-id="${esc(l.paper!.id)}" title="${esc(l.paper!.title)}"><span class="link-chip-title">${esc(l.paper!.title)}</span><span class="link-chip-role">${esc(ROLE[l.role] ?? "关联")}</span></button>`,
     ).join("");
     const repos = arr(d.repositories);
-    const repo = repos[0];
+    const repoLine = (r: DatasetRepository): string => {
+      const line = `<span>${esc((r.repository || "仓库待补").toUpperCase())}</span><code>${esc(r.accession || "编号待补")}</code>`;
+      const url = repositoryURL(r);
+      return url
+        ? `<a class="repo-line" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="在仓库中打开">${line}</a>`
+        : `<div class="repo-line">${line}</div>`;
+    };
     return `<tr data-action="open-dataset" data-id="${esc(d.id)}" tabindex="0" aria-label="查看 ${esc(d.title)}">`
       + `<td class="dataset-main-cell"><div class="dataset-title">${esc(d.title)}</div><div class="dataset-meta">${demoBadge(d)}<span>${esc(joinList(d.platforms) || "平台待补")}</span></div></td>`
       + `<td class="link-cell">${links.length ? `${chips}${links.length > 2 ? `<span class="link-more">+${links.length - 2}</span>` : ""}` : '<span class="muted">未关联</span>'}</td>`
       + `<td><div class="species-label">${esc(speciesDisplay(d) || "物种待补")}</div><div class="species-name">${esc(joinList(d.organs) || "组织待补")}</div></td>`
       + `<td>${modalityBadges(d)}</td>`
-      + `<td class="repo-cell">${repo ? `<div class="repo-line"><span>${esc((repo.repository || "仓库待补").toUpperCase())}</span><code>${esc(repo.accession || "编号待补")}</code></div>${repos.length > 1 ? `<span class="link-more">+${repos.length - 1}</span>` : ""}` : '<span class="muted">待补</span>'}</td>`
+      + `<td class="repo-cell">${repos.length ? `${repos.slice(0, 1).map(repoLine).join("")}${repos.length > 1 ? `<span class="link-more">+${repos.length - 1}</span>` : ""}` : '<span class="muted">待补</span>'}</td>`
       + `<td>${datasetStatusBadge(d)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
   const head = `<tr><th>数据集</th><th>关联文献</th><th>研究对象</th><th>技术</th><th>仓库编号</th><th>数据状态</th><th class="col-arrow"></th></tr>`;

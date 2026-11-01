@@ -1,7 +1,7 @@
 // Detail drawer for one paper or one dataset.
 import type { App } from "./app.ts";
 import type { DatasetPaperLink, Evidence, Paper } from "./mygo.ts";
-import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, dateText, esc, fileSize, joinList, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
+import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, datasetLocation, dateText, esc, fileSize, joinList, repositoryURL, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, options, screenBadge } from "./ui.ts";
 
 const fileRow = (r: Resource): string =>
@@ -110,10 +110,14 @@ export function renderDrawer(app: App): string | null {
     return p ? `<button class="related-dataset" data-action="open-paper" data-id="${esc(p.id)}"><span class="icon-wrap blue">${I("book", 18)}</span><span><strong>${esc(p.title)}</strong><small>${esc(p.year || "年份待补")}</small></span>${badge(ROLE[l.role] ?? "关联")}</button>${linkReview(app, d.id, l)}` : "";
   }).join("");
   const repositories = arr(d.repositories).map((r) =>
-    `<div class="evidence-item"><div class="evidence-head"><strong>${esc(r.repository.toUpperCase())} ${esc(r.accession)}</strong>${badge(r.verified ? "已核实" : "待核实", r.verified ? "green" : "amber")}</div>${r.evidenceText ? `<blockquote>${esc(r.evidenceText)}</blockquote>` : ""}<div class="evidence-foot"><span class="evidence-source">${sourceLink(r.url)}${r.evidenceUrl && r.evidenceUrl !== r.url ? sourceLink(r.evidenceUrl) : ""}</span><span class="section-actions"><button class="text-link" data-action="verify-repository" data-id="${esc(d.id)}" data-record="${esc(r.id)}" data-verified="${!r.verified}">${r.verified ? "撤销核实" : "核实编号"}</button></span></div></div>`,
+    `<div class="evidence-item"><div class="evidence-head"><strong>${esc(r.repository.toUpperCase())} ${esc(r.accession)}</strong>${badge(r.verified ? "已核实" : "待核实", r.verified ? "green" : "amber")}</div>${r.evidenceText ? `<blockquote>${esc(r.evidenceText)}</blockquote>` : ""}<div class="evidence-foot"><span class="evidence-source">${sourceLink(safeURL(r.url) || repositoryURL(r))}${r.evidenceUrl && r.evidenceUrl !== r.url ? sourceLink(r.evidenceUrl) : ""}</span><span class="section-actions"><button class="text-link" data-action="verify-repository" data-id="${esc(d.id)}" data-record="${esc(r.id)}" data-verified="${!r.verified}">${r.verified ? "撤销核实" : "核实编号"}</button></span></div></div>`,
   ).join("");
+  const datasetHome = datasetLocation(d);
+  const accessionValue = datasetHome
+    ? `<a class="text-link" href="${esc(datasetHome)}" target="_blank" rel="noopener noreferrer">${esc(d.accession || "查看仓库")}${I("arrow-up-right", 13)}</a>`
+    : esc(d.accession || "编号待补");
   const body = `<div class="drawer-body"><div class="drawer-status-row">${datasetStatusBadge(d)}${demoBadge(d)}</div>`
-    + `<div class="detail-grid">${detail("仓库", esc(d.repository || "待补"))}${detail("Accession", esc(d.accession || "编号待补"))}${detail("研究组织", esc(joinList(d.organs) || "待补"))}${detail("测序类型", esc(joinList(d.modalities) || "待补"))}${detail("测序平台", esc(joinList(d.platforms) || "待补"))}${detail("细胞数", d.cellsReported == null ? "尚未整理" : esc(d.cellsReported))}${detail("原始数据", esc(AVAILABILITY[d.availability] ?? "尚未核实"))}</div>`
+    + `<div class="detail-grid">${detail("仓库", esc(d.repository || "待补"))}${detail("Accession", accessionValue)}${detail("研究组织", esc(joinList(d.organs) || "待补"))}${detail("测序类型", esc(joinList(d.modalities) || "待补"))}${detail("测序平台", esc(joinList(d.platforms) || "待补"))}${detail("细胞数", d.cellsReported == null ? "尚未整理" : esc(d.cellsReported))}${detail("原始数据", esc(AVAILABILITY[d.availability] ?? "尚未核实"))}</div>`
     + (app.env.real && repositories ? `<section class="detail-section"><h3>数据仓库</h3>${repositories}</section>` : "")
     + `<section class="detail-section"><h3>关联文献</h3>${arr(d.paperLinks).length ? links : '<p class="muted">尚未关联文献。</p>'}</section>`
     + evidenceSection(app.evidenceFor("datasetId", d.id))

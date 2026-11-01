@@ -501,6 +501,8 @@ export class App {
   private onClick(e: MouseEvent): void {
     const target = e.target;
     if (!(target instanceof Element)) return;
+    // Anchors navigate by themselves; the row or card around them must not also open.
+    if (target.closest("a[href]")) return;
     const el = target.closest<HTMLElement>("[data-action]");
     if (el) {
       const action = el.dataset.action ?? "";

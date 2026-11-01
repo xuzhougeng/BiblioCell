@@ -288,6 +288,37 @@ export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (
   ].join(" ").toLocaleLowerCase().includes(q));
 }
 
+const REPOSITORY_LINKS: Record<string, (accession: string) => string> = {
+  geo: (a) => `https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${a}`,
+  sra: (a) => `https://www.ncbi.nlm.nih.gov/sra/?term=${a}`,
+  ena: (a) => `https://www.ebi.ac.uk/ena/browser/view/${a}`,
+  bioproject: (a) => `https://www.ncbi.nlm.nih.gov/bioproject/${a}`,
+  biosample: (a) => `https://www.ncbi.nlm.nih.gov/biosample/${a}`,
+  biostudies: (a) => `https://www.ebi.ac.uk/biostudies/studies/${a}`,
+  gsa: (a) => `https://ngdc.cncb.ac.cn/search/all?q=${a}`,
+  zenodo: (a) => `https://zenodo.org/records/${a}`,
+  figshare: (a) => `https://figshare.com/search?q=${a}`,
+  dryad: (a) => `https://datadryad.org/search?q=${a}`,
+};
+
+/** repositoryURL points at a dataset's home page: the recorded url when present, otherwise the accession's known repository. */
+export function repositoryURL(record: { repository: string; accession: string; url: string }): string {
+  const direct = safeURL(record.url);
+  if (direct) return direct;
+  const accession = record.accession.trim();
+  const build = REPOSITORY_LINKS[record.repository.trim().toLowerCase()];
+  return accession && build ? build(encodeURIComponent(accession)) : "";
+}
+
+/** datasetLocation finds the first repository record that yields a web location for a dataset. */
+export const datasetLocation = (d: Dataset): string => {
+  for (const r of arr(d.repositories)) {
+    const url = repositoryURL(r);
+    if (url) return url;
+  }
+  return "";
+};
+
 export type TaskType = "screen" | "fulltext" | "data";
 export interface TaskRow {
   key: string;
@@ -497,7 +528,7 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
       platforms: stringList(row.platforms), articleTypes: stringList(row.articleTypes, row.articleType),
       abstract: textValue(row.abstract), notes: textValue(row.notes), tags,
       screening: enumValue(row.screening, SCREENINGS, "pending"), reading: enumValue(row.reading, READINGS, "unread"),
-      fulltext: enumValue(row.fulltext, FULLTEXTS, "missing"), publicationStatus: enumValue(row.publicationStatus, PUBLICATION_STATUSES, "unknown"),
+      fulltext: enumValue(row.fulltext, FULLTEXTS, "missing"), fulltextUrl: "", publicationStatus: enumValue(row.publicationStatus, PUBLICATION_STATUSES, "unknown"),
       starred: row.starred === true, isDemo: row.isDemo === true, source: textValue(row.source, 300) || "JSON 导入",
       screeningReason: textValue(row.screeningReason, 3000), reviewedAt: "", proposedScreening: "", proposedReason: "", batchId: "",
       addedAt: isoDate(row.addedAt), updatedAt: nowISO(),

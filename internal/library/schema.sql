@@ -424,6 +424,7 @@ CREATE INDEX IF NOT EXISTS idx_curation_reading ON paper_curation(reading_status
 CREATE INDEX IF NOT EXISTS idx_datasets_modality ON datasets(modality, curation_level);
 
 -- 状态由附件和关联计算，避免复制一份 fulltext_status 后与实际附件脱节。
+-- fulltext_url 带出 linked 状态对应的入口链接；ensurePaperView 负责升级旧库的视图。
 CREATE VIEW IF NOT EXISTS v_paper_overview AS
 SELECT p.*, c.screening_status, c.screening_reason, c.screening_method,
        c.screening_reviewed_at, c.proposed_screening, c.proposed_reason,
@@ -441,6 +442,10 @@ SELECT p.*, c.screening_status, c.screening_reason, c.screening_method,
               WHERE pr.paper_id = p.id AND r.resource_type = 'fulltext') THEN 'unavailable'
          WHEN p.fulltext_checked_at IS NULL THEN 'not_checked'
          ELSE 'missing' END AS fulltext_status,
+       (SELECT r.url FROM paper_resources pr JOIN resources r ON r.id = pr.resource_id
+        WHERE pr.paper_id = p.id AND r.resource_type = 'fulltext' AND r.url IS NOT NULL
+          AND r.access_status IN ('unknown','available')
+        ORDER BY r.local_state <> 'none', r.added_at LIMIT 1) AS fulltext_url,
        (SELECT count(DISTINCT pd.dataset_id) FROM paper_datasets pd WHERE pd.paper_id = p.id) AS dataset_count,
        CASE
          WHEN EXISTS (SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id)
