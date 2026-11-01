@@ -277,6 +277,17 @@ export function pageList(page: number, count: number): (number | "gap")[] {
 export const paperDatasets = (datasets: Dataset[], paperId: string): Dataset[] =>
   datasets.filter((d) => arr(d.paperLinks).some((link) => link.paperId === paperId));
 
+/** filterDatasets matches the dataset search box: a dataset's own fields plus its linked paper titles. */
+export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (id: string) => string): Dataset[] {
+  const q = query.trim().toLocaleLowerCase();
+  if (!q) return datasets;
+  return datasets.filter((d) => [
+    d.title, d.id, speciesNames(d).join(" "), speciesDisplay(d), joinList(d.organs, " "), joinList(d.modalities, " "), joinList(d.platforms, " "),
+    arr(d.repositories).map((r) => `${r.repository || ""} ${r.accession || ""}`).join(" "),
+    arr(d.paperLinks).map((l) => paperTitle(l.paperId)).join(" "),
+  ].join(" ").toLocaleLowerCase().includes(q));
+}
+
 export type TaskType = "screen" | "fulltext" | "data";
 export interface TaskRow {
   key: string;

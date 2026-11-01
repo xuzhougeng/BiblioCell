@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoState } from "../src/demo-data.ts";
-import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterPapers, nextRunText, normalizeDOI, normalizeDataset, pageList, paperPage, prepareImport, shortTime, speciesDisplay, tasksFor, toggleSort, validDOI } from "../src/model.ts";
+import { changedItems, csvText, decideScreening, emptyFilters, esc, fileSize, filterDatasets, filterPapers, nextRunText, normalizeDOI, normalizeDataset, pageList, paperPage, prepareImport, shortTime, speciesDisplay, tasksFor, toggleSort, validDOI } from "../src/model.ts";
 
 test("esc neutralizes HTML metacharacters and tolerates null", () => {
   assert.equal(esc(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
@@ -198,4 +198,18 @@ test("csvText escapes quotes and neutralizes spreadsheet formulas", () => {
   const lines = csvText([p], state.datasets).split("\r\n");
   assert.equal(lines.length, 2);
   assert.ok(lines[1]!.includes(`"'=SUM(1) ""quoted"""`));
+});
+
+test("filterDatasets matches own fields, repositories and linked paper titles", () => {
+  const { papers, datasets } = demoState();
+  const title = (id: string) => papers.find((p) => p.id === id)?.title ?? "";
+  assert.equal(filterDatasets(datasets, "", title).length, datasets.length);
+  assert.equal(filterDatasets(datasets, "  ", title).length, datasets.length);
+  const linked = datasets[0]!;
+  const firstPaper = papers.find((p) => p.id === linked.paperLinks[0]!.paperId)!;
+  // A dataset without repositories still surfaces through its linked paper's title.
+  assert.deepEqual(filterDatasets(datasets, firstPaper.title.slice(0, 4), title).map((d) => d.id), [linked.id]);
+  const withRepo = normalizeDataset({ id: "DS-GEO", title: "geo row", repository: "geo", accession: "GSE123456" });
+  assert.deepEqual(filterDatasets([withRepo], "gse123456", title).map((d) => d.id), ["DS-GEO"]);
+  assert.deepEqual(filterDatasets([withRepo], "拟南芥", title), []);
 });

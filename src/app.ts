@@ -9,7 +9,7 @@ import {
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
-  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, csvText, decideScreening, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
+  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, csvText, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   speciesNameFor, tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, watchSources } from "./sources.ts";
@@ -51,6 +51,9 @@ export class App {
   /** Papers-table pagination; the stored page is clamped against the filtered total at render time. */
   paperPage = 1;
   paperPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-page-size"))) ? Number(localStorage.getItem("bibliocell-page-size")) : PAGE_SIZES[0]!;
+  /** Row the arrow keys last landed on, per table; null until the first ↑/↓ press. */
+  paperCursor: number | null = null;
+  datasetCursor: number | null = null;
   /** Datasets page: table vs card view plus the same pagination pattern. */
   datasetView: "cards" | "table" = localStorage.getItem("bibliocell-datasets-view") === "cards" ? "cards" : "table";
   datasetPage = 1;
@@ -245,6 +248,24 @@ export class App {
     if (body) body.scrollTop = scrollTop;
     document.body.classList.add("drawer-open");
     requestAnimationFrame(() => $('#drawer-root button[data-action="close-drawer"]')?.focus());
+  }
+
+  /** switchDrawerItem moves the open drawer to the previous or next record of the list it came from. */
+  private switchDrawerItem(delta: 1 | -1): void {
+    if (!this.drawer) return;
+    let id = "";
+    if (this.drawer.type === "paper") {
+      const list = this.page === "papers" ? filterPapers(this.state.papers, this.filters) : this.state.papers;
+      id = list[list.findIndex((p) => p.id === this.drawer!.id) + delta]?.id ?? "";
+    } else {
+      const list = this.page === "datasets" && this.datasetView === "table"
+        ? filterDatasets(this.state.datasets, this.datasetSearch, (pid) => this.paperById(pid)?.title ?? "")
+        : this.state.datasets;
+      id = list[list.findIndex((d) => d.id === this.drawer!.id) + delta]?.id ?? "";
+    }
+    if (!id) return;
+    this.drawer = { type: this.drawer.type, id };
+    this.renderDrawer(true);
   }
 
   // ---- modal ----
@@ -630,6 +651,19 @@ export class App {
       else this.openPaper(target.dataset.id ?? "");
       return;
     }
+    // Arrow keys: ←/→ turn the table page; ↑/↓ move between rows, or between records while a drawer is open.
+    const arrows = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+    if (arrows.includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey && !target?.matches("input,textarea,select") && !$("#modal-root .modal")) {
+      if (this.drawer) {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          this.switchDrawerItem(e.key === "ArrowDown" ? 1 : -1);
+        }
+        return;
+      }
+      if (this.page === "papers" || (this.page === "datasets" && this.datasetView === "table")) this.arrowTable(e);
+      return;
+    }
     if ((e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "k")) && !target?.matches("input,textarea,select")) {
       e.preventDefault();
       $("#global-search")?.focus();
@@ -650,6 +684,55 @@ export class App {
         first.focus();
       }
     }
+  }
+
+  // ---- arrow-key table navigation ----
+
+  private tableRows(datasets: boolean): HTMLElement[] {
+    return $$(`${datasets ? ".datasets-panel" : ".papers-panel"} tbody tr[data-action]`);
+  }
+
+  /** arrowTable turns the page on ←/→ and moves the row cursor on ↑/↓ for the active table. */
+  private arrowTable(e: KeyboardEvent): void {
+    const datasets = this.page === "datasets";
+    const rows = this.tableRows(datasets);
+    if (!rows.length) return;
+    const cursor = datasets ? this.datasetCursor : this.paperCursor;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const items = datasets
+        ? filterDatasets(this.state.datasets, this.datasetSearch, (id) => this.paperById(id)?.title ?? "")
+        : filterPapers(this.state.papers, this.filters);
+      const size = datasets ? this.datasetPageSize : this.paperPageSize;
+      const count = Math.max(1, Math.ceil(items.length / size));
+      const next = (datasets ? this.datasetPage : this.paperPage) + (e.key === "ArrowRight" ? 1 : -1);
+      if (next < 1 || next > count) return;
+      e.preventDefault();
+      if (datasets) this.datasetPage = next;
+      else this.paperPage = next;
+      this.render();
+      // Keep the new page's header in view below the sticky topbar, then land on the row cursor.
+      const table = $(datasets ? ".datasets-panel .table-wrap" : ".papers-panel .table-wrap");
+      if (table) window.scrollTo({ top: window.scrollY + table.getBoundingClientRect().top - 66 });
+      this.focusTableRow(datasets, cursor ?? 0);
+      return;
+    }
+    e.preventDefault();
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    const index = cursor == null ? (step > 0 ? 0 : rows.length - 1) : cursor + step;
+    const clamped = Math.min(Math.max(index, 0), rows.length - 1);
+    if (datasets) this.datasetCursor = clamped;
+    else this.paperCursor = clamped;
+    this.focusTableRow(datasets, clamped);
+  }
+
+  /** focusTableRow moves keyboard focus onto a visible row, so Enter and the focus ring land together. */
+  private focusTableRow(datasets: boolean, index: number): void {
+    const rows = this.tableRows(datasets);
+    const row = rows[Math.min(Math.max(index, 0), rows.length - 1)];
+    if (!row) return;
+    rows.forEach((r) => r.classList.toggle("cursor-row", r === row));
+    row.focus();
+    row.scrollIntoView({ block: "nearest" });
   }
 }
 

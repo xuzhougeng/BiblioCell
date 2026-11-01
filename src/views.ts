@@ -2,7 +2,7 @@
 import type { App } from "./app.ts";
 import type { Dataset, Paper } from "./mygo.ts";
 import {
-  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, esc, filterPapers, joinList, pageList, paperPage, sortParts, speciesDisplay, speciesNames, uniqueValues, speciesLabelOf,
+  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
   type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
@@ -30,7 +30,18 @@ export function taskGroups(ts: TaskRow[]): string {
   return groups || '<p class="muted task-empty">暂无待补事项。</p>';
 }
 
-export function paperTable(items: Paper[], compact = false, sort = ""): string {
+/** datasetChips shows a paper's linked datasets as accession chips that open the dataset drawer. */
+function datasetChips(app: App, p: Paper): string {
+  const linked = app.paperDatasets(p.id);
+  if (!linked.length) return '<span class="muted">未关联</span>';
+  const chips = linked.slice(0, 2).map((d) => {
+    const label = d.accession || (d.repository ? d.repository.toUpperCase() : "") || d.title;
+    return `<button class="link-chip" data-action="open-dataset" data-id="${esc(d.id)}" title="${esc(d.title)}"><span class="link-chip-title">${esc(label)}</span></button>`;
+  }).join("");
+  return `${chips}${linked.length > 2 ? `<span class="link-more">+${linked.length - 2}</span>` : ""}`;
+}
+
+export function paperTable(items: Paper[], app: App, compact = false, sort = ""): string {
   if (!items.length) return empty("没有找到匹配文献", "尝试调整筛选条件，或添加一篇新文献。", '<button class="btn btn-secondary" data-action="clear-filters">清空筛选</button>');
   const active = compact ? null : sortParts(sort);
   const th = (label: string, key?: SortKey): string => {
@@ -45,11 +56,12 @@ export function paperTable(items: Paper[], compact = false, sort = ""): string {
     + `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || "作者待补")}</span><span class="meta-separator">·</span><span>${esc(p.year || "年份待补")}</span>${p.publicationStatus === "preprint" ? '<span class="preprint-label">预印本</span>' : ""}</div></td>`
     + (compact ? "" : `<td class="year-cell">${p.year ? esc(String(p.year)) : '<span class="muted">年份待补</span>'}</td>`)
     + `<td><div class="species-label">${esc(speciesDisplay(p) || "物种待补")}</div><div class="species-name">${esc(joinList(p.organs) || "组织待补")}</div></td>`
+    + (compact ? "" : `<td class="link-cell">${datasetChips(app, p)}</td>`)
     + `<td>${modalityBadges(p)}</td>`
     + (compact ? "" : `<td><span class="fulltext-status">${fullBadge(p.fulltext)}</span></td>`)
     + `<td>${screenBadge(p.screening)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`,
   ).join("");
-  const head = `<tr><th class="col-star"><span class="sr-only">收藏</span></th>${th("文献", "title")}${compact ? "" : th("发表时间", "year")}${th("研究对象", "species")}${th("技术", "modality")}${compact ? "" : "<th>全文</th>"}<th>收录状态</th><th class="col-arrow"></th></tr>`;
+  const head = `<tr><th class="col-star"><span class="sr-only">收藏</span></th>${th("文献", "title")}${compact ? "" : th("发表时间", "year")}${th("研究对象", "species")}${compact ? "" : "<th>关联数据集</th>"}${th("技术", "modality")}${compact ? "" : "<th>全文</th>"}<th>收录状态</th><th class="col-arrow"></th></tr>`;
   return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -84,7 +96,7 @@ export function renderOverview(app: App): string {
     `<button class="species-bar-row" data-action="species-filter" data-label="${esc(label)}"><span>${esc(label)}</span><div class="species-bar-track"><div style="width:${Math.round((count / maxCount) * 100)}%"></div></div><strong>${count}</strong></button>`,
   ).join("");
   return `<div class="stat-grid">${statCards}</div>`
-    + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>最近收录</h2><p class="muted">新线索先留下，整理慢慢来</p></div><button class="text-link" data-page="papers">查看全部 ${I("arrow-right", 16)}</button></div>${paperTable(recent, true)}<div class="panel-footnote">${I("info", 14)} 当前条目为原型示例，可通过新增或导入建立自己的目录。</div></section>`
+    + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>最近收录</h2><p class="muted">新线索先留下，整理慢慢来</p></div><button class="text-link" data-page="papers">查看全部 ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} 当前条目为原型示例，可通过新增或导入建立自己的目录。</div></section>`
     + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>接下来整理</h2><p class="muted">按需要补齐信息</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">查看全部待补事项 ${I("arrow-right", 16)}</button></section></div>`
     + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><div><h2>整理覆盖</h2><p class="muted">收录与完善，各自向前一步</p></div>${I("grid", 18)}</div><div class="panel-body progress-list">${progressRow("收录范围已判断", total - pending, total)}${progressRow("已关联数据集", withData, total, "blue")}${progressRow("已记录全文入口", withFulltext, total, "gold")}</div></section>`
     + `<section class="panel"><div class="panel-header"><div><h2>研究物种</h2><p class="muted">当前目录中的文献分布</p></div><span class="muted">${uniqueValues(papers, "species").length} 个分类</span></div><div class="panel-body species-bars">${speciesBars}</div></section></div>`;
@@ -123,7 +135,7 @@ export function renderPapers(app: App): string {
     + selectFilter(filters, "screening", "收录状态", entries(SCREEN))
     + selectFilter(filters, "source", "全部来源", uniqueValues(papers, "source"))
     + (filterCount || filters.search ? `<button class="text-link" data-action="clear-filters">清空${filterCount ? ` (${filterCount})` : ""}</button>` : "")
-    + `</div>${paperTable(items.slice(info.start, info.end), false, filters.sort)}<div class="table-footer"><span>显示 ${items.length ? `${info.start + 1}–${info.end}` : 0} / ${items.length} 篇文献</span><span class="muted footer-hint">点击文献查看详情与整理记录</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
+    + `</div>${paperTable(items.slice(info.start, info.end), app, false, filters.sort)}<div class="table-footer"><span>显示 ${items.length ? `${info.start + 1}–${info.end}` : 0} / ${items.length} 篇文献</span><span class="muted footer-hint">↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
 }
 
 /** datasetTable renders the datasets list: one row per dataset with its linked papers. */
@@ -151,12 +163,7 @@ export function datasetTable(items: Dataset[], app: App): string {
 }
 
 export function renderDatasets(app: App): string {
-  const q = app.datasetSearch.toLowerCase();
-  const items = app.state.datasets.filter((d) => [
-    d.title, d.id, speciesNames(d).join(" "), speciesDisplay(d), joinList(d.organs, " "), joinList(d.modalities, " "), joinList(d.platforms, " "),
-    arr(d.repositories).map((r) => `${r.repository || ""} ${r.accession || ""}`).join(" "),
-    arr(d.paperLinks).map((l) => app.paperById(l.paperId)?.title ?? "").join(" "),
-  ].join(" ").toLowerCase().includes(q));
+  const items = filterDatasets(app.state.datasets, app.datasetSearch, (id) => app.paperById(id)?.title ?? "");
   const toggle = `<div class="view-toggle" role="group" aria-label="数据集视图切换"><button class="view-option${app.datasetView === "cards" ? " active" : ""}" data-action="datasets-view" data-view="cards" aria-pressed="${app.datasetView === "cards"}">${I("grid", 15)} 卡片</button><button class="view-option${app.datasetView === "table" ? " active" : ""}" data-action="datasets-view" data-view="table" aria-pressed="${app.datasetView === "table"}">${I("more", 15)} 列表</button></div>`;
   const head = `<div class="section-toolbar"><p class="muted">${app.state.datasets.length} 组数据 · 论文与数据集分别计数</p><div class="page-actions">${toggle}<button class="btn btn-secondary" data-action="new-dataset">${I("plus", 16)} 添加数据集</button></div></div>`
     + `<div class="toolbar standalone-toolbar"><label class="table-search">${I("search", 18)}<input id="dataset-search" class="search-input" type="search" placeholder="搜索物种、组织、accession 或关联文献…" value="${esc(app.datasetSearch)}" aria-label="搜索数据集"></label></div>`;
@@ -170,7 +177,7 @@ export function renderDatasets(app: App): string {
   const info = paperPage(items.length, app.datasetPageSize, app.datasetPage);
   app.datasetPage = info.page;
   return head
-    + `<section class="panel datasets-panel">${datasetTable(items.slice(info.start, info.end), app)}<div class="table-footer"><span>显示 ${items.length ? `${info.start + 1}–${info.end}` : 0} / ${items.length} 组数据集</span><span class="muted footer-hint">点击文献条目可打开对应文献</span>${items.length ? tablePager("datasets", app.datasetPageSize, info) : ""}</div></section>`;
+    + `<section class="panel datasets-panel">${datasetTable(items.slice(info.start, info.end), app)}<div class="table-footer"><span>显示 ${items.length ? `${info.start + 1}–${info.end}` : 0} / ${items.length} 组数据集</span><span class="muted footer-hint">↑↓ 切换数据集 · ←→ 翻页 · 点击文献条目可跳转</span>${items.length ? tablePager("datasets", app.datasetPageSize, info) : ""}</div></section>`;
 }
 
 export function renderTasks(app: App): string {
