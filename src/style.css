@@ -366,6 +366,32 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .page-btn:disabled { opacity: 0.45; cursor: default }
 .page-btn svg { width: 14px; height: 14px }
 .pager-gap { color: #9a937e; padding: 0 3px }
+.view-toggle { display: inline-flex; align-items: center; border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--surface) }
+.view-option { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border: 0; background: none; color: #78725e; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer }
+.view-option:hover { color: var(--primary-deep) }
+.view-option.active { background: var(--primary); color: #f8f4e7 }
+.view-option + .view-option { border-left: 1.5px solid var(--line) }
+.dataset-table { width: 100%; table-layout: fixed }
+.dataset-table th:nth-child(1) { width: 26% }
+.dataset-table th:nth-child(2) { width: 30% }
+.dataset-table th:nth-child(3) { width: 12% }
+.dataset-table th:nth-child(4) { width: 11% }
+.dataset-table th:nth-child(5) { width: 13% }
+.dataset-table th:nth-child(6) { width: 8% }
+.dataset-table th.col-arrow { width: 44px }
+.dataset-table .dataset-title { font-weight: 650; color: var(--text-strong); line-height: 1.55; overflow-wrap: anywhere }
+.dataset-table .dataset-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: calc(12.5px * var(--font-scale, 1)); color: #78725e; flex-wrap: wrap }
+.dataset-table td { vertical-align: top }
+.link-cell { max-width: none }
+.link-chip { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; border: 1px solid var(--line); background: var(--surface-deep); border-radius: 4px; padding: 4px 8px; margin: 2px 6px 2px 0; font-size: calc(12px * var(--font-scale, 1)); color: #454d3c; cursor: pointer }
+.link-chip:hover { border-color: var(--primary); color: var(--primary-deep) }
+.link-chip-title { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.link-chip-role { flex-shrink: 0; color: #6a6146; background: #ece5cf; padding: 1px 6px; border-radius: 3px; font-size: calc(11px * var(--font-scale, 1)) }
+.link-more { color: #78725e; font-size: calc(12px * var(--font-scale, 1)); white-space: nowrap }
+.dataset-table .repo-line { display: flex; align-items: center; gap: 7px; white-space: nowrap; margin: 3px 0 }
+.dataset-table .repo-line span { color: #6a6146; font-size: calc(12px * var(--font-scale, 1)); font-weight: 650 }
+.dataset-table .repo-line code { background: #f0ead6; border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; font-size: calc(12px * var(--font-scale, 1)); color: #454d3c }
+.dataset-table .repo-cell { white-space: nowrap }
 /* ---------------- 工具栏与筛选 ---------------- */
 .toolbar { display: flex; gap: 13px; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap }
 .search-input { display: flex; gap: 10px; align-items: center; min-width: 250px; position: relative }
@@ -957,6 +983,10 @@ code { font-family: var(--mono) }
   .view-tabs { gap: 15px }
   .view-tab { font-size: calc(14px * var(--font-scale, 1)) }
   .section-toolbar { gap: 10px }
+  .section-toolbar .page-actions { width: 100%; justify-content: space-between }
+  .view-option { padding: 7px 10px }
+  .dataset-table .link-cell { max-width: none }
+  .link-chip-title { max-width: 130px }
   .papers-panel > .toolbar { padding: 13px 16px 0; gap: 10px }
   .table-search { min-width: 180px; flex: 1 }
   .table-search > .search-input { font-size: calc(13.5px * var(--font-scale, 1)) }

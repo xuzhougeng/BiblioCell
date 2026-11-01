@@ -51,6 +51,10 @@ export class App {
   /** Papers-table pagination; the stored page is clamped against the filtered total at render time. */
   paperPage = 1;
   paperPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-page-size"))) ? Number(localStorage.getItem("bibliocell-page-size")) : PAGE_SIZES[0]!;
+  /** Datasets page: table vs card view plus the same pagination pattern. */
+  datasetView: "cards" | "table" = localStorage.getItem("bibliocell-datasets-view") === "cards" ? "cards" : "table";
+  datasetPage = 1;
+  datasetPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-datasets-page-size"))) ? Number(localStorage.getItem("bibliocell-datasets-page-size")) : PAGE_SIZES[0]!;
   drawer: Drawer | null = null;
   drawerTab = "overview";
   syncing = new Set<string>();
@@ -384,14 +388,23 @@ export class App {
       if (search) search.value = "";
       this.render();
     },
-    "paper-page": (el) => {
+    "table-page": (el) => {
       const page = Number(el.dataset.id);
       if (!page || page < 1) return;
-      this.paperPage = page;
+      const datasets = el.dataset.scope === "datasets";
+      if (datasets) this.datasetPage = page;
+      else this.paperPage = page;
       this.render();
       // Keep the new page's header in view below the sticky topbar.
-      const table = $(".papers-panel .table-wrap");
+      const table = $(datasets ? ".datasets-panel .table-wrap" : ".papers-panel .table-wrap");
       if (table) window.scrollTo({ top: window.scrollY + table.getBoundingClientRect().top - 66 });
+    },
+    "datasets-view": (el) => {
+      const view = el.dataset.view === "cards" ? "cards" : "table";
+      if (view === this.datasetView) return;
+      this.datasetView = view;
+      localStorage.setItem("bibliocell-datasets-view", view);
+      this.render();
     },
     "sort-column": (el) => {
       const key = el.dataset.key as SortKey;
@@ -517,10 +530,16 @@ export class App {
     if (target instanceof HTMLSelectElement && "pageSize" in target.dataset) {
       const size = Number(target.value);
       if (PAGE_SIZES.includes(size)) {
-        this.paperPageSize = size;
-        localStorage.setItem("bibliocell-page-size", String(size));
+        if (target.dataset.pageSize === "datasets") {
+          this.datasetPageSize = size;
+          localStorage.setItem("bibliocell-datasets-page-size", String(size));
+        } else {
+          this.paperPageSize = size;
+          localStorage.setItem("bibliocell-page-size", String(size));
+        }
       }
       this.paperPage = 1;
+      this.datasetPage = 1;
       this.render();
     }
     if (target instanceof HTMLSelectElement && target.dataset.filter) {
@@ -571,7 +590,10 @@ export class App {
         if (id === "paper-search") {
           this.filters.search = value;
           this.paperPage = 1;
-        } else this.datasetSearch = value;
+        } else {
+          this.datasetSearch = value;
+          this.datasetPage = 1;
+        }
         this.render();
         const input = document.getElementById(id);
         if (input instanceof HTMLInputElement) {
@@ -604,7 +626,8 @@ export class App {
     }
     if (e.key === "Enter" && target?.matches("tr[data-action]")) {
       e.preventDefault();
-      this.openPaper(target.dataset.id ?? "");
+      if (target.dataset.action === "open-dataset") this.openDataset(target.dataset.id ?? "");
+      else this.openPaper(target.dataset.id ?? "");
       return;
     }
     if ((e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "k")) && !target?.matches("input,textarea,select")) {

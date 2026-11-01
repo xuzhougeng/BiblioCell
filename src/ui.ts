@@ -1,6 +1,6 @@
 // Small HTML fragment builders and DOM helpers. Every dynamic value passes
 // through esc(); fragments that are already HTML are composed as strings.
-import type { Dataset, Paper, SpeciesEntry } from "./mygo.ts";
+import type { Dataset, SpeciesEntry } from "./mygo.ts";
 import { icon } from "./icons.ts";
 import { FULL, SCREEN, arr, esc, splitList, type Filters } from "./model.ts";
 
@@ -33,8 +33,8 @@ export function selectFilter(filters: Filters, name: keyof Filters, label: strin
   return `<label class="filter-field"><span class="sr-only">${esc(label)}</span><select class="filter-select" data-filter="${name}" aria-label="${esc(label)}">${option("", label, current)}${items}</select></label>`;
 }
 
-export function modalityBadges(p: Paper): string {
-  const list = arr(p.modalities);
+export function modalityBadges(item: { modalities: string[] | null | undefined }): string {
+  const list = arr(item.modalities);
   if (!list.length) return badge("待补");
   const color = (m: string) => (m === "snRNA-seq" || m === "snATAC-seq" ? "purple" : m === "scATAC-seq" ? "amber" : "blue");
   return `<div class="tech-badges">${list.map((m) => badge(m, color(m))).join("")}</div>`;
