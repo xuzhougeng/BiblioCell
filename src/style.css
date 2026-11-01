@@ -1032,3 +1032,7 @@ a.link-chip:hover svg { color: var(--primary) }
 }
 
 .paper-context-menu { position: fixed; z-index: 1000; padding: 6px; background: #faf8ef; border: 1px solid #c9bd99; border-radius: 6px; box-shadow: 0 4px 16px #0003; }
+
+.column-toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+.column-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.paper-table .journal-cell { min-width: 150px; max-width: 260px; overflow-wrap: anywhere; }

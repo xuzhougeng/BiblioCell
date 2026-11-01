@@ -1,3 +1,4 @@
+import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 // Page renderers for overview, papers, datasets, tasks and schema.
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
@@ -54,15 +55,16 @@ function fulltextEntry(app: App, p: Paper): string {
 
 /** fulltextCell makes the status actionable: open the stored PDF file, or follow the recorded entry link. */
 function fulltextCell(app: App, p: Paper): string {
+  const supplement = () => `<button class="fulltext-status is-link" data-action="supplement-fulltext" data-id="${esc(p.id)}" title="补充全文链接或文件" aria-label="补充全文：${esc(p.title)}">${fullBadge(p.fulltext)}${I("plus", 12)}</button>`;
   if (p.fulltext === "stored") {
     const file = app.paperResources(p.id).find((r) => r.localPath && r.type === "fulltext");
     if (file) return `<button class="fulltext-status is-link" data-action="open-file" data-id="${esc(file.id)}" title="打开已保存的全文文件">${fullBadge(p.fulltext)}${I("file", 12)}</button>`;
-    return `<span class="fulltext-status">${fullBadge(p.fulltext)}</span>`;
+    return supplement();
   }
   const url = p.fulltext === "linked" ? safeURL(p.fulltextUrl) || fulltextEntry(app, p) : "";
   return url
     ? `<a class="fulltext-status is-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="打开全文入口">${fullBadge(p.fulltext)}${I("arrow-up-right", 12)}</a>`
-    : `<span class="fulltext-status">${fullBadge(p.fulltext)}</span>`;
+    : supplement();
 }
 
 export function paperTable(items: Paper[], app: App, compact = false, sort = ""): string {
@@ -74,18 +76,25 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
     const dir = on ? active!.dir : "";
     return `<th${on ? ` aria-sort="${dir === "asc" ? "ascending" : "descending"}"` : ""}><button class="th-sort${on ? " on" : ""}" data-action="sort-column" data-key="${key}" aria-label="按${label}排序">${label}<span class="sort-mark">${on ? I(dir === "asc" ? "chevron-up" : "chevron-down", 12) : ""}</span></button></th>`;
   };
-  const rows = items.map((p) =>
-    `<tr data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="查看 ${esc(p.title)}">`
-    + `<td><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? "取消收藏" : "收藏"}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`
-    + `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || "作者待补")}</span><span class="meta-separator">·</span><span>${esc(p.year || "年份待补")}</span>${p.publicationStatus === "preprint" ? '<span class="preprint-label">预印本</span>' : ""}</div></td>`
-    + (compact ? "" : `<td class="year-cell">${p.year ? esc(String(p.year)) : '<span class="muted">年份待补</span>'}</td>`)
-    + `<td><div class="species-label">${esc(speciesDisplay(p) || "物种待补")}</div><div class="species-name">${esc(joinList(p.organs) || "组织待补")}</div></td>`
-    + (compact ? "" : `<td class="link-cell">${datasetChips(app, p)}</td>`)
-    + `<td>${modalityBadges(p)}</td>`
-    + (compact ? "" : `<td>${fulltextCell(app, p)}</td>`)
-    + `<td>${screenBadge(p.screening)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`,
-  ).join("");
-  const head = `<tr><th class="col-star"><span class="sr-only">收藏</span></th>${th("文献", "title")}${compact ? "" : th("发表时间", "year")}${th("研究对象", "species")}${compact ? "" : "<th>关联数据集</th>"}${th("技术", "modality")}${compact ? "" : "<th>全文</th>"}<th>收录状态</th><th class="col-arrow"></th></tr>`;
+  const columns: PaperColumn[] = compact ? ["star", "title", "species", "modality", "screening"] : app.paperColumns;
+  const labels = Object.fromEntries(PAPER_COLUMNS) as Record<PaperColumn, string>;
+  const sortKeys: Partial<Record<PaperColumn, SortKey>> = { title: "title", year: "year", species: "species", modality: "modality" };
+  const rows = items.map((p) => {
+    const cells: Record<PaperColumn, string> = {
+      star: `<td><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? "取消收藏" : "收藏"}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`,
+      title: `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || "作者待补")}</span><span class="meta-separator">·</span><span>${esc(p.year || "年份待补")}</span>${p.publicationStatus === "preprint" ? '<span class="preprint-label">预印本</span>' : ""}</div></td>`,
+      journal: `<td class="journal-cell">${p.journal ? esc(p.journal) : '<span class="muted">期刊待补</span>'}</td>`,
+      year: `<td class="year-cell">${p.year ? esc(String(p.year)) : '<span class="muted">年份待补</span>'}</td>`,
+      species: `<td><div class="species-label">${esc(speciesDisplay(p) || "物种待补")}</div><div class="species-name">${esc(joinList(p.organs) || "组织待补")}</div></td>`,
+      datasets: `<td class="link-cell">${datasetChips(app, p)}</td>`,
+      modality: `<td>${modalityBadges(p)}</td>`,
+      fulltext: `<td>${fulltextCell(app, p)}</td>`,
+      screening: `<td>${screenBadge(p.screening)}</td>`,
+    };
+    return `<tr data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="查看 ${esc(p.title)}">${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
+  }).join("");
+  const head = `<tr>${columns.map(id => id === "star" ? '<th class="col-star"><span class="sr-only">收藏</span></th>' : th(labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
+
   return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -147,7 +156,7 @@ export function renderPapers(app: App): string {
   const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening", "source", "preprint"] as const;
   const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0);
   const entries = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
-  return `<div class="section-toolbar"><div class="view-tabs"><button class="view-tab ${filters.starred ? "" : "active"}" data-action="all-papers">全部文献 <span>${papers.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} 我的收藏 <span>${papers.filter((p) => p.starred).length}</span></button></div><button class="btn btn-secondary" data-action="export-csv">${I("download", 16)} 导出列表</button></div>`
+  return `<div class="section-toolbar"><div class="view-tabs"><button class="view-tab ${filters.starred ? "" : "active"}" data-action="all-papers">全部文献 <span>${papers.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} 我的收藏 <span>${papers.filter((p) => p.starred).length}</span></button></div><div class="column-toolbar"><button class="btn btn-secondary" data-action="paper-columns">显示列</button><button class="btn btn-secondary" data-action="export-csv">${I("download", 16)} 导出列表</button></div></div>`
     + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="搜索题目、物种、作者或 DOI…" value="${esc(filters.search)}" aria-label="搜索文献"></label><select class="filter-select" data-filter="sort" aria-label="排序方式">${SORT_OPTIONS.map(([value, label]) => option(value, label, filters.sort)).join("")}</select></div>`
     + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} 筛选</span>`
     + selectFilter(filters, "species", "全部物种", uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))

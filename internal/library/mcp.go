@@ -26,6 +26,11 @@ type MCPServer struct {
 
 type emptyInput struct{}
 
+type deletePaperOutput struct {
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+}
+
 type listPapersOutput struct {
 	Papers []Paper `json:"papers"`
 	Total  int     `json:"total"`
@@ -222,7 +227,7 @@ func StartMCP(store *Store, address, token string, credentials func() SourceCred
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name: "bibliocell-library", Title: "BiblioCell", Version: "0.1.0",
-	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, and update_paper require the local Bearer token. Screening and verification are a person's decisions: agents propose through proposedScreening, record claims with add_evidence, and a person confirms in the desktop app. Reuse one batchId across a run so undo_import can remove it. Demo data is never exposed."})
+	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, update_paper, and delete_paper require the local Bearer token. Screening and verification are a person's decisions: agents propose through proposedScreening, record claims with add_evidence, and a person confirms in the desktop app. Reuse one batchId across a run so undo_import can remove it. Demo data is never exposed."})
 
 	server.AddResource(&mcp.Resource{
 		URI: paperSchemaURI, Name: "paper-import.schema.json", Title: "Paper import JSON Schema",
@@ -275,6 +280,7 @@ func StartMCP(store *Store, address, token string, credentials func() SourceCred
 				"add_dataset matches by accession or title the same way and only adds new links",
 				"An empty ID is generated",
 				"DOI values are normalized and must be unique across the library",
+				"delete_paper permanently removes one paper even if reviewed, with notes, evidence and stored copies; datasets and original files remain",
 				"undo_import removes one batch and its stored files, except records a person has reviewed, starred, read, or verified",
 				"Record what you extract with add_evidence: a short excerpt and its source, per field, for the person checking it",
 				"Only a person verifies evidence, datasets, repository records, and paper links; list_evidence shows their verdicts",
@@ -287,7 +293,7 @@ func StartMCP(store *Store, address, token string, credentials func() SourceCred
 				"Only real SQLite data is accessible; Demo records are never included",
 			},
 			AvailableTools: []string{
-				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "undo_import",
+				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "delete_paper", "undo_import",
 				"list_datasets", "get_dataset", "add_dataset", "update_dataset", "link_dataset",
 				"add_evidence", "list_evidence", "attach_file", "fetch_fulltext", "list_files",
 			},
@@ -361,6 +367,14 @@ func StartMCP(store *Store, address, token string, credentials func() SourceCred
 		paper, err := store.UpdatePaper(ctx, input.ID, input.Patch)
 		return nil, paper, err
 	})
+
+	addWriteTool(server, "delete_paper", "Permanently delete one paper (including reviewed papers), notes, evidence and stored attachment copies; unlink but preserve datasets and original imported files. Cannot be undone. Requires Bearer token write access",
+		func(ctx context.Context, input getPaperInput) (deletePaperOutput, error) {
+			if err := store.DeletePaper(ctx, input.ID); err != nil {
+				return deletePaperOutput{}, err
+			}
+			return deletePaperOutput{ID: input.ID, Deleted: true}, nil
+		})
 
 	addWriteTool(server, "undo_import", "Remove what one import batch created, keeping records a person has worked on; requires Bearer token write access",
 		func(ctx context.Context, input undoImportInput) (UndoResult, error) {

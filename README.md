@@ -117,6 +117,7 @@ http://127.0.0.1:37841/mcp
 | `add_paper` | 向正式 SQLite 数据库添加一篇文献，已存在时报错，需要写权限 |
 | `import_papers` | 原子批量导入最多 1000 篇文献，跳过已有文献并返回 `batchId`，支持 `dryRun`，需要写权限 |
 | `update_paper` | 局部编辑未经人工确认的文献 metadata，或提出收录建议，保留未提供字段，需要写权限 |
+| `delete_paper` | 按 `id` 永久删除单篇文献（含已审核记录）、笔记、相关证据和保存的附件副本；保留数据集与原始导入文件，需要写权限 |
 | `undo_import` | 撤销一个导入批次，保留人已处理过的记录，需要写权限 |
 | `list_datasets` / `get_dataset` | 查询、分页读取数据集及其仓库编号和文献关联 |
 | `add_dataset` | 新建数据集；按 accession 或题目找到已有数据集时只补充新关联，需要写权限 |
@@ -209,6 +210,9 @@ echo '{"journal":"Cell"}' | ./BiblioCell papers update P-xxxx
 ./BiblioCell papers files P-xxxx
 ./BiblioCell papers list -needs-review -batch run-1 -limit 100 -offset 100
 ./BiblioCell papers undo run-1
+
+# 永久删除单篇文献，成功返回 {"id":"P-...","deleted":true}
+./BiblioCell papers delete P-...
 ./BiblioCell datasets list -status pending
 ./BiblioCell datasets get DS-xxxx
 echo '{"title":"...","repositories":[{"repository":"geo","accession":"GSE1"}]}' | ./BiblioCell datasets add

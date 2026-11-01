@@ -1,3 +1,4 @@
+import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
 import type { Config, MCPInfo, Paper, SourceAutomation, SourceStatus, Status } from "./mygo.ts";
 import { demoState } from "./demo-data.ts";
@@ -51,6 +52,7 @@ export class App {
   datasetSearch = "";
   /** Papers-table pagination; the stored page is clamped against the filtered total at render time. */
   paperPage = 1;
+  paperColumns = loadPaperColumns();
   paperPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-page-size"))) ? Number(localStorage.getItem("bibliocell-page-size")) : PAGE_SIZES[0]!;
   /** Row the arrow keys last landed on, per table; null until the first ↑/↓ press. */
   paperCursor: number | null = null;
@@ -174,6 +176,15 @@ export class App {
     }
   }
 
+  private showPaperColumns(): void {
+    this.showModal("显示列", '<p class="muted">勾选要显示的列，至少保留一列。设置自动保存到当前设备。</p><div class="column-options">' + PAPER_COLUMNS.map(([id, label]) => '<label class="checkbox-choice"><input type="checkbox" data-paper-column="' + id + '"' + (this.paperColumns.includes(id) ? ' checked' : '') + '><span>' + label + '</span></label>').join("") + '</div>', '<button class="btn btn-secondary" data-action="reset-paper-columns">恢复默认</button><button class="btn btn-primary" data-action="close-modal">完成</button>');
+  }
+  private savePaperColumns(): void {
+    try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(this.paperColumns)); }
+    catch { this.toast("列设置已应用，但无法保存到当前设备。", true); }
+    this.render();
+  }
+
   // ---- queries ----
   paperById(id: string): Paper | undefined {
     return this.state.papers.find((p) => p.id === id);
@@ -287,6 +298,13 @@ export class App {
     this.lastFocus = document.activeElement;
     this.drawer = { type: "paper", id };
     this.drawerTab = "overview";
+    this.renderDrawer(true);
+  }
+  openPaperResources(id: string): void {
+    if (!this.paperById(id)) return;
+    this.lastFocus = document.activeElement;
+    this.drawer = { type: "paper", id };
+    this.drawerTab = "resources";
     this.renderDrawer(true);
   }
   openDataset(id: string): void {
@@ -440,6 +458,7 @@ export class App {
     "delete-paper": (_el, id) => this.requestDeletePaper(id),
     "confirm-delete-paper": (el, id) => { void this.deletePaper(id, el); },
     "open-paper": (_el, id) => this.openPaper(id),
+    "supplement-fulltext": (_el, id) => this.openPaperResources(id),
     "open-dataset": (_el, id) => this.openDataset(id),
     "close-drawer": () => this.closeDrawer(),
     "close-modal": () => this.closeModal(),
@@ -447,6 +466,8 @@ export class App {
       this.drawerTab = el.dataset.tab ?? "overview";
       this.renderDrawer(true);
     },
+    "paper-columns": () => this.showPaperColumns(),
+    "reset-paper-columns": () => { this.paperColumns = defaultPaperColumns(); this.savePaperColumns(); $$("[data-paper-column]").forEach(el => { if (el instanceof HTMLInputElement) el.checked = true; }); },
     "export-csv": () => this.exportCSV(),
     "export-json": () => this.exportJSON(),
     "import-json": () => this.importJSON(),
@@ -611,6 +632,20 @@ export class App {
   private onChange(e: Event): void {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
+    if (target instanceof HTMLInputElement && target.dataset.paperColumn) {
+      const column = PAPER_COLUMNS.find(([id]) => id === target.dataset.paperColumn)?.[0];
+      if (!column) return;
+      if (!target.checked && this.paperColumns.length === 1) {
+        target.checked = true;
+        this.toast("至少保留一列。", true);
+        return;
+      }
+      const chosen = new Set(this.paperColumns);
+      if (target.checked) chosen.add(column); else chosen.delete(column);
+      this.paperColumns = PAPER_COLUMNS.filter(([id]) => chosen.has(id)).map(([id]) => id);
+      this.savePaperColumns();
+      return;
+    }
     if (target instanceof HTMLSelectElement && target.matches('#source-config-form [name="provider"]')) {
       applyProviderDefault(target);
       return;

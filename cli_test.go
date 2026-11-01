@@ -222,3 +222,31 @@ func TestStorageFolderKeepsWorkingAfterCopy(t *testing.T) {
 		t.Fatalf("copy still touches the old folder: %v", err)
 	}
 }
+
+func TestCLIDeletePaper(t *testing.T) {
+	dataDir := t.TempDir()
+	var paper library.Paper
+	run(t, dataDir, "{\"title\":\"Delete through CLI\"}", &paper, "papers", "add")
+	for _, args := range [][]string{{"papers", "delete"}, {"papers", "delete", paper.ID, "extra"}} {
+		if code := runCLI(append([]string{"-data-dir", dataDir}, args...), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
+			t.Fatalf("accepted invalid args: %v", args)
+		}
+	}
+	var output struct {
+		ID      string
+		Deleted bool
+	}
+	run(t, dataDir, "", &output, "papers", "delete", paper.ID)
+	if output.ID != paper.ID || !output.Deleted {
+		t.Fatalf("output: %+v", output)
+	}
+	var papers []library.Paper
+	run(t, dataDir, "", &papers, "papers", "list")
+	if len(papers) != 0 {
+		t.Fatal("paper remains")
+	}
+	var stderr bytes.Buffer
+	if code := runCLI([]string{"-data-dir", dataDir, "papers", "delete", paper.ID}, strings.NewReader(""), &bytes.Buffer{}, &stderr); code == 0 || !strings.Contains(stderr.String(), "paper not found") {
+		t.Fatalf("missing paper: %d %s", code, stderr.String())
+	}
+}

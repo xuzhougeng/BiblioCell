@@ -341,6 +341,7 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 	}
 
 	writeCalls := []mcp.CallToolParams{
+		{Name: "delete_paper", Arguments: map[string]any{"id": original.ID}},
 		{Name: "add_paper", Arguments: map[string]any{"title": "Unauthorized"}},
 		{Name: "import_papers", Arguments: map[string]any{"dryRun": true, "papers": []map[string]any{{"title": "Unauthorized"}}}},
 		{Name: "update_paper", Arguments: map[string]any{"id": original.ID, "patch": map[string]any{"title": "Changed"}}},
@@ -377,5 +378,56 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Errorf("invalid token HTTP status = %d, want 401", response.StatusCode)
+	}
+}
+
+func TestMCPDeletePaper(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	store := openTestLibrary(t)
+	paper, err := store.AddPaper(ctx, Paper{Title: "Delete through MCP"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := StartMCP(store, "127.0.0.1:0", testMCPToken, noCredentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close(ctx)
+	client := mcp.NewClient(&mcp.Implementation{Name: "delete-test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.Endpoint, HTTPClient: authenticatedHTTPClient()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	tools, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tool := range tools.Tools {
+		if tool.Name == "delete_paper" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("delete_paper not discoverable")
+	}
+	call := &mcp.CallToolParams{Name: "delete_paper", Arguments: map[string]any{"id": paper.ID}}
+	result, err := session.CallTool(ctx, call)
+	if err != nil || result.IsError {
+		t.Fatalf("delete: %v %+v", err, result)
+	}
+	var output deletePaperOutput
+	data, _ := json.Marshal(result.StructuredContent)
+	if err := json.Unmarshal(data, &output); err != nil || !output.Deleted || output.ID != paper.ID {
+		t.Fatalf("output: %+v, %v", output, err)
+	}
+	if _, err := store.GetPaper(ctx, paper.ID); err == nil {
+		t.Fatal("paper remains")
+	}
+	result, err = session.CallTool(ctx, call)
+	if err != nil || !result.IsError {
+		t.Fatalf("missing paper: %v %+v", err, result)
 	}
 }

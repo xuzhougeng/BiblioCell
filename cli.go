@@ -30,6 +30,7 @@ Commands:
   papers list [-q TEXT] [-screening S] [-source S] [-batch ID] [-needs-review] [-limit N] [-offset N]
                                       search papers (JSON)
   papers get ID                       one paper by ID
+  papers delete ID                    permanently delete a paper and stored copies; keep datasets and originals
   papers add [-f FILE]                add one paper from JSON (stdin by default)
   papers import [-f FILE] [-batch ID] [-dry-run]
                                       atomically import a JSON array, skipping known papers
@@ -199,6 +200,14 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 			return errors.New("usage: papers get ID")
 		}
 		return c.print(c.store.GetPaper(ctx, rest[0]))
+	case "delete":
+		if len(rest) != 1 || strings.TrimSpace(rest[0]) == "" {
+			return errors.New("usage: papers delete ID")
+		}
+		if err := c.store.DeletePaper(ctx, rest[0]); err != nil {
+			return err
+		}
+		return c.print(map[string]any{"id": rest[0], "deleted": true}, nil)
 	case "add":
 		var paper library.Paper
 		if err := c.readJSON(rest, &paper); err != nil {
@@ -282,7 +291,7 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 		}
 		return c.print(c.store.UndoImport(ctx, rest[0]))
 	}
-	return errors.New("usage: papers list|get|add|import|update|attach|fetch|files|undo")
+	return errors.New("usage: papers list|get|add|import|update|delete|attach|fetch|files|undo")
 }
 
 func (c *cli) datasets(ctx context.Context, args []string) error {

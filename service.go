@@ -310,7 +310,7 @@ func (l *Library) ChooseStoragePath(ctx context.Context) (string, error) {
 func (l *Library) MCPInfo() MCPInfo {
 	return MCPInfo{
 		Enabled: l.mcpEndpoint != "", Endpoint: l.mcpEndpoint, Token: l.mcpToken,
-		Tools:     []string{"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper"},
+		Tools:     []string{"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "delete_paper"},
 		Resources: []string{"bibliocell://schema/paper", "bibliocell://schema/sql"},
 	}
 }
