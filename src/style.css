@@ -1266,6 +1266,14 @@ select.input { appearance: auto }
 .screen-body .paper-meta { font-size: calc(14px * var(--font-scale, 1)); color: var(--muted); margin-bottom: 14px }
 .screen-body .doi-bar { margin-bottom: 16px }
 .screen-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px 22px }
+/* The metadata block in screening mode edits in place: an edit link in its corner, then the paper form's fields. */
+.screen-meta { position: relative }
+.screen-meta-edit { position: absolute; top: 19px; right: 0; z-index: 1 }
+.screen-meta-form { display: grid; gap: 16px; padding: 19px 0; margin-bottom: 21px; border-bottom: 1px solid #e8e1c9 }
+.screen-meta-form > .form-field > span:first-child { font-size: calc(12.5px * var(--font-scale, 1)); color: #77725f }
+.screen-meta-form .species-rows { display: grid; gap: 8px }
+.screen-meta-form .species-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; margin: 0 }
+.screen-meta-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px }
 .screen-actionbar { position: sticky; top: 60px; z-index: 2; margin: -24px -32px 22px; display: flex; flex-direction: column; gap: 10px; padding: 13px 22px; border-bottom: 1px solid #e8e1c9; background: var(--surface-deep); box-shadow: 0 8px 24px rgba(38, 46, 36, 0.06) }
 .screen-decisions { display: flex; flex-wrap: wrap; gap: 10px }
 .screen-decision { position: relative }
