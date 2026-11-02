@@ -1,0 +1,11 @@
+{
+  "name": "biblio-cell",
+  "owner": { "name": "xuzhougeng" },
+  "plugins": [
+    {
+      "name": "mygo-maintenance",
+      "source": "./plugins/codex/mygo-maintenance",
+      "description": "Maintain Go applications built on github.com/egoist/mygo: UI lifetimes, widget identity, threading, and testing conventions."
+    }
+  ]
+}
