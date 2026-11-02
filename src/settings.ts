@@ -1,11 +1,12 @@
 // Settings page: demo switch, storage folder, MCP token and font size.
 import type { App } from "./app.ts";
-import { Library, type AgentConfig, type Config } from "./mygo.ts";
+import { Library, type AgentConfig, type Config, type ModelProfile, type TaskModels } from "./mygo.ts";
+import { AI_DEFAULTS, PROTOCOL_LABELS, TASKS, endpointOf, modelName, models, newProfileId, profileStatus } from "./models.ts";
 import { LOCALES, locale, setLocale, t } from "./i18n.ts";
 import { esc } from "./model.ts";
 import { applyFontSize } from "./shell.ts";
 import { enqueue } from "./store.ts";
-import { $, I, badge, errorMessage, option, text } from "./ui.ts";
+import { $, I, badge, errorMessage, option, setFormError, text } from "./ui.ts";
 
 export function renderSettings(app: App): string {
   const { env } = app;
@@ -31,7 +32,7 @@ export function renderSettings(app: App): string {
     + `<div class="settings-mcp-meta"><div><span>${t("Streamable HTTP 地址")}</span><code>${esc(mcp.enabled ? mcp.endpoint : t("启动桌面应用后监听 127.0.0.1:37841"))}</code></div><p><strong>${t("工具")}</strong>${esc(mcp.tools.join(" · "))}</p><p><strong>${t("Schema 资源")}</strong>${esc(mcp.resources.join(" · "))}</p></div>`
     + `<div class="settings-field"><label for="settings-mcp-token">Bearer Token</label><div class="settings-token-row"><input class="settings-path-input" id="settings-mcp-token" name="mcpToken" type="password" value="${esc(preferences.mcpToken)}" minlength="32" maxlength="256" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-mcp-token" ${disabled}>${t("显示")}</button><button class="btn btn-secondary" type="button" data-action="copy-mcp-token" ${disabled}>${t("复制")}</button><button class="btn btn-secondary" type="button" data-action="regenerate-mcp-token" ${disabled}>${t("重新生成")}</button></div><p class="form-hint">${t("32–256 个可见 ASCII 字符，不能包含空格。重新生成后，旧 Token 将在重启时失效。")}</p></div>`
     + `<div class="settings-inline-note">${I("info", 16)}<span>${t("无认证连接只读；写入使用 Authorization: Bearer &lt;TOKEN&gt;。Token 修改在重启后生效，且不会通过 MCP 返回。服务仅监听本机回环地址，不要转发到局域网或公网。")}</span></div></section>`
-    + aiSection(preferences.ai, disabled)
+    + `<div id="settings-ai-section">${aiSection(preferences, disabled)}</div>`
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("book", 21)}</span><div><h2>${t("阅读样式")}</h2><p>${t("只调整文字大小，不改变面板宽度与整体布局。")}</p></div></div>`
     + `<div class="settings-field"><div class="settings-label-row"><label for="settings-font-size">${t("界面字号")}</label><output id="settings-font-size-value" for="settings-font-size">${esc(preferences.fontSize)} px</output></div><div class="settings-font-control"><span>${t("小")}</span><input id="settings-font-size" name="fontSize" type="range" min="12" max="20" step="1" value="${esc(preferences.fontSize)}" ${disabled}><span>${t("大")}</span><button class="text-link" type="button" data-action="reset-font-size" ${disabled}>${t("恢复 15 px")}</button></div></div>`
     + `<div class="settings-font-preview"><span>${t("阅读预览")}</span><p>${t("从一片叶、一个细胞，到一篇可追溯的研究。")}</p><small>${t("Plant single-cell research · 文献、数据与笔记")}</small></div></section>`
@@ -47,36 +48,100 @@ const localeSection = (): string =>
   + '<div class="settings-field"><label for="settings-locale">界面语言 / Interface language</label>' // i18n-ignore
   + `<select class="input" id="settings-locale">${LOCALES.map(([code, name]) => option(code, name, locale)).join("")}</select></div></section>`;
 
-const AI_DEFAULTS: Record<string, { baseUrl: string; model: string; hint: string }> = {
-  anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-opus-5-5", hint: t("Anthropic Messages 协议：POST {地址}/v1/messages，x-api-key 认证。兼容网关填它的根地址。") },
-  openai: { baseUrl: "https://api.openai.com/v1", model: t("例如 gpt-5、deepseek-chat、qwen3"), hint: t("OpenAI Chat Completions 协议：POST {地址}/chat/completions，Bearer 认证。DeepSeek、通义、Ollama、vLLM 等都走这个。") },
-};
+const PROTOCOL_OPTIONS = (selected: string): string => option("anthropic", "Anthropic Messages", selected) + option("openai", t("OpenAI Chat Completions（兼容）"), selected);
 
-const aiBadge = (ai: AgentConfig, protocol: string): [string, string] => {
-  const hasModel = Boolean(ai.model) || protocol === "anthropic";
-  return !hasModel ? [t("未配置"), "gray"] : ai.apiKey ? [t("已配置"), "green"] : [t("未填 Key"), "amber"];
-};
+/** modelCard shows one configured model service with what it is and how to change it. */
+function modelCard(profile: ModelProfile, disabled: string): string {
+  const [label, color] = profileStatus(profile);
+  const config = profile.config;
+  return `<div class="model-card"><div class="model-card-head"><strong>${esc(profile.name)}</strong>${badge(label, color)}<span class="section-actions"><button class="text-link" type="button" data-action="model-edit" data-id="${esc(profile.id)}" ${disabled}>${t("编辑")}</button><button class="text-link" type="button" data-action="model-delete" data-id="${esc(profile.id)}" ${disabled}>${t("删除")}</button></span></div>`
+    + `<div class="model-card-meta"><span>${esc(modelName(config) || t("模型名待填"))}</span><span class="meta-separator">·</span><span>${esc(PROTOCOL_LABELS[config.protocol || "anthropic"] ?? config.protocol)}</span><span class="meta-separator">·</span><code>${esc(endpointOf(config))}</code>${config.effort ? `<span class="meta-separator">·</span><span>${t("思考 {effort}", { effort: esc(config.effort) })}</span>` : ""}</div></div>`;
+}
 
-function aiSection(ai: AgentConfig, disabled: string): string {
-  const protocol = ai.protocol || "anthropic";
+/** aiSection lists the model services and binds each AI feature to one of them. */
+function aiSection(settings: Config, disabled: string): string {
+  const list = models(settings);
+  const tasks: TaskModels = settings.tasks ?? { chat: "", screen: "", translate: "" };
+  const cards = list.length
+    ? list.map((m) => modelCard(m, disabled)).join("")
+    : `<p class="muted model-empty">${t("还没有添加模型。添加后，AI 对话、AI 判断和 AI 翻译都可以各自选择用哪个。")}</p>`;
+  const first = list[0];
+  const bindings = TASKS.map(([task, label, hint]) =>
+    `<div class="settings-field"><label for="settings-task-${task}">${esc(label)}</label><select class="input" id="settings-task-${task}" name="task-${task}" ${disabled}>${option("", first ? t("默认 · {name}", { name: first.name }) : t("默认（第一个模型）"), tasks[task])}${list.map((m) => option(m.id, m.name, tasks[task])).join("")}</select><p class="form-hint">${esc(hint)}</p></div>`,
+  ).join("");
+  return `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("sparkle", 21)}</span><div><h2>${t("AI 模型")}</h2><p>${t("添加一个或多个模型服务，再为每项 AI 功能选择用哪个。")}</p></div>${badge(list.length ? t("{n} 个模型", { n: list.length }) : t("未配置"), list.length ? "green" : "gray")}</div>`
+    + `<div class="model-list">${cards}</div><button class="btn btn-secondary" type="button" data-action="model-add" ${disabled}>${I("plus", 16)} ${t("添加模型")}</button>`
+    + `<h3 class="settings-subheading">${t("各功能使用的模型")}</h3><div class="settings-grid settings-grid-3">${bindings}</div>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("模型的添加、编辑和删除会立即保存；各功能的选择点“保存设置”后生效。Key 和地址只保存在本机 settings.json，不随存放文件夹迁移，也不会通过 MCP 返回。")}</span></div></section>`;
+}
+
+/** modelModal edits one profile, or a blank one when id is empty. */
+export function modelModal(app: App, id = ""): void {
+  const existing = models(app.env.settings).find((m) => m.id === id);
+  const config: AgentConfig = existing?.config ?? { protocol: "anthropic", baseUrl: "", apiKey: "", model: "", maxTokens: 0, maxSteps: 0, effort: "" };
+  const protocol = config.protocol || "anthropic";
   const defaults = AI_DEFAULTS[protocol] ?? AI_DEFAULTS.anthropic!;
-  return `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("sparkle", 21)}</span><div><h2>${t("AI 模型")}</h2><p>${t("内置助手用这个模型服务，通过 MCP 工具操作正式数据库。")}</p></div>${badge(...aiBadge(ai, protocol))}</div>`
-    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-protocol">${t("接口协议")}</label><select class="input" id="settings-ai-protocol" name="aiProtocol" ${disabled}>${option("anthropic", "Anthropic Messages", protocol)}${option("openai", t("OpenAI Chat Completions（兼容）"), protocol)}</select></div>`
-    + `<div class="settings-field"><label for="settings-ai-model">${t("模型名称")}</label><input class="input" id="settings-ai-model" name="aiModel" type="text" value="${esc(ai.model)}" placeholder="${esc(defaults.model)}" autocomplete="off" spellcheck="false" maxlength="200" ${disabled}></div></div>`
-    + `<div class="settings-field"><label for="settings-ai-base-url">${t("服务地址")}</label><input class="settings-path-input" id="settings-ai-base-url" name="aiBaseUrl" type="url" value="${esc(ai.baseUrl)}" placeholder="${esc(defaults.baseUrl)}" autocomplete="off" spellcheck="false" maxlength="500" ${disabled}><p class="form-hint" id="settings-ai-hint">${esc(defaults.hint)}</p></div>`
-    + `<div class="settings-field"><label for="settings-ai-api-key">API Key</label><div class="settings-path-row"><input class="settings-path-input" id="settings-ai-api-key" name="aiApiKey" type="password" value="${esc(ai.apiKey)}" placeholder="${t("本地模型服务可留空")}" autocomplete="off" spellcheck="false" maxlength="1000" ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-ai-key" ${disabled}>${t("显示")}</button></div></div>`
-    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-effort">${t("思考强度")}</label><select class="input" id="settings-ai-effort" name="aiEffort" ${disabled}>${option("", t("服务默认"), ai.effort)}${option("low", t("低 · 快速简答"), ai.effort)}${option("medium", t("中"), ai.effort)}${option("high", t("高"), ai.effort)}${option("xhigh", t("很高 · 适合多步整理"), ai.effort)}${option("max", t("最高"), ai.effort)}</select><p class="form-hint">${t("Anthropic 发送 output_config.effort；OpenAI 兼容协议发送 reasoning_effort，很高与最高都按 high 发送。老模型不支持时请选“服务默认”。")}</p></div>`
-    + `<div class="settings-field"><label for="settings-ai-max-steps">${t("单次运行步数上限")}</label><input class="input" id="settings-ai-max-steps" name="aiMaxSteps" type="number" min="1" max="200" value="${ai.maxSteps || ""}" placeholder="20" ${disabled}></div></div>`
-    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-max-tokens">${t("单次回复 token 上限")}</label><input class="input" id="settings-ai-max-tokens" name="aiMaxTokens" type="number" min="0" max="1000000" value="${ai.maxTokens || ""}" placeholder="${t("默认")}" ${disabled}></div></div>`
-    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("Key 和地址只保存在本机 settings.json，不随存放文件夹迁移，也不会通过 MCP 返回。修改后下一次对话生效，无需重启。")}</span></div></section>`;
+  const body = `<form id="model-profile-form"><input type="hidden" name="id" value="${esc(existing?.id ?? "")}">`
+    + `<div class="settings-grid"><label class="form-field"><span>${t("名称")} <b class="required">*</b></span><input class="input" name="name" value="${esc(existing?.name ?? "")}" placeholder="${t("例如 Claude、DeepSeek、本机 Ollama")}" maxlength="100" required></label>`
+    + `<label class="form-field"><span>${t("接口协议")}</span><select class="input" id="model-protocol" name="protocol">${PROTOCOL_OPTIONS(protocol)}</select></label></div>`
+    + `<label class="form-field"><span>${t("模型名称")}</span><input class="input" id="model-name" name="model" value="${esc(config.model)}" placeholder="${esc(defaults.model)}" autocomplete="off" spellcheck="false" maxlength="200"></label>`
+    + `<label class="form-field"><span>${t("服务地址")}</span><input class="input" id="model-base-url" name="baseUrl" type="url" value="${esc(config.baseUrl)}" placeholder="${esc(defaults.baseUrl)}" autocomplete="off" spellcheck="false" maxlength="500"><small class="form-hint" id="model-hint">${esc(defaults.hint)}</small></label>`
+    + `<label class="form-field"><span>API Key</span><span class="settings-path-row"><input class="input" id="model-api-key" name="apiKey" type="password" value="${esc(config.apiKey)}" placeholder="${t("本地模型服务可留空")}" autocomplete="off" spellcheck="false" maxlength="1000"><button class="btn btn-secondary" type="button" data-action="toggle-model-key">${t("显示")}</button></span></label>`
+    + `<div class="settings-grid"><label class="form-field"><span>${t("思考强度")}</span><select class="input" name="effort">${option("", t("服务默认"), config.effort)}${option("low", t("低 · 快速简答"), config.effort)}${option("medium", t("中"), config.effort)}${option("high", t("高"), config.effort)}${option("xhigh", t("很高 · 适合多步整理"), config.effort)}${option("max", t("最高"), config.effort)}</select></label>`
+    + `<label class="form-field"><span>${t("单次运行步数上限")}</span><input class="input" name="maxSteps" type="number" min="1" max="200" value="${config.maxSteps || ""}" placeholder="20"></label></div>`
+    + `<label class="form-field"><span>${t("单次回复 token 上限")}</span><input class="input" name="maxTokens" type="number" min="0" max="1000000" value="${config.maxTokens || ""}" placeholder="${t("默认")}"></label>`
+    + `<p class="form-hint">${t("Anthropic 发送 output_config.effort；OpenAI 兼容协议发送 reasoning_effort，很高与最高都按 high 发送。老模型不支持时请选“服务默认”。")}</p>`
+    + `<p id="form-error" class="form-error" role="alert"></p></form>`;
+  app.showModal(existing ? t("编辑模型") : t("添加模型"), body, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-primary" type="submit" form="model-profile-form">${t("保存模型")}</button>`);
+}
+
+/** saveModelProfile stores the modal's profile at once, since the key is useless until it is saved. */
+export function saveModelProfile(app: App, form: HTMLFormElement): void {
+  if (!app.env.desktop) return;
+  const data = new FormData(form);
+  const config: AgentConfig = {
+    protocol: text(data, "protocol"), baseUrl: text(data, "baseUrl"), apiKey: text(data, "apiKey"), model: text(data, "model"),
+    maxSteps: Number(data.get("maxSteps")) || 0, maxTokens: Number(data.get("maxTokens")) || 0, effort: text(data, "effort"),
+  };
+  const name = text(data, "name");
+  if (!name) return setFormError(t("请填写模型名称。"));
+  if (config.protocol === "openai" && !config.model) return setFormError(t("OpenAI 兼容协议需要填写模型名称。"));
+  const list = models(app.env.settings).slice();
+  const id = text(data, "id");
+  const index = list.findIndex((m) => m.id === id);
+  const profile: ModelProfile = { id: index >= 0 ? id : newProfileId(list), name, config };
+  if (index >= 0) list[index] = profile; else list.push(profile);
+  persistModels(app, list, app.env.settings.tasks, t("模型已保存。"));
+}
+
+/** deleteModelProfile removes a profile and clears any binding that pointed at it. */
+export function deleteModelProfile(app: App, id: string): void {
+  const list = models(app.env.settings).filter((m) => m.id !== id);
+  const tasks = { ...(app.env.settings.tasks ?? { chat: "", screen: "", translate: "" }) };
+  for (const task of ["chat", "screen", "translate"] as const) if (tasks[task] === id) tasks[task] = "";
+  persistModels(app, list, tasks, t("模型已删除。"));
+}
+
+function persistModels(app: App, list: ModelProfile[], tasks: TaskModels, done: string): void {
+  const next: Config = { ...app.env.settings, models: list, tasks };
+  Library.saveSettings(next).then((result) => {
+    app.env.settings = result.settings;
+    app.closeModal();
+    const section = $("#settings-ai-section");
+    if (section) section.innerHTML = aiSection(result.settings, "");
+    app.toast(done);
+  }).catch((error: unknown) => {
+    const message = t("保存失败：{error}", { error: errorMessage(error, t("请检查填写内容后重试。")) });
+    if ($("#model-profile-form")) setFormError(message); else app.toast(message, true);
+  });
 }
 
 /** updateAIPlaceholders follows the protocol switch so the blanks read right. */
 export function updateAIPlaceholders(select: HTMLSelectElement): void {
   const defaults = AI_DEFAULTS[select.value] ?? AI_DEFAULTS.anthropic!;
-  const url = $<HTMLInputElement>("#settings-ai-base-url");
-  const model = $<HTMLInputElement>("#settings-ai-model");
-  const hint = $("#settings-ai-hint");
+  const url = $<HTMLInputElement>("#model-base-url");
+  const model = $<HTMLInputElement>("#model-name");
+  const hint = $("#model-hint");
   if (url) url.placeholder = defaults.baseUrl;
   if (model) model.placeholder = defaults.model;
   if (hint) hint.textContent = defaults.hint;
@@ -91,15 +156,8 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   if (!app.env.desktop) return;
   const data = new FormData(form);
   const button = $<HTMLButtonElement>("button[type=submit]", form);
-  const ai: AgentConfig = {
-    protocol: text(data, "aiProtocol"), baseUrl: text(data, "aiBaseUrl"), apiKey: text(data, "aiApiKey"), model: text(data, "aiModel"),
-    maxSteps: Number(data.get("aiMaxSteps")) || 0, maxTokens: Number(data.get("aiMaxTokens")) || 0, effort: text(data, "aiEffort"),
-  };
-  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken"), ai };
-  if (ai.protocol === "openai" && !ai.model) {
-    setStatus(t("OpenAI 兼容协议需要填写模型名称。"));
-    return;
-  }
+  const tasks: TaskModels = { chat: text(data, "task-chat"), screen: text(data, "task-screen"), translate: text(data, "task-translate") };
+  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken"), tasks };
   if (!next.storagePath) {
     setStatus(t("请填写存放文件夹的绝对路径。"));
     return;
@@ -167,8 +225,16 @@ export const settingsActions = (app: App): Record<string, (el: HTMLElement) => v
     input.value = "15";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   },
-  "toggle-ai-key": (el) => {
-    const input = $<HTMLInputElement>("#settings-ai-api-key");
+  "model-add": () => modelModal(app),
+  "model-edit": (el) => modelModal(app, el.dataset.id ?? ""),
+  "model-delete": (el) => {
+    const profile = models(app.env.settings).find((m) => m.id === el.dataset.id);
+    if (!profile) return;
+    app.showModal(t("删除模型"), `<p>${t("确定删除模型“{name}”？用它的功能会改用第一个模型。", { name: esc(profile.name) })}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-model-delete" data-id="${esc(profile.id)}">${t("确认删除")}</button>`);
+  },
+  "confirm-model-delete": (el) => deleteModelProfile(app, el.dataset.id ?? ""),
+  "toggle-model-key": (el) => {
+    const input = $<HTMLInputElement>("#model-api-key");
     if (!input) return;
     const show = input.type === "password";
     input.type = show ? "text" : "password";

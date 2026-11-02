@@ -3,7 +3,8 @@
 // of the filtered papers at entry, so deciding never shuffles the order or
 // drops the paper from under the reader.
 import type { App } from "./app.ts";
-import type { AgentConfig, Judgement, Paper } from "./mygo.ts";
+import type { Judgement, Paper } from "./mygo.ts";
+import { configured, modelFor } from "./models.ts";
 import { READING, SCREEN, arr, dateText, decideScreening, esc, joinList, speciesDisplay, speciesNames } from "./model.ts";
 import { $, I, badge, demoBadge, screenBadge } from "./ui.ts";
 import { listSeparator, t, tv } from "./i18n.ts";
@@ -29,9 +30,31 @@ export type AIResult =
 export const AI_ASK_KEY = "bibliocell-screen-ai-ask";
 export const AI_REQUIREMENT_KEY = "bibliocell-screen-ai-requirement";
 
-/** aiConfigured says whether the settings name a model service the backend could call. */
-export const aiConfigured = (ai: AgentConfig): boolean =>
-  Boolean(ai.model || (ai.protocol || "anthropic") === "anthropic") && Boolean(ai.apiKey || ai.baseUrl);
+/** Translation of the paper on screen: what was selected and what came back. */
+export type Translation =
+  | { paperId: string; source: string; state: "loading" }
+  | { paperId: string; source: string; state: "done"; text: string }
+  | { paperId: string; source: string; state: "error"; message: string };
+
+/** translationPop is the floating card that follows a selection: the original in brief, then the Chinese. */
+export function translationPop(tr: Translation): string {
+  const brief = tr.source.length > 80 ? `${tr.source.slice(0, 80)}…` : tr.source;
+  const head = `<div class="translate-pop-head"><span class="ai-box-label">${I("sparkle", 14)} ${t("译文")}</span><button class="btn-icon" data-action="screen-translate-clear" aria-label="${t("收起译文")}">${I("x", 16)}</button></div><p class="translate-pop-source" title="${esc(tr.source)}">${esc(brief)}</p>`;
+  if (tr.state === "loading") return `${head}<p class="muted translate-pop-wait"><span class="ai-spinner"></span>${t("正在翻译…")}</p>`;
+  if (tr.state === "error") return `${head}<p class="translate-pop-error">${esc(tr.message)}</p><button class="text-link" data-action="screen-translate" data-id="${esc(tr.paperId)}">${t("重试")}</button>`;
+  return `${head}<p class="translate-pop-text">${esc(tr.text)}</p>`;
+}
+
+/** pdfPane shows the stored full text beside the paper when it is a PDF the window can render. */
+function pdfPane(app: App, p: Paper): string {
+  if (!app.env.desktop || !app.env.real || !app.screenPdf) return "";
+  const file = app.paperResources(p.id).find((r) => r.type === "fulltext" && r.localPath && /\.pdf$/i.test(r.localPath));
+  if (!file) return "";
+  return `<aside class="screen-pdf"><div class="screen-pdf-head"><span>${I("file", 15)} ${esc(file.title)}</span><span class="section-actions"><button class="text-link" data-action="open-file" data-id="${esc(file.id)}">${t("在系统中打开")}</button><button class="text-link" data-action="screen-pdf-toggle">${t("隐藏")}</button></span></div><iframe class="screen-pdf-frame" src="paperfile://localhost/${esc(encodeURIComponent(file.id))}" title="${esc(file.title)}"></iframe></aside>`;
+}
+
+/** hasPdf says whether the paper has a stored PDF, for the toolbar toggle. */
+const hasPdf = (app: App, p: Paper): boolean => app.env.desktop && app.env.real && app.paperResources(p.id).some((r) => r.type === "fulltext" && r.localPath && /\.pdf$/i.test(r.localPath));
 
 const read = (key: string): string => {
   try { return localStorage.getItem(key) ?? ""; } catch { return ""; }
@@ -137,14 +160,16 @@ export function renderScreening(app: App): string {
     `<button class="btn ${color} screen-decision${p.screening === status ? " is-current" : ""}" data-action="screen-decide" data-id="${esc(p.id)}" data-status="${status}" aria-pressed="${p.screening === status}">${kbd(key.toUpperCase())} ${esc(SCREEN[status]!)}</button>`,
   ).join("");
   const reason = p.screeningReason ? `<p class="muted small screen-reason">${t("判断依据：{reason}", { reason: esc(p.screeningReason) })}</p>` : "";
+  const pdf = pdfPane(app, p);
+  const pdfToggle = hasPdf(app, p) && !app.screenPdf ? `<button class="btn btn-secondary" data-action="screen-pdf-toggle">${I("file", 16)} ${t("显示 PDF")}</button>` : "";
   const aiToggle = screen.ai
     ? `<button class="btn btn-secondary ai-toggle is-on" data-action="screen-ai-off" title="${esc(screen.ai.requirement)}">${I("sparkle", 16)} ${t("AI 建议：开")}</button>`
     : app.canScreenWithAI() ? `<button class="btn btn-secondary ai-toggle" data-action="screen-ai-open">${I("sparkle", 16)} ${t("AI 建议")}</button>` : "";
 
   return `<section class="panel screen-panel" aria-label="${t("逐篇筛选")}">`
-    + `<div class="screen-toolbar"><button class="btn btn-secondary" data-action="exit-screening">${I("x", 16)} ${t("退出筛选")} ${kbd("Esc")}</button><div class="screen-progress"><strong>${t("第 {n} / {total} 篇", { n: screen.index + 1, total })}</strong><span class="muted">${t("已判断 {done} 篇", { done: decided })}</span></div><div class="screen-nav">${aiToggle}<button class="btn btn-secondary" data-action="screen-prev" ${screen.index === 0 ? "disabled" : ""} aria-label="${t("上一篇")}">${I("chevron-left", 16)} ${t("上一篇")}</button><button class="btn btn-secondary" data-action="screen-next" ${screen.index >= total - 1 ? "disabled" : ""} aria-label="${t("下一篇")}">${t("下一篇")} ${I("chevron-right", 16)}</button></div></div>`
+    + `<div class="screen-toolbar"><button class="btn btn-secondary" data-action="exit-screening">${I("x", 16)} ${t("退出筛选")} ${kbd("Esc")}</button><div class="screen-progress"><strong>${t("第 {n} / {total} 篇", { n: screen.index + 1, total })}</strong><span class="muted">${t("已判断 {done} 篇", { done: decided })}</span></div><div class="screen-nav">${pdfToggle}${aiToggle}<button class="btn btn-secondary" data-action="screen-prev" ${screen.index === 0 ? "disabled" : ""} aria-label="${t("上一篇")}">${I("chevron-left", 16)} ${t("上一篇")}</button><button class="btn btn-secondary" data-action="screen-next" ${screen.index >= total - 1 ? "disabled" : ""} aria-label="${t("下一篇")}">${t("下一篇")} ${I("chevron-right", 16)}</button></div></div>`
     + `<div class="screen-counts">${counts}</div>`
-    + `<div class="screen-body">`
+    + `<div class="screen-split${pdf ? " has-pdf" : ""}"><div class="screen-body">`
     + `<div class="screen-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? t("未读"))}${p.publicationStatus === "preprint" ? badge(t("预印本"), "amber") : ""}${demoBadge(p)}${p.starred ? badge(t("已收藏"), "amber") : ""}<span class="muted screen-id">${esc(p.id)}</span></div>`
     + `<h2 class="screen-title">${esc(p.title)}</h2>`
     + `<p class="paper-meta">${esc(p.authors || t("作者待补"))} · ${esc(p.journal || t("期刊待补"))} · ${esc(p.year || t("年份待补"))}</p>`
@@ -155,8 +180,8 @@ export function renderScreening(app: App): string {
     + `<section class="detail-section"><h3>${t("摘要")}</h3><p class="abstract-text">${esc(p.abstract || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`
     + (arr(p.tags).length ? `<section class="detail-section"><h3>${t("主题标签")}</h3><div class="tag-list">${arr(p.tags).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}</div></section>` : "")
     + (p.notes ? `<section class="detail-section"><h3>${t("研究笔记")}</h3><p class="abstract-text">${esc(p.notes)}</p></section>` : "")
-    + `</div>`
-    + `<div class="screen-footer"><div class="screen-decisions">${decisionButtons}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button><span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · 判断后自动跳到下一篇")}</span></div></div>`
+    + `</div>${pdf}</div>`
+    + `<div class="screen-footer"><div class="screen-decisions">${decisionButtons}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("划选文字会自动翻译；没有划选时翻译整段摘要")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · 判断后自动跳到下一篇")}</span></div></div>`
     + `</section>`;
 }
 
@@ -172,7 +197,15 @@ export const screenActions = (app: App): Record<string, (el: HTMLElement, id: st
   "screen-ai-off": () => app.disableScreeningAI(),
   "screen-ai-retry": (_el, id) => app.requestJudgement(id, true),
   "screen-ai-adopt": (_el, id) => app.adoptJudgement(id),
+  "screen-translate": (_el, id) => app.translateInScreening(id),
+  "screen-translate-clear": () => app.clearTranslation(),
+  "screen-pdf-toggle": () => app.toggleScreenPdf(),
 });
+
+/** screenModelReady: the desktop app on a real library, with a model bound to screening. */
+export const screenModelReady = (app: App): boolean => app.env.desktop && app.env.real && configured(modelFor(app.env.settings, "screen"));
+export const translateModelReady = (app: App): boolean => app.env.desktop && app.env.real && configured(modelFor(app.env.settings, "translate"));
+
 
 /** applyDecision records the status and reports whether it was applied (an exclusion may first need a reason). */
 export function applyDecision(app: App, p: Paper, status: string, askReason: (p: Paper) => void, reason = p.screeningReason): boolean {

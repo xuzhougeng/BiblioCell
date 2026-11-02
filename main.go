@@ -68,6 +68,12 @@ func main() {
 			}
 		})
 
+		// Stored files reach the page as paperfile://localhost/<file id>, so a PDF
+		// can be shown inside the window; registered before the window exists.
+		if err := mygo.Protocol.HandleFunc("paperfile", libraryService.servePaperFile); err != nil {
+			log.Printf("paper file scheme unavailable: %v", err)
+		}
+
 		mygo.NewWindow(mygo.WindowOptions{
 			Title:           "BiblioCell",
 			Width:           1440,

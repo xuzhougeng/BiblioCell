@@ -1,5 +1,16 @@
 // English strings for views.
 export const views: Record<string, string> = {
+  // screen.ts: translation and PDF pane
+  "译文": "Translation",
+  "收起译文": "Close translation",
+  "正在翻译…": "Translating…",
+  "在系统中打开": "Open in system viewer",
+  "隐藏": "Hide",
+  "显示 PDF": "Show PDF",
+  "划选文字会自动翻译；没有划选时翻译整段摘要": "Selected text is translated automatically; with nothing selected, the whole abstract is",
+  "翻译摘要": "Translate abstract",
+  "先划选要翻译的文字，或为文献补充摘要。": "Select the text to translate first, or add an abstract to the paper.",
+  "翻译失败，请重试。": "Translation failed. Please retry.",
   // screen.ts: AI suggestions while screening
   "写下你的筛选要求，AI 会结合每篇文献的全文（没有全文时用摘要）判断是否符合，给出建议供你采纳。没有全文也没有摘要的文献会自动跳过。": "Describe what you are screening for. The AI reads each paper's full text (or its abstract when there is none) and suggests whether it fits, for you to adopt or ignore. Papers with neither full text nor abstract are skipped.",
   "筛选要求": "Screening requirement",

@@ -410,7 +410,11 @@ func (c *cli) agent(ctx context.Context, args []string) error {
 	if prompt == "" {
 		return errors.New("usage: agent [-max-steps N] [-system TEXT] PROMPT")
 	}
-	config := agent.Normalize(c.settings.Get().AI)
+	profile, err := c.settings.Get().ModelFor(settings.TaskChat)
+	if err != nil {
+		return fmt.Errorf("AI settings: %w (run settings set -ai-model ...)", err)
+	}
+	config := agent.Normalize(profile.Config)
 	provider, err := agent.NewProvider(config)
 	if err != nil {
 		return fmt.Errorf("AI settings: %w (run settings set -ai-model ...)", err)
@@ -504,15 +508,33 @@ func (c *cli) configure(args []string) error {
 		flags.StringVar(&config.MCPToken, "mcp-token", config.MCPToken, "MCP bearer token, used on next start")
 		flags.StringVar(&config.NCBIAPIKey, "ncbi-api-key", config.NCBIAPIKey, "NCBI API key for PubMed, GEO and SRA")
 		flags.StringVar(&config.ContactEmail, "contact-email", config.ContactEmail, "contact email for Crossref's polite pool")
-		flags.StringVar(&config.AI.Protocol, "ai-protocol", config.AI.Protocol, "anthropic (Messages API) or openai (Chat Completions)")
-		flags.StringVar(&config.AI.BaseURL, "ai-base-url", config.AI.BaseURL, "model service root, empty for the protocol's public endpoint")
-		flags.StringVar(&config.AI.APIKey, "ai-api-key", config.AI.APIKey, "model service API key")
-		flags.StringVar(&config.AI.Model, "ai-model", config.AI.Model, "model name")
-		flags.IntVar(&config.AI.MaxTokens, "ai-max-tokens", config.AI.MaxTokens, "output tokens per completion, 0 for the default")
-		flags.IntVar(&config.AI.MaxSteps, "ai-max-steps", config.AI.MaxSteps, "completions per run, 0 for 20")
-		flags.StringVar(&config.AI.Effort, "ai-effort", config.AI.Effort, "thinking effort: low, medium, high, xhigh, max; empty for the service default")
+		// The -ai-* flags edit the chat model's profile, creating "default" when there is none.
+		index := -1
+		for i, profile := range config.Models {
+			if profile.ID == config.Tasks.Chat || (config.Tasks.Chat == "" && i == 0) {
+				index = i
+				break
+			}
+		}
+		ai := settings.ModelProfile{ID: "default", Name: "默认模型"}
+		if index >= 0 {
+			ai = config.Models[index]
+		}
+		flags.StringVar(&ai.Name, "ai-name", ai.Name, "display name of the chat model profile")
+		flags.StringVar(&ai.Config.Protocol, "ai-protocol", ai.Config.Protocol, "anthropic (Messages API) or openai (Chat Completions)")
+		flags.StringVar(&ai.Config.BaseURL, "ai-base-url", ai.Config.BaseURL, "model service root, empty for the protocol's public endpoint")
+		flags.StringVar(&ai.Config.APIKey, "ai-api-key", ai.Config.APIKey, "model service API key")
+		flags.StringVar(&ai.Config.Model, "ai-model", ai.Config.Model, "model name")
+		flags.IntVar(&ai.Config.MaxTokens, "ai-max-tokens", ai.Config.MaxTokens, "output tokens per completion, 0 for the default")
+		flags.IntVar(&ai.Config.MaxSteps, "ai-max-steps", ai.Config.MaxSteps, "completions per run, 0 for 20")
+		flags.StringVar(&ai.Config.Effort, "ai-effort", ai.Config.Effort, "thinking effort: low, medium, high, xhigh, max; empty for the service default")
 		if err := flags.Parse(rest); err != nil {
 			return err
+		}
+		if index >= 0 {
+			config.Models[index] = ai
+		} else if ai.Config != (agent.Config{}) {
+			config.Models = append(config.Models, ai)
 		}
 		if err := c.settings.Save(config); err != nil {
 			return err

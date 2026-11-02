@@ -61,3 +61,17 @@ func TestScreenTruncatesLongFulltextAndRejectsUnknownVerdicts(t *testing.T) {
 		t.Fatal("prose accepted as a judgement")
 	}
 }
+
+func TestTranslateReturnsTheModelsText(t *testing.T) {
+	provider := answering("  拟南芥根尖的单细胞图谱。\n")
+	text, err := Translate(context.Background(), provider, "A single-cell atlas of the Arabidopsis root tip.")
+	if err != nil || text != "拟南芥根尖的单细胞图谱。" {
+		t.Fatalf("text = %q, err = %v", text, err)
+	}
+	if provider.requests[0].System == "" || len(provider.requests[0].Tools) != 0 {
+		t.Fatalf("request = %+v", provider.requests[0])
+	}
+	if _, err := Translate(context.Background(), answering("x"), "   "); err == nil {
+		t.Fatal("empty text accepted")
+	}
+}
