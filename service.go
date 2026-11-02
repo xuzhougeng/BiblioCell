@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,6 +120,27 @@ func (l *Library) FetchFulltext(paperID string) (library.FulltextResult, error) 
 // LookupDOI fetches bibliographic metadata for a DOI without saving it.
 func (l *Library) LookupDOI(doi string) (library.Paper, error) {
 	return library.LookupDOI(context.Background(), doi, sourceCredentials(l.settings))
+}
+
+// servePaperFile answers paperfile://localhost/<id> with the stored file, for
+// the window to render a PDF beside the paper. Only files the library knows
+// are served, so the scheme cannot reach anything else on disk.
+func (l *Library) servePaperFile(w http.ResponseWriter, r *http.Request) {
+	if l.store == nil {
+		http.Error(w, "library database is not ready", http.StatusServiceUnavailable)
+		return
+	}
+	id := strings.Trim(r.URL.Path, "/")
+	path, err := l.store.PaperFilePath(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if strings.EqualFold(filepath.Ext(path), ".pdf") {
+		w.Header().Set("Content-Type", "application/pdf")
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeFile(w, r, path)
 }
 
 // OpenPaperFile opens a stored file with its default application.
@@ -325,11 +347,7 @@ func (l *Library) ScreenPaper(paperID, requirement string) (agent.Judgement, err
 	if l.store == nil || l.settings == nil {
 		return agent.Judgement{}, errors.New("library database is not ready")
 	}
-	config := l.settings.Get().AI
-	if config.Model == "" && agent.Normalize(config).Model == "" {
-		return agent.Judgement{}, errors.New("请先在设置中填写 AI 模型服务")
-	}
-	provider, err := agent.NewProvider(config)
+	provider, err := l.provider(settings.TaskScreen)
 	if err != nil {
 		return agent.Judgement{}, err
 	}
@@ -369,6 +387,29 @@ func (l *Library) ScreenPaper(paperID, requirement string) (agent.Judgement, err
 		Abstract:    paper.Abstract,
 		Fulltext:    fulltext,
 	})
+}
+
+// provider builds the client for the model a task is bound to.
+func (l *Library) provider(task string) (agent.Provider, error) {
+	profile, err := l.settings.Get().ModelFor(task)
+	if err != nil {
+		return nil, err
+	}
+	return agent.NewProvider(profile.Config)
+}
+
+// TranslateText renders text in Chinese with the model bound to translation.
+func (l *Library) TranslateText(text string) (string, error) {
+	if l.settings == nil {
+		return "", errors.New("settings are not ready")
+	}
+	provider, err := l.provider(settings.TaskTranslate)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	return agent.Translate(ctx, provider, text)
 }
 
 // Restart relaunches the app, which then opens the saved storage folder.
@@ -499,14 +540,15 @@ func (l *Library) AgentChat(ctx context.Context, messages []agent.Message) (agen
 	if l.store == nil || l.settings == nil {
 		return agent.Result{}, errors.New("library database is not ready")
 	}
-	config := l.settings.Get().AI
-	if config.Model == "" && agent.Normalize(config).Model == "" {
-		return agent.Result{}, errors.New("请先在设置中填写 AI 模型服务")
-	}
-	provider, err := agent.NewProvider(config)
+	profile, err := l.settings.Get().ModelFor(settings.TaskChat)
 	if err != nil {
 		return agent.Result{}, err
 	}
+	provider, err := agent.NewProvider(profile.Config)
+	if err != nil {
+		return agent.Result{}, err
+	}
+	config := profile.Config
 	runCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	local, err := library.ConnectLocalMCP(runCtx, l.store, sourceCredentials(l.settings))

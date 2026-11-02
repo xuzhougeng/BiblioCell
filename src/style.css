@@ -1282,3 +1282,36 @@ select.input { appearance: auto }
 .ai-box.is-loading .ai-box-label::after { content: ""; width: 12px; height: 12px; border: 2px solid var(--line-strong); border-top-color: var(--primary); border-radius: 50%; animation: ai-spin 0.9s linear infinite }
 @keyframes ai-spin { to { transform: rotate(360deg) } }
 @media (prefers-reduced-motion: reduce) { .ai-box.is-loading .ai-box-label::after { animation: none } }
+
+/* ---- screening mode: PDF beside the paper, translation card by the selection ---- */
+.screen-split { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 }
+.screen-split.has-pdf { grid-template-columns: minmax(0, 1fr) minmax(360px, 46%) }
+.screen-split.has-pdf .screen-body { max-width: none }
+.screen-pdf { display: flex; flex-direction: column; border-left: 1px solid #e8e1c9; background: var(--surface-deep); position: sticky; top: 60px; height: calc(100vh - 60px) }
+.screen-pdf-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; font-size: calc(12.5px * var(--font-scale, 1)); color: #6a6455; border-bottom: 1px solid #e8e1c9 }
+.screen-pdf-head > span:first-child { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.screen-pdf-frame { flex: 1; width: 100%; border: 0; background: #e9e5d8 }
+@media (max-width: 1250px) {
+  .screen-split.has-pdf { grid-template-columns: minmax(0, 1fr) }
+  .screen-pdf { position: static; height: 70vh; border-left: 0; border-top: 1px solid #e8e1c9 }
+}
+.translate-pop { position: fixed; z-index: 90; padding: 12px 14px 13px; background: #faf8ef; border: 1px solid #c9bd99; border-left: 3px solid var(--primary); border-radius: 6px; box-shadow: 0 10px 30px rgba(38, 46, 36, 0.22); font-size: calc(13.5px * var(--font-scale, 1)); max-height: 45vh; overflow: auto }
+.translate-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px }
+.translate-pop-source { font-size: calc(12px * var(--font-scale, 1)); color: #8a8470; line-height: 1.6; margin: 0 0 8px; overflow-wrap: anywhere }
+.translate-pop-text { margin: 0; line-height: 1.9; color: #2b322a; white-space: pre-wrap }
+.translate-pop-wait { display: inline-flex; align-items: center; gap: 8px; margin: 0 }
+.translate-pop-error { margin: 0 0 6px; color: #8c3a2b }
+.ai-spinner { width: 12px; height: 12px; border: 2px solid var(--line-strong); border-top-color: var(--primary); border-radius: 50%; animation: ai-spin 0.9s linear infinite }
+
+/* ---- settings: model profiles ---- */
+.model-list { display: grid; gap: 10px; margin-bottom: 14px }
+.model-card { padding: 12px 15px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--surface-deep) }
+.model-card-head { display: flex; align-items: center; gap: 10px }
+.model-card-head > strong { font-size: calc(14.5px * var(--font-scale, 1)); color: var(--text-strong) }
+.model-card-head .section-actions { margin-left: auto; display: inline-flex; gap: 14px }
+.model-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin-top: 6px; font-size: calc(12.5px * var(--font-scale, 1)); color: #6a6455 }
+.model-card-meta code { font-family: var(--mono); font-size: calc(11.5px * var(--font-scale, 1)); overflow-wrap: anywhere }
+.model-empty { margin-bottom: 12px; font-size: calc(13.5px * var(--font-scale, 1)) }
+.settings-subheading { margin: 24px 0 12px; font-size: calc(15px * var(--font-scale, 1)); color: var(--text-strong) }
+.settings-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) }
+@media (max-width: 1024px) { .settings-grid-3 { grid-template-columns: 1fr } }

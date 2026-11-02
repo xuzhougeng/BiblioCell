@@ -32,9 +32,87 @@ type Config struct {
 	// in the database, so they stay on this machine when the folder moves.
 	NCBIAPIKey   string `json:"ncbiApiKey"`
 	ContactEmail string `json:"contactEmail"`
-	// AI configures the built-in agent's model service. The key stays on this
-	// machine like the other credentials.
+	// Models are the model services this person can reach; the keys stay on
+	// this machine like the other credentials. Tasks says which one each
+	// feature uses.
+	Models []ModelProfile `json:"models"`
+	Tasks  TaskModels     `json:"tasks"`
+}
+
+// ModelProfile is one model service under a name the person chose.
+type ModelProfile struct {
+	ID     string       `json:"id"`
+	Name   string       `json:"name"`
+	Config agent.Config `json:"config"`
+}
+
+// TaskModels binds each AI feature to a profile ID. An empty binding uses the
+// first profile, so one model works everywhere until the person decides more.
+type TaskModels struct {
+	// Chat is the built-in assistant.
+	Chat string `json:"chat"`
+	// Screen judges papers against a requirement while screening.
+	Screen string `json:"screen"`
+	// Translate renders selected text in Chinese.
+	Translate string `json:"translate"`
+}
+
+// Task names, as the frontend and CLI refer to them.
+const (
+	TaskChat      = "chat"
+	TaskScreen    = "screen"
+	TaskTranslate = "translate"
+)
+
+// ErrNoModel means no model service is configured for a task.
+var ErrNoModel = errors.New("请先在设置中添加 AI 模型")
+
+// ModelFor returns the profile bound to a task, or the first profile when the
+// task has no binding of its own.
+func (c Config) ModelFor(task string) (ModelProfile, error) {
+	id := ""
+	switch task {
+	case TaskChat:
+		id = c.Tasks.Chat
+	case TaskScreen:
+		id = c.Tasks.Screen
+	case TaskTranslate:
+		id = c.Tasks.Translate
+	default:
+		return ModelProfile{}, fmt.Errorf("unknown AI task %q", task)
+	}
+	if id != "" {
+		for _, profile := range c.Models {
+			if profile.ID == id {
+				return profile, nil
+			}
+		}
+	}
+	if len(c.Models) == 0 {
+		return ModelProfile{}, ErrNoModel
+	}
+	return c.Models[0], nil
+}
+
+// legacyConfig reads settings files written before model profiles existed,
+// which held one model service under "ai".
+type legacyConfig struct {
+	Config
 	AI agent.Config `json:"ai"`
+}
+
+// migrateModels turns the single legacy service into the first profile, bound
+// to every task by default.
+func migrateModels(legacy legacyConfig) Config {
+	config := legacy.Config
+	if len(config.Models) == 0 && legacy.AI != (agent.Config{}) {
+		name := legacy.AI.Model
+		if name == "" {
+			name = "默认模型"
+		}
+		config.Models = []ModelProfile{{ID: "default", Name: name, Config: legacy.AI}}
+	}
+	return config
 }
 
 // DatabasePath returns the SQLite file inside the storage folder.
@@ -65,10 +143,11 @@ func Open(path, defaultStoragePath, defaultMCPToken string) (*Store, error) {
 	if err != nil {
 		return store, fmt.Errorf("read settings: %w", err)
 	}
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
+	var legacy legacyConfig
+	if err := json.Unmarshal(data, &legacy); err != nil {
 		return store, fmt.Errorf("parse settings: %w", err)
 	}
+	config := migrateModels(legacy)
 	config.StoragePath = strings.TrimSpace(config.StoragePath)
 	if config.StoragePath == "" {
 		config.StoragePath = defaults.StoragePath
@@ -99,7 +178,7 @@ func (s *Store) Save(config Config) error {
 	config.MCPToken = strings.TrimSpace(config.MCPToken)
 	config.NCBIAPIKey = strings.TrimSpace(config.NCBIAPIKey)
 	config.ContactEmail = strings.TrimSpace(config.ContactEmail)
-	config.AI = agent.Trim(config.AI)
+	config.Models = trimModels(config.Models)
 	if err := Validate(config); err != nil {
 		return err
 	}
@@ -172,13 +251,43 @@ func Validate(config Config) error {
 			return errors.New("contact email must be a plain email address")
 		}
 	}
-	// A blank AI section is fine: the agent reports the missing model when used.
-	if config.AI != (agent.Config{}) {
-		if err := agent.Validate(config.AI); err != nil {
-			return err
+	ids := map[string]bool{}
+	for _, profile := range config.Models {
+		if profile.ID == "" || profile.Name == "" {
+			return errors.New("every AI model needs an id and a name")
+		}
+		if len(profile.ID) > 64 || len(profile.Name) > 100 {
+			return errors.New("AI model id and name must be short")
+		}
+		if ids[profile.ID] {
+			return fmt.Errorf("AI model id %q is used twice", profile.ID)
+		}
+		ids[profile.ID] = true
+		if err := agent.Validate(profile.Config); err != nil {
+			return fmt.Errorf("AI model %q: %w", profile.Name, err)
+		}
+	}
+	for task, id := range map[string]string{TaskChat: config.Tasks.Chat, TaskScreen: config.Tasks.Screen, TaskTranslate: config.Tasks.Translate} {
+		if id != "" && !ids[id] {
+			return fmt.Errorf("AI task %s is bound to an unknown model %q", task, id)
 		}
 	}
 	return nil
+}
+
+// trimModels cleans what the person typed in each profile.
+func trimModels(models []ModelProfile) []ModelProfile {
+	if len(models) == 0 {
+		return nil
+	}
+	cleaned := make([]ModelProfile, 0, len(models))
+	for _, profile := range models {
+		profile.ID = strings.TrimSpace(profile.ID)
+		profile.Name = strings.TrimSpace(profile.Name)
+		profile.Config = agent.Trim(profile.Config)
+		cleaned = append(cleaned, profile)
+	}
+	return cleaned
 }
 
 // ValidateMCPToken rejects short tokens and characters that cannot safely be

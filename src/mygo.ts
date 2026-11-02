@@ -30,7 +30,8 @@ export interface Config {
   mcpToken: string;
   ncbiApiKey: string;
   contactEmail: string;
-  ai: AgentConfig;
+  models: ModelProfile[];
+  tasks: TaskModels;
 }
 
 export interface ConversationSummary {
@@ -167,6 +168,12 @@ export interface Message {
   isError?: boolean;
   raw?: string;
   rawProtocol?: string;
+}
+
+export interface ModelProfile {
+  id: string;
+  name: string;
+  config: AgentConfig;
 }
 
 export interface Paper {
@@ -324,6 +331,12 @@ export interface SyncResult {
   duplicates: number;
   status: SourceStatus;
   papers: Paper[];
+}
+
+export interface TaskModels {
+  chat: string;
+  screen: string;
+  translate: string;
 }
 
 export interface ToolCall {
@@ -497,6 +510,10 @@ export const Library = {
   /** SyncSource fetches one enabled public source and returns the refreshed papers. */
   syncSource(id: string): Promise<SyncResult> {
     return call("Library.SyncSource", id);
+  },
+  /** TranslateText renders text in Chinese with the model bound to translation. */
+  translateText(text: string): Promise<string> {
+    return call("Library.TranslateText", text);
   },
   /** VerifyDatasetLink records a person's check of a paper-dataset link. */
   verifyDatasetLink(paperID: string, datasetID: string, role: string, verified: boolean): Promise<void> {

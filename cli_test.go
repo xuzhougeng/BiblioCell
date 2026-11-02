@@ -291,8 +291,8 @@ func TestCLIAgentRunsConfiguredModel(t *testing.T) {
 
 	var saved settings.Config
 	run(t, dataDir, "", &saved, "settings", "set", "-ai-protocol", "openai", "-ai-base-url", server.URL, "-ai-model", "test-model", "-ai-api-key", "k")
-	if saved.AI.Model != "test-model" || saved.AI.Protocol != agent.ProtocolOpenAI {
-		t.Fatalf("saved AI = %+v", saved.AI)
+	if len(saved.Models) != 1 || saved.Models[0].Config.Model != "test-model" || saved.Models[0].Config.Protocol != agent.ProtocolOpenAI {
+		t.Fatalf("saved models = %+v", saved.Models)
 	}
 	var result agent.Result
 	run(t, dataDir, "", &result, "agent", "how", "many", "papers?")

@@ -16,8 +16,8 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, aiConfigured, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenPapers, type ScreenState } from "./screen.ts";
-import { previewFontSize, renderSettings, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, type ScreenState, type Translation } from "./screen.ts";
+import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
 import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
@@ -70,6 +70,12 @@ export class App {
   drawer: Drawer | null = null;
   /** Papers page: screening mode shows one paper at a time instead of the table. */
   screen: ScreenState | null = null;
+  /** The translation card floating by the selection in screening mode, if any. */
+  translation: Translation | null = null;
+  /** Screening mode shows the stored PDF beside the paper unless hidden. */
+  screenPdf = localStorage.getItem("bibliocell-screen-pdf") !== "off";
+  private translationAnchor: DOMRect | null = null;
+  private selectionTimer: ReturnType<typeof setTimeout> | undefined;
   agent: AgentState = emptyAgentState();
   drawerTab = "overview";
   syncing = new Set<string>();
@@ -129,6 +135,12 @@ export class App {
     document.addEventListener("change", (e) => this.onChange(e));
     document.addEventListener("input", (e) => this.onInput(e));
     document.addEventListener("keydown", (e) => this.onKeydown(e));
+    // Selecting text while screening translates it: the card appears once the selection settles.
+    document.addEventListener("selectionchange", () => {
+      clearTimeout(this.selectionTimer);
+      this.selectionTimer = setTimeout(() => this.onSelectionSettled(), 450);
+    });
+    window.addEventListener("resize", () => this.placeTranslationPop());
     window.addEventListener("hashchange", () => {
       const next = location.hash.slice(1);
       if (isPage(next)) {
@@ -265,6 +277,7 @@ export class App {
       settings: () => renderSettings(this),
     };
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
+    if (!this.screen) this.clearTranslation();
     content.innerHTML = renderers[this.page]();
     if (this.screen?.ai) {
       const current = screenPapers(this)[this.screen.index];
@@ -392,9 +405,105 @@ export class App {
     // Offer suggestions once per entry, only where a model service can be reached; a standing choice turns the question off.
     if (ids.length && this.canScreenWithAI() && !askAIDisabled()) screenAIModal(this);
   }
-  /** canScreenWithAI: the desktop app on a real library, with a model service filled in. */
+  /** canScreenWithAI: a model is bound to screening and the backend can reach it. */
   canScreenWithAI(): boolean {
-    return this.env.desktop && this.env.real && aiConfigured(this.env.settings.ai);
+    return screenModelReady(this);
+  }
+  canTranslate(): boolean {
+    return translateModelReady(this);
+  }
+  /** screeningSelection returns the text selected inside the screening page, with where it sits. */
+  private screeningSelection(): { text: string; rect: DOMRect } | null {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    const body = $(".screen-body");
+    if (!body || !body.contains(range.commonAncestorContainer)) return null;
+    const text = selection.toString().trim();
+    return text ? { text, rect: range.getBoundingClientRect() } : null;
+  }
+  /** onSelectionSettled translates what was just selected, once per selection. */
+  private onSelectionSettled(): void {
+    if (!this.screen || this.page !== "papers" || !this.canTranslate() || $("#modal-root .modal") || this.drawer) return;
+    const current = screenPapers(this)[this.screen.index];
+    const selected = this.screeningSelection();
+    if (!current || !selected || selected.text.length < 2) return;
+    if (this.translation?.paperId === current.id && this.translation.source === selected.text) return;
+    this.translate(current.id, selected.text, selected.rect);
+  }
+  /** translateInScreening (button or T) renders the selection, or the whole abstract when nothing is selected. */
+  translateInScreening(id: string): void {
+    const p = this.paperById(id);
+    if (!p || !this.canTranslate()) return;
+    const selected = this.screeningSelection();
+    if (selected) {
+      this.translate(id, selected.text, selected.rect);
+      return;
+    }
+    const abstract = $(".screen-body .abstract-text");
+    if (!p.abstract.trim() || !abstract) {
+      this.toast(t("先划选要翻译的文字，或为文献补充摘要。"), true);
+      return;
+    }
+    this.translate(id, p.abstract.trim(), abstract.getBoundingClientRect());
+  }
+  private translate(id: string, source: string, anchor: DOMRect): void {
+    const translation: Translation = { paperId: id, source, state: "loading" };
+    this.translation = translation;
+    this.translationAnchor = anchor;
+    this.renderTranslationPop();
+    Library.translateText(source).then((text) => {
+      if (this.translation !== translation) return; // A newer selection or a closed card replaced it.
+      this.translation = { paperId: id, source, state: "done", text };
+      this.renderTranslationPop();
+    }, (error: unknown) => {
+      if (this.translation !== translation) return;
+      this.translation = { paperId: id, source, state: "error", message: errorMessage(error, t("翻译失败，请重试。")) };
+      this.renderTranslationPop();
+    });
+  }
+  clearTranslation(): void {
+    this.translation = null;
+    this.translationAnchor = null;
+    $("#translate-pop")?.remove();
+  }
+  /** renderTranslationPop draws the card outside the page content, so page re-renders leave it alone. */
+  private renderTranslationPop(): void {
+    let pop = $("#translate-pop");
+    if (!this.translation) {
+      pop?.remove();
+      return;
+    }
+    if (!pop) {
+      pop = document.createElement("div");
+      pop.id = "translate-pop";
+      pop.className = "translate-pop";
+      pop.setAttribute("role", "dialog");
+      pop.setAttribute("aria-label", t("译文"));
+      document.body.appendChild(pop);
+    }
+    pop.innerHTML = translationPop(this.translation);
+    this.placeTranslationPop();
+  }
+  /** placeTranslationPop puts the card under the selection, or above it near the bottom of the window. */
+  private placeTranslationPop(): void {
+    const pop = $("#translate-pop");
+    const rect = this.translationAnchor;
+    if (!pop || !rect) return;
+    const margin = 12;
+    const width = Math.min(460, innerWidth - margin * 2);
+    pop.style.width = `${width}px`;
+    const left = Math.min(Math.max(rect.left, margin), innerWidth - width - margin);
+    const below = rect.bottom + 8;
+    const height = pop.offsetHeight;
+    const top = below + height <= innerHeight - margin ? below : Math.max(margin, rect.top - height - 8);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+  toggleScreenPdf(): void {
+    this.screenPdf = !this.screenPdf;
+    localStorage.setItem("bibliocell-screen-pdf", this.screenPdf ? "on" : "off");
+    this.render();
   }
   enableScreeningAI(requirement: string): void {
     if (!this.screen) return;
@@ -435,6 +544,7 @@ export class App {
   }
   exitScreening(): void {
     if (!this.screen) return;
+    this.clearTranslation();
     const id = screenPapers(this)[this.screen.index]?.id;
     this.screen = null;
     this.closeDrawer();
@@ -455,6 +565,7 @@ export class App {
     const next = this.screen.index + delta;
     if (next < 0 || next >= papers.length) return;
     this.screen.index = next;
+    this.clearTranslation();
     this.render();
     window.scrollTo({ top: 0 });
   }
@@ -736,6 +847,8 @@ export class App {
     const target = e.target;
     this.closeContextMenu();
     if (!(target instanceof Element)) return;
+    // A click away from the translation card closes it, unless it is making a new selection.
+    if (this.translation && !target.closest("#translate-pop") && !target.closest("[data-action=screen-translate]") && window.getSelection()?.isCollapsed) this.clearTranslation();
     // Anchors navigate by themselves; the row or card around them must not also open.
     if (target.closest("a[href]")) return;
     const el = target.closest<HTMLElement>("[data-action]");
@@ -760,7 +873,7 @@ export class App {
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
       "paper-form": savePaper, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
-      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
+      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
     const handler = handlers[form.getAttribute("id") ?? ""];
@@ -790,7 +903,7 @@ export class App {
       applyProviderDefault(target);
       return;
     }
-    if (target.id === "settings-ai-protocol" && target instanceof HTMLSelectElement) {
+    if (target.id === "model-protocol" && target instanceof HTMLSelectElement) {
       updateAIPlaceholders(target);
       return;
     }
@@ -902,7 +1015,8 @@ export class App {
     }
     if (e.key === "Escape") {
       e.preventDefault(); // Otherwise the web view passes the key on and macOS beeps.
-      if ($("#modal-root .modal")) this.closeModal();
+      if (this.translation) this.clearTranslation();
+      else if ($("#modal-root .modal")) this.closeModal();
       else if (this.drawer) this.closeDrawer();
       else if (this.screen) this.exitScreening();
       else document.body.classList.remove("nav-open");
@@ -980,6 +1094,10 @@ export class App {
     }
     if (key === "a" && this.screen!.ai) {
       this.adoptJudgement(current.id);
+      return true;
+    }
+    if (key === "t" && this.canTranslate()) {
+      this.translateInScreening(current.id);
       return true;
     }
     if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLAnchorElement)) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"reflect"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,7 +36,7 @@ func TestSaveSettingsRefusesAFolderTheAppCannotOpen(t *testing.T) {
 		if _, err := service.SaveSettings(config); err == nil {
 			t.Errorf("SaveSettings(%q) succeeded", folder)
 		}
-		if got := store.Get(); got != original {
+		if got := store.Get(); !reflect.DeepEqual(got, original) {
 			t.Fatalf("a refused folder reached the settings: %+v", got)
 		}
 	}

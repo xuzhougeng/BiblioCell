@@ -1,8 +1,11 @@
 package settings
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -35,7 +38,7 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() saved settings error = %v", err)
 	}
-	if got := reopened.Get(); got != want {
+	if got := reopened.Get(); !reflect.DeepEqual(got, want) {
 		t.Errorf("reopened settings = %+v, want %+v", got, want)
 	}
 	info, err := os.Stat(path)
@@ -54,7 +57,7 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() replaced settings error = %v", err)
 	}
-	if got := reopenedAgain.Get(); got != want {
+	if got := reopenedAgain.Get(); !reflect.DeepEqual(got, want) {
 		t.Errorf("replacement settings = %+v, want %+v", got, want)
 	}
 }
@@ -67,7 +70,11 @@ func TestStoreKeepsAIConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := store.Get()
-	config.AI = agent.Config{Protocol: "openai", BaseURL: "http://localhost:11434/v1/", APIKey: " key ", Model: "qwen3"}
+	config.Models = []ModelProfile{
+		{ID: "local", Name: " Ollama ", Config: agent.Config{Protocol: "openai", BaseURL: "http://localhost:11434/v1/", APIKey: " key ", Model: "qwen3"}},
+		{ID: "cloud", Name: "Claude", Config: agent.Config{Protocol: "anthropic", APIKey: "sk"}},
+	}
+	config.Tasks = TaskModels{Translate: "cloud"}
 	if err := store.Save(config); err != nil {
 		t.Fatal(err)
 	}
@@ -75,13 +82,58 @@ func TestStoreKeepsAIConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := reopened.Get().AI; got.BaseURL != "http://localhost:11434/v1" || got.APIKey != "key" || got.Model != "qwen3" {
-		t.Fatalf("AI config = %+v", got)
+	got := reopened.Get()
+	if len(got.Models) != 2 || got.Models[0].Name != "Ollama" || got.Models[0].Config.BaseURL != "http://localhost:11434/v1" || got.Models[0].Config.APIKey != "key" {
+		t.Fatalf("models = %+v", got.Models)
 	}
-	config.AI = agent.Config{Protocol: "openai"} // a model is required once the section is used
+	// An unbound task falls back to the first profile; a bound one uses its own.
+	if chat, _ := got.ModelFor(TaskChat); chat.ID != "local" {
+		t.Fatalf("chat model = %+v", chat)
+	}
+	if translate, _ := got.ModelFor(TaskTranslate); translate.ID != "cloud" {
+		t.Fatalf("translate model = %+v", translate)
+	}
+	if _, err := (Config{}).ModelFor(TaskScreen); !errors.Is(err, ErrNoModel) {
+		t.Fatalf("empty config error = %v", err)
+	}
+	config.Models[0].Config = agent.Config{Protocol: "openai"} // a model name is required
 	if err := store.Save(config); err == nil {
-		t.Fatal("incomplete AI config accepted")
+		t.Fatal("incomplete model accepted")
 	}
+	config.Models[0].Config.Model = "qwen3"
+	config.Tasks.Screen = "missing"
+	if err := store.Save(config); err == nil {
+		t.Fatal("binding to an unknown model accepted")
+	}
+}
+
+func TestStoreMigratesTheSingleLegacyModel(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "settings.json")
+	legacy := `{"storagePath": ` + jsonString(directory) + `, "fontSize": 15, "mcpToken": "` + testToken + `", "ai": {"protocol": "openai", "baseUrl": "http://localhost:11434/v1", "model": "qwen3"}}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path, directory, testToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := store.Get()
+	if len(got.Models) != 1 || got.Models[0].ID != "default" || got.Models[0].Name != "qwen3" || got.Models[0].Config.Model != "qwen3" {
+		t.Fatalf("migrated models = %+v", got.Models)
+	}
+	if err := store.Save(got); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), `"ai"`) {
+		t.Fatalf("legacy section written back:\n%s", data)
+	}
+}
+
+func jsonString(value string) string {
+	data, _ := json.Marshal(value)
+	return string(data)
 }
 
 func TestStoreRejectsInvalidChanges(t *testing.T) {
@@ -109,7 +161,7 @@ func TestStoreRejectsInvalidChanges(t *testing.T) {
 			t.Errorf("Save(%+v) succeeded, want validation error", config)
 		}
 	}
-	if got := store.Get(); got != original {
+	if got := store.Get(); !reflect.DeepEqual(got, original) {
 		t.Errorf("invalid save changed settings to %+v", got)
 	}
 }
