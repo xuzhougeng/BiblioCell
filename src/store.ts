@@ -4,6 +4,7 @@
 import { Library } from "./mygo.ts";
 import { demoState } from "./demo-data.ts";
 import { changedItems, fileResource, isLibraryState, normalizeDataset, type LibraryState } from "./model.ts";
+import { t } from "./i18n.ts";
 
 export interface LibraryStore {
   load(): Promise<LibraryState>;
@@ -38,10 +39,10 @@ export const sqliteStore: LibraryStore = {
       return datasets.length ? [...conflicts, ...await Library.saveDatasetEdits(datasets)] : conflicts;
     }).then(
       (conflicts) => {
-        if (conflicts.length) throw new SaveRejected(`《${conflicts.join("》《")}》的同一内容刚被其他来源修改，这次改动未保存，已重新加载。`);
+        if (conflicts.length) throw new SaveRejected(t("《{titles}》的同一内容刚被其他来源修改，这次改动未保存，已重新加载。", { titles: conflicts.join(t("》《")) }));
       },
       () => {
-        throw new SaveRejected("写入 SQLite 失败，已重新加载数据库中的内容。");
+        throw new SaveRejected(t("写入 SQLite 失败，已重新加载数据库中的内容。"));
       },
     );
   },
@@ -65,7 +66,7 @@ export function localStore(storage: Storage, key = DEMO_STORAGE_KEY): LibrarySto
       try {
         storage.setItem(key, JSON.stringify(state));
       } catch {
-        throw new Error("浏览器存储不可用，请导出 JSON 备份本次修改。");
+        throw new Error(t("浏览器存储不可用，请导出 JSON 备份本次修改。"));
       }
     },
   };

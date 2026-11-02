@@ -21,6 +21,7 @@ import { Library } from "./mygo.ts";
 import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
 import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
 import { renderDatasets, renderOverview, renderPapers, renderSchema, renderTasks } from "./views.ts";
+import { t } from "./i18n.ts";
 
 /** Env describes the runtime: desktop vs browser preview, real vs demo data, and backend-provided info. */
 export interface Env {
@@ -107,7 +108,7 @@ export class App {
       menu.setAttribute("role", "menu");
       const button = document.createElement("button");
       button.className = "btn btn-danger";
-      button.textContent = "删除文献";
+      button.textContent = t("删除文献");
       button.setAttribute("role", "menuitem");
       button.dataset.action = "delete-paper";
       button.dataset.id = row.dataset.id;
@@ -151,7 +152,7 @@ export class App {
   private requestDeletePaper(id: string): void {
     const paper = this.paperById(id);
     if (!paper) return;
-    this.showModal("删除文献", '<p>确定删除《' + esc(paper.title) + '》？</p><p>将删除文献、笔记、相关证据和保存的附件副本，并解除数据集关联。数据集及原始导入文件会保留。此操作无法撤销。</p>', '<button class="btn btn-secondary" data-action="close-modal">取消</button><button class="btn btn-danger" data-action="confirm-delete-paper" data-id="' + esc(id) + '">确认删除</button>');
+    this.showModal(t("删除文献"), `<p>${t("确定删除《{title}》？", { title: esc(paper.title) })}</p><p>${t("将删除文献、笔记、相关证据和保存的附件副本，并解除数据集关联。数据集及原始导入文件会保留。此操作无法撤销。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-paper" data-id="${esc(id)}">${t("确认删除")}</button>`);
   }
 
   private async deletePaper(id: string, button: HTMLElement): Promise<void> {
@@ -174,9 +175,9 @@ export class App {
       if (this.drawer?.type === "paper" && this.drawer.id === id) this.closeDrawer();
       this.render();
       if (this.env.real) await this.reload();
-      this.toast("文献已删除。");
+      this.toast(t("文献已删除。"));
     } catch (error) {
-      this.toast(errorMessage(error, "删除失败，请重试。"), true);
+      this.toast(errorMessage(error, t("删除失败，请重试。")), true);
     } finally {
       this.deleting = false;
       button.removeAttribute("disabled");
@@ -184,11 +185,11 @@ export class App {
   }
 
   private showPaperColumns(): void {
-    this.showModal("显示列", '<p class="muted">勾选要显示的列，至少保留一列。设置自动保存到当前设备。</p><div class="column-options">' + PAPER_COLUMNS.map(([id, label]) => '<label class="checkbox-choice"><input type="checkbox" data-paper-column="' + id + '"' + (this.paperColumns.includes(id) ? ' checked' : '') + '><span>' + label + '</span></label>').join("") + '</div>', '<button class="btn btn-secondary" data-action="reset-paper-columns">恢复默认</button><button class="btn btn-primary" data-action="close-modal">完成</button>');
+    this.showModal(t("显示列"), `<p class="muted">${t("勾选要显示的列，至少保留一列。设置自动保存到当前设备。")}</p><div class="column-options">` + PAPER_COLUMNS.map(([id, label]) => '<label class="checkbox-choice"><input type="checkbox" data-paper-column="' + id + '"' + (this.paperColumns.includes(id) ? ' checked' : '') + '><span>' + label + '</span></label>').join("") + '</div>', `<button class="btn btn-secondary" data-action="reset-paper-columns">${t("恢复默认")}</button><button class="btn btn-primary" data-action="close-modal">${t("完成")}</button>`);
   }
   private savePaperColumns(): void {
     try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(this.paperColumns)); }
-    catch { this.toast("列设置已应用，但无法保存到当前设备。", true); }
+    catch { this.toast(t("列设置已应用，但无法保存到当前设备。"), true); }
     this.render();
   }
 
@@ -216,7 +217,7 @@ export class App {
     this.saved = next;
     this.edits++;
     this.store.save(next, saved).catch((error: unknown) => {
-      this.toast(errorMessage(error, "保存失败，请重试。"), true);
+      this.toast(errorMessage(error, t("保存失败，请重试。")), true);
       if (error instanceof SaveRejected) void this.reload();
     });
   }
@@ -231,7 +232,7 @@ export class App {
       this.render();
       this.renderDrawer();
     } catch (error) {
-      this.toast(`刷新失败：${errorMessage(error, "请重新打开应用。")}`, true);
+      this.toast(t("刷新失败：{reason}", { reason: errorMessage(error, t("请重新打开应用。")) }), true);
     }
   }
   /** refresh shows background writes, unless that would pull the page from under the person. */
@@ -375,7 +376,7 @@ export class App {
     this.modalLastFocus = document.activeElement;
     const root = $("#modal-root");
     if (!root) return;
-    root.innerHTML = `<div class="modal-backdrop" data-action="close-modal"></div><section class="modal${wide ? " modal-wide" : ""}" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${esc(title)}</h2><button class="btn-icon" data-action="close-modal" aria-label="关闭弹窗">${I("x", 20)}</button></div><div class="modal-body">${body}</div><div class="modal-footer">${footer}</div></section>`;
+    root.innerHTML = `<div class="modal-backdrop" data-action="close-modal"></div><section class="modal${wide ? " modal-wide" : ""}" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${esc(title)}</h2><button class="btn-icon" data-action="close-modal" aria-label="${t("关闭弹窗")}">${I("x", 20)}</button></div><div class="modal-body">${body}</div><div class="modal-footer">${footer}</div></section>`;
     document.body.classList.add("modal-open");
     requestAnimationFrame(() => {
       const target = $("#modal-root .modal input:not([type=hidden])") ?? $("#modal-root .modal textarea") ?? $("#modal-root .modal select") ?? $("#modal-root .modal button");
@@ -394,11 +395,11 @@ export class App {
   exportCSV(): void {
     const list = filterPapers(this.state.papers, this.filters);
     downloadFile(`plantcell-papers-${nowISO().slice(0, 10)}.csv`, csvText(list, this.state.datasets), "text/csv;charset=utf-8");
-    this.toast(`已导出当前筛选的 ${list.length} 篇文献。`);
+    this.toast(t("已导出当前筛选的 {n} 篇文献。", { n: list.length }));
   }
   exportJSON(): void {
     downloadFile(`plantcell-library-${nowISO().slice(0, 10)}.json`, JSON.stringify({ ...this.state, exportedAt: nowISO() }, null, 2), "application/json;charset=utf-8");
-    this.toast("已导出文献、数据集、链接与笔记。");
+    this.toast(t("已导出文献、数据集、链接与笔记。"));
   }
   importJSON(): void {
     const input = document.createElement("input");
@@ -413,12 +414,12 @@ export class App {
         return;
       }
       try {
-        if (file.size > 10 * 1024 * 1024) throw new Error("请导入 10 MB 以内的 JSON 文件。");
+        if (file.size > 10 * 1024 * 1024) throw new Error(t("请导入 10 MB 以内的 JSON 文件。"));
         const data: unknown = JSON.parse(await file.text());
         this.pendingImport = prepareImport(data, this.state);
         importSummaryModal(this, this.pendingImport.stats);
       } catch (error) {
-        this.toast(error instanceof SyntaxError ? "JSON 格式无效，请使用本工具导出的备份文件。" : errorMessage(error, "导入失败，原有数据未改变。"), true);
+        this.toast(error instanceof SyntaxError ? t("JSON 格式无效，请使用本工具导出的备份文件。") : errorMessage(error, t("导入失败，原有数据未改变。")), true);
       }
       input.remove();
     });
@@ -428,22 +429,22 @@ export class App {
     if (!this.pendingImport) return;
     const { next, stats } = this.pendingImport;
     this.state = next;
-    this.logActivity(`导入 ${stats.papers} 篇文献、${stats.datasets} 组数据集和 ${stats.resources} 个链接`, "import");
+    this.logActivity(t("导入 {papers} 篇文献、{datasets} 组数据集和 {resources} 个链接", { papers: stats.papers, datasets: stats.datasets, resources: stats.resources }), "import");
     this.persist();
     this.closeModal();
     this.closeDrawer();
     this.render();
-    this.toast("导入完成，已有记录保持原值。");
+    this.toast(t("导入完成，已有记录保持原值。"));
   }
   private confirmReset(): void {
     this.state = demoState();
-    this.logActivity("恢复演示数据", "reset");
+    this.logActivity(t("已恢复演示数据"), "reset");
     this.persist();
     this.closeModal();
     this.closeDrawer();
     this.filters = emptyFilters();
     this.navigate("overview");
-    this.toast("已恢复示例内容。");
+    this.toast(t("已恢复示例内容。"));
   }
 
   // ---- paper edits from drawer / table ----
@@ -497,16 +498,16 @@ export class App {
       const notes = $<HTMLTextAreaElement>("#paper-notes")?.value ?? "";
       const p = this.touchPaper(id, (paper) => { paper.notes = notes; });
       if (!p) return;
-      this.logActivity(`保存笔记：${p.title}`);
+      this.logActivity(t("保存笔记：{title}", { title: p.title }));
       this.persist();
-      this.toast("笔记已保存。");
+      this.toast(t("笔记已保存。"));
     },
     "save-tags": (_el, id) => {
       const raw = $<HTMLInputElement>("#paper-tags")?.value ?? "";
       const tags = [...new Set(raw.split(/[,，;；\n]/).map((s) => s.trim()).filter(Boolean))].slice(0, 30);
       if (!this.touchPaper(id, (p) => { p.tags = tags; })) return;
       this.persist();
-      this.toast("标签已保存。");
+      this.toast(t("标签已保存。"));
       this.render();
     },
     "clear-filters": () => {
@@ -604,11 +605,11 @@ export class App {
       const p = this.paperById(id);
       if (!p) return;
       decideScreening(p, p.proposedScreening, p.proposedReason || p.screeningReason);
-      this.logActivity(`采纳 Agent 建议：${p.title}`);
+      this.logActivity(t("采纳 Agent 建议：{title}", { title: p.title }));
       this.persist();
       this.render();
       this.renderDrawer();
-      this.toast("已采纳，判断记为人工确认。");
+      this.toast(t("已采纳，判断记为人工确认。"));
     },
     "dismiss-proposal": (_el, id) => {
       if (!this.touchPaper(id, (p) => {
@@ -618,7 +619,7 @@ export class App {
       this.persist();
       this.render();
       this.renderDrawer();
-      this.toast("已忽略这条建议。");
+      this.toast(t("已忽略这条建议。"));
     },
     ...settingsActions(this),
     ...agentActions(this),
@@ -636,7 +637,7 @@ export class App {
     if (el) {
       const action = el.dataset.action ?? "";
       if (this.env.real && DEMO_ONLY_ACTIONS.has(action)) {
-        this.toast("真实模式暂不支持资料链接和 JSON 导入；文献文件可在详情的“数据与资料”中导入。", true);
+        this.toast(t("真实模式暂不支持资料链接和 JSON 导入；文献文件可在详情的“数据与资料”中导入。"), true);
         return;
       }
       const handler = this.actions[action];
@@ -671,7 +672,7 @@ export class App {
       if (!column) return;
       if (!target.checked && this.paperColumns.length === 1) {
         target.checked = true;
-        this.toast("至少保留一列。", true);
+        this.toast(t("至少保留一列。"), true);
         return;
       }
       const chosen = new Set(this.paperColumns);
@@ -738,11 +739,11 @@ export class App {
         return;
       }
       p.updatedAt = nowISO();
-      this.logActivity(`更新${key === "reading" ? "阅读进度" : "收录判断"}：${p.title}`);
+      this.logActivity(key === "reading" ? t("更新阅读进度：{title}", { title: p.title }) : t("更新收录判断：{title}", { title: p.title }));
       this.persist();
       this.render();
       this.renderDrawer();
-      this.toast("整理状态已保存。");
+      this.toast(t("整理状态已保存。"));
     }
   }
 

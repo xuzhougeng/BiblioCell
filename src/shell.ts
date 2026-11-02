@@ -1,4 +1,5 @@
 // Static chrome from index.html: icons, sidebar collapse, mobile navigation, font scale.
+import { LOCALES, locale, setLocale, t } from "./i18n.ts";
 import { icon } from "./icons.ts";
 
 export function applyFontSize(value: number): void {
@@ -26,8 +27,8 @@ export function initShell(): void {
     document.body.classList.toggle("sidebar-collapsed", collapsed);
     if (!collapse) return;
     collapse.setAttribute("aria-expanded", String(!collapsed));
-    collapse.setAttribute("aria-label", collapsed ? "展开侧栏" : "折叠侧栏");
-    collapse.title = collapsed ? "展开侧栏" : "折叠侧栏";
+    collapse.setAttribute("aria-label", collapsed ? t("展开侧栏") : t("折叠侧栏"));
+    collapse.title = collapsed ? t("展开侧栏") : t("折叠侧栏");
   };
   applySidebar();
   collapse?.addEventListener("click", () => {
@@ -40,6 +41,16 @@ export function initShell(): void {
     applySidebar();
   });
 
+  // The toggle names the other language in that language, so it reads right to the person who needs it.
+  const toggle = document.getElementById("locale-toggle");
+  const other = LOCALES.find(([code]) => code !== locale);
+  if (toggle && other) {
+    toggle.textContent = other[0] === "en" ? "EN" : "中"; // i18n-ignore: names the other language
+    toggle.title = other[1];
+    toggle.setAttribute("aria-label", other[1]);
+    toggle.setAttribute("lang", other[0]);
+    toggle.addEventListener("click", () => setLocale(other[0]));
+  }
   const menu = document.getElementById("mobile-menu");
   menu?.addEventListener("click", () => {
     const open = document.body.classList.toggle("nav-open");

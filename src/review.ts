@@ -5,6 +5,7 @@
 import type { App } from "./app.ts";
 import { Library } from "./mygo.ts";
 import { errorMessage } from "./ui.ts";
+import { t } from "./i18n.ts";
 
 async function record(app: App, verdict: Promise<void>, done: string): Promise<void> {
   try {
@@ -12,7 +13,7 @@ async function record(app: App, verdict: Promise<void>, done: string): Promise<v
     await app.reload();
     app.toast(done);
   } catch (error) {
-    app.toast(`保存失败：${errorMessage(error, "请重试。")}`, true);
+    app.toast(t("保存失败：{reason}", { reason: errorMessage(error, t("请重试。")) }), true);
   }
 }
 
@@ -20,16 +21,16 @@ async function record(app: App, verdict: Promise<void>, done: string): Promise<v
 export const reviewActions = (app: App): Record<string, (el: HTMLElement, id: string) => void> => ({
   "review-evidence": (el, id) => {
     const status = el.dataset.status ?? "unreviewed";
-    void record(app, Library.reviewEvidence(id, status), status === "verified" ? "证据已确认。" : status === "rejected" ? "证据已驳回。" : "已撤销判断。");
+    void record(app, Library.reviewEvidence(id, status), status === "verified" ? t("证据已确认。") : status === "rejected" ? t("证据已驳回。") : t("已撤销判断。"));
   },
   "verify-link": (el) => {
     const { paper = "", dataset = "", role = "" } = el.dataset;
     const verified = el.dataset.verified === "true";
-    void record(app, Library.verifyDatasetLink(paper, dataset, role, verified), verified ? "关联已核实。" : "已撤销核实。");
+    void record(app, Library.verifyDatasetLink(paper, dataset, role, verified), verified ? t("关联已核实。") : t("已撤销核实。"));
   },
   "finish-review": (el, id) => {
     const dataset = el.dataset.kind === "dataset";
-    const done = "已核查，移出需核对。";
+    const done = t("已核查，移出需核对。");
     if (!app.env.real) {
       const item = dataset ? app.state.datasets.find((d) => d.id === id) : app.paperById(id);
       if (!item) return;
@@ -44,6 +45,6 @@ export const reviewActions = (app: App): Record<string, (el: HTMLElement, id: st
   },
   "verify-repository": (el, id) => {
     const verified = el.dataset.verified === "true";
-    void record(app, Library.verifyDatasetRepository(id, el.dataset.record ?? "", verified), verified ? "编号已核实。" : "已撤销核实。");
+    void record(app, Library.verifyDatasetRepository(id, el.dataset.record ?? "", verified), verified ? t("编号已核实。") : t("已撤销核实。"));
   },
 });

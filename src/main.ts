@@ -6,6 +6,7 @@ import { App, type Env } from "./app.ts";
 import { demoState } from "./demo-data.ts";
 import { applyFontSize, initShell } from "./shell.ts";
 import { localStore, sqliteStore } from "./store.ts";
+import { applyStaticText, t } from "./i18n.ts";
 
 const badge = document.querySelector<HTMLSpanElement>("#runtime-badge");
 const message = document.querySelector<HTMLSpanElement>("#runtime-message");
@@ -27,19 +28,20 @@ async function startDemo(env: Env): Promise<void> {
   const store = localStore(localStorage);
   let warning = "";
   const initial = await store.load().catch(() => {
-    warning = "本地存储暂不可用，操作后请导出 JSON 备份。";
+    warning = t("本地存储暂不可用，操作后请导出 JSON 备份。");
     return demoState();
   });
   new App({ store, env, initial, warning }).start();
 }
 
 async function boot(): Promise<void> {
+  applyStaticText();
   initShell();
   if (!isMyGo()) {
     applyFontSize(15);
     // 浏览器预览（在线演示）顶栏显示仓库入口；桌面应用本身就在仓库里运行。
     document.getElementById("repo-link")?.removeAttribute("hidden");
-    setRuntime("Demo · 浏览器预览", "当前为虚构演示数据；打开桌面应用后可切换到真实 SQLite 数据库。");
+    setRuntime(t("Demo · 浏览器预览"), t("当前为虚构演示数据；打开桌面应用后可切换到真实 SQLite 数据库。"));
     await startDemo(previewEnv());
     return;
   }
@@ -51,21 +53,21 @@ async function boot(): Promise<void> {
     const env: Env = { desktop: true, real: realMode, settings, mcp, status, sources, automation };
     if (realMode) {
       const initial = await sqliteStore.load();
-      setRuntime("真实数据库", "文献与数据集来自本机 SQLite；MCP 连接信息见设置页。");
+      setRuntime(t("真实数据库"), t("文献与数据集来自本机 SQLite；MCP 连接信息见设置页。"));
       new App({ store: sqliteStore, env, initial }).start();
     } else {
-      setRuntime("Demo 模式", `虚构示例仅保存在浏览器，不会写入正式库（现有 ${status.paperCount} 篇）。`);
+      setRuntime(t("Demo 模式"), t("虚构示例仅保存在浏览器，不会写入正式库（现有 {n} 篇）。", { n: status.paperCount }));
       await startDemo(env);
     }
   } catch (error) {
-    setRuntime("后端连接失败", error instanceof Error ? error.message : "无法读取 Go 后端状态。");
+    setRuntime(t("后端连接失败"), error instanceof Error ? error.message : t("无法读取 Go 后端状态。"));
     if (!realMode) {
       await startDemo(previewEnv());
       return;
     }
     const content = document.querySelector<HTMLDivElement>("#app-content");
     if (content) {
-      content.innerHTML = '<div class="empty-state"><h2>无法打开真实数据库</h2><p>请重新启动应用，或返回 Demo 模式。</p><button class="btn btn-primary" id="fallback-demo-mode">返回 Demo 模式</button></div>';
+      content.innerHTML = `<div class="empty-state"><h2>${t("无法打开真实数据库")}</h2><p>${t("请重新启动应用，或返回 Demo 模式。")}</p><button class="btn btn-primary" id="fallback-demo-mode">${t("返回 Demo 模式")}</button></div>`;
       document.querySelector<HTMLButtonElement>("#fallback-demo-mode")?.addEventListener("click", () => {
         localStorage.setItem("bibliocell-demo-mode", "true");
         location.reload();
