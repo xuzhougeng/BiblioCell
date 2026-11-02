@@ -48,13 +48,20 @@ export interface Filters {
   screening: string;
   source: string;
   preprint: string;
+  review: string;
   starred: boolean;
   sort: string;
 }
 
 export const emptyFilters = (): Filters => ({
-  search: "", species: "", organ: "", year: "", modality: "", platform: "", fulltext: "", screening: "", source: "", preprint: "", starred: false, sort: "newest",
+  search: "", species: "", organ: "", year: "", modality: "", platform: "", fulltext: "", screening: "", source: "", preprint: "", review: "", starred: false, sort: "newest",
 });
+
+/** A negative proposal needs attention until the person accepts or dismisses it. */
+export function screeningConcern(p: Paper): "excluded" | "uncertain" | null {
+  const proposal = p.proposedScreening;
+  return (proposal === "excluded" || proposal === "uncertain") && proposal !== p.screening ? proposal : null;
+}
 
 export const SCREEN: Record<string, string> = { included: "已纳入", pending: "待判断", uncertain: "证据不足", excluded: "相关 / 排除" };
 export const READING: Record<string, string> = { unread: "未读", skimmed: "已浏览", read: "已精读" };
@@ -237,6 +244,7 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
         && (!filters.platform || listValues.platform(p).includes(filters.platform))
         && (!filters.fulltext || p.fulltext === filters.fulltext)
         && (!filters.screening || p.screening === filters.screening)
+        && (!filters.review || screeningConcern(p) !== null)
         && (!filters.source || p.source === filters.source)
         && (!filters.preprint || (filters.preprint === "yes" ? p.publicationStatus === "preprint" : p.publicationStatus !== "preprint"))
         && (!filters.starred || p.starred);

@@ -760,6 +760,29 @@ code { font-family: var(--mono) }
 .paper-table .star-button { width: 26px; min-width: 26px; color: #b0a483 }
 .paper-table .star-button.is-starred { color: #956a1c }
 .paper-table .star-button.is-starred svg { fill: #ecd9a8 }
+.paper-table tr.paper-needs-review { background: #fcf5e8 }
+.paper-table tr.paper-needs-review.excluded { background: #fcf2ed }
+.paper-table tr.paper-needs-review:hover { background: #f6eadb }
+.paper-table tr.paper-needs-review > td:first-child { box-shadow: inset 3px 0 #bd8c36 }
+.paper-table tr.paper-needs-review.excluded > td:first-child { box-shadow: inset 3px 0 #ac5545 }
+.paper-review-note { margin-top: 12px; padding-left: 10px; border-left: 2px solid #d5ae65; color: #805a23; font-size: calc(12px * var(--font-scale, 1)); line-height: 1.65 }
+.paper-review-note.excluded { border-left-color: #c98270; color: #914333 }
+.paper-review-label { display: flex; align-items: center; gap: 5px; font-weight: 700 }
+.paper-review-label svg, .screening-proposal > svg { flex-shrink: 0 }
+.paper-review-reason { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin-top: 3px; color: #74634f }
+.paper-review-hint { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px }
+.screening-proposal { margin-top: 8px; font-size: calc(12px * var(--font-scale, 1)); font-weight: 650; color: #805a23; white-space: nowrap }
+.screening-proposal > svg { vertical-align: -2px; margin-right: 4px }
+.screening-proposal.excluded { color: #914333 }
+.screening-proposal small { display: block; flex-basis: 100%; font-weight: 400; color: var(--muted) }
+.review-summary { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: -4px 0 20px; padding: 16px 20px; border: 1px solid #d9bc83; border-radius: 6px; background: #f9f0dc; color: #805a23 }
+.review-summary > svg { flex-shrink: 0 }
+.review-summary > div { flex: 1 1 280px; min-width: 0 }
+.review-summary strong { font-size: calc(14px * var(--font-scale, 1)) }
+.review-summary p { margin-top: 4px; font-size: calc(12.5px * var(--font-scale, 1)); line-height: 1.65; color: #786b51 }
+.view-tab.review-tab { color: #805a23 }
+.view-tab.review-tab.active { border-bottom-color: #a8772c; color: #805a23 }
+.view-tab.review-tab > span, .view-tab.review-tab.active > span { background: #f1dfbb; color: #805a23 }
 .compact-table { min-width: 0; table-layout: fixed }
 .compact-table .paper-main-cell { width: auto; min-width: 0 }
 .compact-table th:nth-child(2) { width: auto }

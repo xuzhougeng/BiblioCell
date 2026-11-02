@@ -530,12 +530,22 @@ export class App {
     },
     "all-papers": () => {
       this.filters.starred = false;
+      this.filters.review = "";
       this.paperPage = 1;
       this.render();
     },
     "starred-papers": () => {
       this.filters.starred = true;
+      this.filters.review = "";
       this.paperPage = 1;
+      this.render();
+    },
+    "review-papers": () => {
+      clearTimeout(this.searchTimer);
+      this.filters = { ...emptyFilters(), review: "concern", sort: this.filters.sort };
+      this.paperPage = 1;
+      const search = $<HTMLInputElement>("#global-search");
+      if (search) search.value = "";
       this.render();
     },
     "task-filter": (el) => {

@@ -4,7 +4,7 @@ import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
   FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
-  type SortKey, type TaskRow, type TaskType,
+  screeningConcern, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
 
@@ -80,18 +80,22 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
   const labels = Object.fromEntries(PAPER_COLUMNS) as Record<PaperColumn, string>;
   const sortKeys: Partial<Record<PaperColumn, SortKey>> = { title: "title", year: "year", species: "species", modality: "modality" };
   const rows = items.map((p) => {
+    const concern = screeningConcern(p);
+    const concernLabel = concern === "excluded" ? "建议排除" : "建议核对";
+    const concernReason = p.proposedReason || (concern === "excluded" ? "可能不符合收录范围，请查看详情确认。" : "收录依据仍有疑问，请查看详情确认。");
+    const warning = concern ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${concernLabel} · 待你确认</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">查看详情，核对依据 ${I("arrow-right", 12)}</span></div>` : "";
     const cells: Record<PaperColumn, string> = {
       star: `<td><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? "取消收藏" : "收藏"}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`,
-      title: `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || "作者待补")}</span><span class="meta-separator">·</span><span>${esc(p.year || "年份待补")}</span>${p.publicationStatus === "preprint" ? '<span class="preprint-label">预印本</span>' : ""}</div></td>`,
+      title: `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || "作者待补")}</span><span class="meta-separator">·</span><span>${esc(p.year || "年份待补")}</span>${p.publicationStatus === "preprint" ? '<span class="preprint-label">预印本</span>' : ""}</div>${warning}</td>`,
       journal: `<td class="journal-cell">${p.journal ? esc(p.journal) : '<span class="muted">期刊待补</span>'}</td>`,
       year: `<td class="year-cell">${p.year ? esc(String(p.year)) : '<span class="muted">年份待补</span>'}</td>`,
       species: `<td><div class="species-label">${esc(speciesDisplay(p) || "物种待补")}</div><div class="species-name">${esc(joinList(p.organs) || "组织待补")}</div></td>`,
       datasets: `<td class="link-cell">${datasetChips(app, p)}</td>`,
       modality: `<td>${modalityBadges(p)}</td>`,
       fulltext: `<td>${fulltextCell(app, p)}</td>`,
-      screening: `<td>${screenBadge(p.screening)}</td>`,
+      screening: `<td>${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}">${I("alert", 13)}${concernLabel}<small>尚未确认</small></div>` : ""}</td>`,
     };
-    return `<tr data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="查看 ${esc(p.title)}">${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
+    return `<tr${concern ? ` class="paper-needs-review ${concern}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? `${concernLabel}，待确认：` : "查看 "}${esc(p.title)}">${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
   const head = `<tr>${columns.map(id => id === "star" ? '<th class="col-star"><span class="sr-only">收藏</span></th>' : th(labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
 
@@ -150,13 +154,18 @@ export function renderPapers(app: App): string {
   const { filters } = app;
   const papers = app.state.papers;
   const items = filterPapers(papers, filters);
+  const concerns = papers.filter((p) => screeningConcern(p));
+  const excluded = concerns.filter((p) => screeningConcern(p) === "excluded").length;
+  const uncertain = concerns.length - excluded;
+  const concernSummary = [excluded ? `${excluded} 篇建议排除` : "", uncertain ? `${uncertain} 篇建议核对` : ""].filter(Boolean).join("，");
   // Writing the clamped page back keeps state valid as filters or edits shrink the list.
   const info = paperPage(items.length, app.paperPageSize, app.paperPage);
   app.paperPage = info.page;
   const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening", "source", "preprint"] as const;
-  const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0);
+  const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0) + (filters.review ? 1 : 0);
   const entries = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
-  return `<div class="section-toolbar"><div class="view-tabs"><button class="view-tab ${filters.starred ? "" : "active"}" data-action="all-papers">全部文献 <span>${papers.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} 我的收藏 <span>${papers.filter((p) => p.starred).length}</span></button></div><div class="column-toolbar"><button class="btn btn-secondary" data-action="paper-columns">显示列</button><button class="btn btn-secondary" data-action="export-csv">${I("download", 16)} 导出列表</button></div></div>`
+  return `<div class="section-toolbar"><div class="view-tabs"><button class="view-tab ${!filters.starred && !filters.review ? "active" : ""}" data-action="all-papers">全部文献 <span>${papers.length}</span></button><button class="view-tab review-tab ${filters.review ? "active" : ""}" data-action="review-papers">${I("alert", 15)} 需核对 <span>${concerns.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} 我的收藏 <span>${papers.filter((p) => p.starred).length}</span></button></div><div class="column-toolbar"><button class="btn btn-secondary" data-action="paper-columns">显示列</button><button class="btn btn-secondary" data-action="export-csv">${I("download", 16)} 导出列表</button></div></div>`
+    + (concerns.length ? `<div class="review-summary">${I("alert", 20)}<div><strong>有 ${concerns.length} 篇文献的收录范围需要核对</strong><p>${concernSummary}。确认前仍计入全部文献；打开详情可查看依据、采纳或忽略建议。</p></div><button class="btn btn-secondary" data-action="review-papers">查看待核对 ${I("arrow-right", 15)}</button></div>` : "")
     + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="搜索题目、物种、作者或 DOI…" value="${esc(filters.search)}" aria-label="搜索文献"></label><select class="filter-select" data-filter="sort" aria-label="排序方式">${SORT_OPTIONS.map(([value, label]) => option(value, label, filters.sort)).join("")}</select></div>`
     + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} 筛选</span>`
     + selectFilter(filters, "species", "全部物种", uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))
