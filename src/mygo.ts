@@ -63,6 +63,7 @@ export interface Dataset {
   cellCountScope: string;
   paperLinks: DatasetPaperLink[];
   reviewedAt: string;
+  awaitingReview: boolean;
   batchId: string;
   addedAt: string;
   updatedAt: string;
@@ -134,6 +135,7 @@ export interface HarvestRun {
   recordsNew: number;
   recordsUpdated: number;
   papersAdded: number;
+  datasetsAdded: number;
   duplicates: number;
   errorMessage: string;
 }
@@ -181,6 +183,7 @@ export interface Paper {
   reviewedAt: string;
   proposedScreening: string;
   proposedReason: string;
+  awaitingReview: boolean;
   reading: string;
   fulltext: string;
   fulltextUrl: string;
@@ -294,6 +297,7 @@ export interface SyncResult {
   recordsNew: number;
   recordsUpdated: number;
   papersAdded: number;
+  datasetsAdded: number;
   duplicates: number;
   status: SourceStatus;
   papers: Paper[];
@@ -378,6 +382,14 @@ export const Library = {
   /** MCPInfo returns the loopback endpoint external AI clients can use. */
   mcpInfo(): Promise<MCPInfo> {
     return call("Library.MCPInfo");
+  },
+  /** MarkDatasetReviewed takes a dataset a source update added out of review. */
+  markDatasetReviewed(id: string): Promise<void> {
+    return call("Library.MarkDatasetReviewed", id);
+  },
+  /** MarkPaperReviewed takes a paper a source update added out of review. */
+  markPaperReviewed(id: string): Promise<void> {
+    return call("Library.MarkPaperReviewed", id);
   },
   /** OpenPaperFile opens a stored file with its default application. */
   openPaperFile(id: string): Promise<void> {

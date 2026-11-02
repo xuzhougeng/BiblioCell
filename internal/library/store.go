@@ -14,7 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 //go:embed schema.sql
 var schemaSQL string
@@ -123,6 +123,17 @@ var columnMigrations = []columnMigration{
 	{table: "papers", column: "title_key", ddl: "TEXT NOT NULL DEFAULT ''"},
 	{table: "harvest_runs", column: "papers_added", ddl: "INTEGER NOT NULL DEFAULT 0 CHECK (papers_added >= 0)"},
 	{table: "harvest_runs", column: "duplicates", ddl: "INTEGER NOT NULL DEFAULT 0 CHECK (duplicates >= 0)"},
+	{table: "harvest_runs", column: "datasets_added", ddl: "INTEGER NOT NULL DEFAULT 0 CHECK (datasets_added >= 0)"},
+	{
+		table: "paper_curation", column: "awaiting_review",
+		ddl:      "INTEGER NOT NULL DEFAULT 0 CHECK (awaiting_review IN (0,1))",
+		backfill: "DROP VIEW IF EXISTS v_work_queue; DROP VIEW IF EXISTS v_paper_overview",
+	},
+	{
+		table: "datasets", column: "awaiting_review",
+		ddl:      "INTEGER NOT NULL DEFAULT 0 CHECK (awaiting_review IN (0,1))",
+		backfill: "DROP VIEW IF EXISTS v_dataset_overview",
+	},
 }
 
 // healColumns adds missing columns to existing tables and backfills JSON

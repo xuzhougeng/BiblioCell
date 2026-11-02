@@ -32,6 +32,7 @@ type HarvestRun struct {
 	RecordsNew     int    `json:"recordsNew"`
 	RecordsUpdated int    `json:"recordsUpdated"`
 	PapersAdded    int    `json:"papersAdded"`
+	DatasetsAdded  int    `json:"datasetsAdded"`
 	Duplicates     int    `json:"duplicates"`
 	ErrorMessage   string `json:"errorMessage"`
 }
@@ -64,12 +65,14 @@ type SourceStatus struct {
 }
 
 // SyncResult reports exactly what a completed manual synchronization changed.
+// Papers and datasets it adds wait for a person's review.
 type SyncResult struct {
 	SourceID       string       `json:"sourceId"`
 	RecordsSeen    int          `json:"recordsSeen"`
 	RecordsNew     int          `json:"recordsNew"`
 	RecordsUpdated int          `json:"recordsUpdated"`
 	PapersAdded    int          `json:"papersAdded"`
+	DatasetsAdded  int          `json:"datasetsAdded"`
 	Duplicates     int          `json:"duplicates"`
 	Status         SourceStatus `json:"status"`
 	Papers         []Paper      `json:"papers"`
@@ -116,7 +119,7 @@ var sourceDefinitions = []sourceDefinition{
 	},
 	{
 		id: "sequence-repositories", name: "GEO / SRA / ENA", kind: "repository", supported: true,
-		description: "检索 GEO、SRA 或 ENA，保存 accession 和官方页面线索，不自动关联论文。",
+		description: "检索 GEO、SRA 或 ENA，新数据集进入待核查，保存 accession 和官方页面，不自动关联论文。",
 		homeURL:     "https://www.ebi.ac.uk/ena/browser/home",
 		defaults: SourceConfig{ID: "sequence-repositories", Enabled: true, MaxResults: 20, Provider: "geo",
 			Query: `("single cell"[All Fields] OR "single-cell"[All Fields] OR "single nucleus"[All Fields]) AND (plant[All Fields] OR Arabidopsis[Organism]) AND gse[ETYP]`},
@@ -282,10 +285,10 @@ func (s *Store) SourceStatus(ctx context.Context, id string) (SourceStatus, erro
 	var run HarvestRun
 	err = s.db.QueryRowContext(ctx, `
 		SELECT id, status, started_at, coalesce(finished_at, ''), records_seen,
-		       records_new, records_updated, papers_added, duplicates, coalesce(error_message, '')
+		       records_new, records_updated, papers_added, datasets_added, duplicates, coalesce(error_message, '')
 		FROM harvest_runs WHERE source_id = ? ORDER BY started_at DESC, id DESC LIMIT 1`, id).
 		Scan(&run.ID, &run.Status, &run.StartedAt, &run.FinishedAt, &run.RecordsSeen,
-			&run.RecordsNew, &run.RecordsUpdated, &run.PapersAdded, &run.Duplicates, &run.ErrorMessage)
+			&run.RecordsNew, &run.RecordsUpdated, &run.PapersAdded, &run.DatasetsAdded, &run.Duplicates, &run.ErrorMessage)
 	if err == nil {
 		status.LastRun = &run
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -316,11 +319,14 @@ func (s *Store) SourceStatus(ctx context.Context, id string) (SourceStatus, erro
 	return status, nil
 }
 
+// harvestRecord is one external record. A literature source describes it as a
+// Paper, a repository as a Dataset; either is added to the library at most once.
 type harvestRecord struct {
 	ExternalID string
 	Title      string
 	URL        string
 	Paper      *Paper
+	Dataset    *Dataset
 	Payload    any
 }
 
@@ -479,6 +485,7 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 					return SyncResult{}, err
 				}
 				paper.ID = paperID
+				paper.AwaitingReview = true
 				if err := savePaper(ctx, tx, &paper); err != nil {
 					return SyncResult{}, fmt.Errorf("save harvested paper %s: %w", record.ExternalID, err)
 				}
@@ -487,6 +494,16 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 				if err := fillPaperIdentifiers(ctx, tx, paperID, paper); err != nil {
 					return SyncResult{}, fmt.Errorf("fill paper identifiers %s: %w", record.ExternalID, err)
 				}
+				result.Duplicates++
+			}
+		} else if record.Dataset != nil {
+			added, err := addHarvestedDataset(ctx, tx, *record.Dataset)
+			if err != nil {
+				return SyncResult{}, fmt.Errorf("save harvested dataset %s: %w", record.ExternalID, err)
+			}
+			if added {
+				result.DatasetsAdded++
+			} else {
 				result.Duplicates++
 			}
 		}
@@ -530,10 +547,10 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE harvest_runs SET status = 'succeeded', finished_at = ?, records_seen = ?,
-			records_new = ?, records_updated = ?, papers_added = ?, duplicates = ?
+			records_new = ?, records_updated = ?, papers_added = ?, datasets_added = ?, duplicates = ?
 		WHERE id = ? AND status = 'running'`,
 		now, result.RecordsSeen, result.RecordsNew, result.RecordsUpdated,
-		result.PapersAdded, result.Duplicates, runID); err != nil {
+		result.PapersAdded, result.DatasetsAdded, result.Duplicates, runID); err != nil {
 		return SyncResult{}, fmt.Errorf("finish source run: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -545,6 +562,29 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 		return SyncResult{}, fmt.Errorf("commit source run: %w", err)
 	}
 	return result, nil
+}
+
+// addHarvestedDataset creates a pending dataset for a repository record seen for
+// the first time, unless a dataset already holds its accession. The new dataset
+// waits for a person's review and links no papers.
+func addHarvestedDataset(ctx context.Context, tx *sql.Tx, dataset Dataset) (bool, error) {
+	inputs := make([]RepositoryInput, 0, len(dataset.Repositories))
+	for _, repository := range dataset.Repositories {
+		inputs = append(inputs, RepositoryInput{Repository: repository.Repository, Accession: repository.Accession})
+	}
+	existing, err := existingDatasetID(ctx, tx, DatasetInput{Title: dataset.Title, Repositories: inputs})
+	if err != nil || existing != "" {
+		return false, err
+	}
+	if dataset.ID, err = newLocalID("DS"); err != nil {
+		return false, err
+	}
+	dataset.Status, dataset.ReviewedAt, dataset.BatchID = "pending", "", ""
+	dataset.AwaitingReview = true
+	if err := saveDataset(ctx, tx, &dataset); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // existingPaperID finds the paper a normalized record describes, most certain

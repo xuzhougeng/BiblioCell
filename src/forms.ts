@@ -68,7 +68,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   if (existing) {
     p = Object.assign(existing, values);
   } else {
-    p = { ...values, id: uid("P"), pmid: "", screening: "pending", reviewedAt: "", proposedScreening: "", proposedReason: "", batchId: "", fulltext: "missing", fulltextUrl: "", reading: "unread", starred: false, tags: [], notes: "", source: "手动添加", addedAt: now, isDemo: false };
+    p = { ...values, id: uid("P"), pmid: "", screening: "pending", reviewedAt: "", proposedScreening: "", proposedReason: "", awaitingReview: false, batchId: "", fulltext: "missing", fulltextUrl: "", reading: "unread", starred: false, tags: [], notes: "", source: "手动添加", addedAt: now, isDemo: false };
     app.state.papers.unshift(p);
   }
   app.logActivity(`${existing ? "更新文献信息：" : "添加文献："}${p.title}`, existing ? "edit" : "add");
@@ -161,6 +161,8 @@ export function saveDataset(app: App, form: HTMLFormElement): void {
   let saved: Dataset;
   if (existing) {
     saved = normalizeDataset({ ...existing, ...values });
+    // A changed status is the person's review, as the backend records it.
+    if (status !== existing.status) saved.awaitingReview = false;
     app.state.datasets[index] = saved;
   } else {
     saved = normalizeDataset({ ...values, id: uid("DS"), matrixAvailability: "unknown", annotationAvailability: "unknown", cellsReported: null, cellCountUnit: "", cellCountScope: "", paperLinks: [], isDemo: false, addedAt: now });

@@ -27,6 +27,7 @@ type SpeciesEntry struct {
 // one paper can cover several of each, and an empty array means "not curated".
 // Screening holds a person's decision and ReviewedAt says when it was made;
 // agents can only suggest one through ProposedScreening and ProposedReason.
+// AwaitingReview marks a paper a source update added that no person has checked.
 type Paper struct {
 	ID                string         `json:"id"`
 	Title             string         `json:"title"`
@@ -49,6 +50,7 @@ type Paper struct {
 	ReviewedAt        string         `json:"reviewedAt"`
 	ProposedScreening string         `json:"proposedScreening"`
 	ProposedReason    string         `json:"proposedReason"`
+	AwaitingReview    bool           `json:"awaitingReview"`
 	Reading           string         `json:"reading"`
 	Fulltext          string         `json:"fulltext"`
 	// FulltextURL is the entry link behind a "linked" fulltext status, read
@@ -111,7 +113,7 @@ const paperSelect = `
 		       organs_json, modalities_json, coalesce(platforms_json, '[]'), coalesce(source, ''),
 		       first_seen_at, updated_at, screening_status, coalesce(screening_reason, ''),
 		       reading_status, starred, tags_json, notes, fulltext_status, coalesce(fulltext_url, ''),
-		       coalesce(screening_reviewed_at, ''), proposed_screening, proposed_reason,
+		       coalesce(screening_reviewed_at, ''), proposed_screening, proposed_reason, awaiting_review,
 		       coalesce(import_batch_id, ''),
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'doi'), ''),
 		       coalesce((SELECT value FROM paper_identifiers WHERE paper_id = id AND namespace = 'pmid'), '')
@@ -143,14 +145,14 @@ func (s *Store) ListPapers(ctx context.Context) ([]Paper, error) {
 func scanPaper(rows *sql.Rows) (Paper, error) {
 	var p Paper
 	var authors, species, organs, modalities, platforms, articleTypes, tags string
-	var year, starred int
+	var year, starred, awaiting int
 	if err := rows.Scan(
 		&p.ID, &p.Title, &p.Abstract, &authors, &p.Journal,
 		&year, &p.PublicationStatus, &articleTypes,
 		&species, &organs, &modalities, &platforms, &p.Source,
 		&p.AddedAt, &p.UpdatedAt, &p.Screening, &p.ScreeningReason,
 		&p.Reading, &starred, &tags, &p.Notes, &p.Fulltext, &p.FulltextURL,
-		&p.ReviewedAt, &p.ProposedScreening, &p.ProposedReason, &p.BatchID, &p.DOI, &p.PMID,
+		&p.ReviewedAt, &p.ProposedScreening, &p.ProposedReason, &awaiting, &p.BatchID, &p.DOI, &p.PMID,
 	); err != nil {
 		return Paper{}, fmt.Errorf("read paper: %w", err)
 	}
@@ -165,6 +167,7 @@ func scanPaper(rows *sql.Rows) (Paper, error) {
 	p.ArticleTypes = displayArticleTypes(articleTypes)
 	p.Tags = jsonStrings(tags)
 	p.Starred = starred == 1
+	p.AwaitingReview = awaiting == 1
 	if p.Fulltext != "linked" && p.Fulltext != "stored" {
 		p.Fulltext = "missing"
 	}
@@ -290,9 +293,11 @@ func (s *Store) SavePaperEdits(ctx context.Context, edits []PaperEdit) ([]string
 }
 
 // recordDecision stamps the screening status as a person's decision, which
-// settles any agent proposal. Pending means nobody has decided.
+// settles any agent proposal and takes the paper out of review. Pending means
+// nobody has decided.
 func recordDecision(p *Paper) {
 	p.ProposedScreening, p.ProposedReason, p.ReviewedAt = "", "", ""
+	p.AwaitingReview = false
 	if p.Screening != "pending" {
 		p.ReviewedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
@@ -300,7 +305,7 @@ func recordDecision(p *Paper) {
 
 // serverPaperFields are never taken from a desktop edit: the database owns them.
 var serverPaperFields = map[string]bool{
-	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "fulltextUrl": true, "reviewedAt": true, "batchId": true, "isDemo": true,
+	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "fulltextUrl": true, "reviewedAt": true, "awaitingReview": true, "batchId": true, "isDemo": true,
 }
 
 // mergeFields applies what changed from before to after onto current, field by
@@ -377,6 +382,7 @@ func (s *Store) ImportPapers(ctx context.Context, papers []Paper, batchID string
 	for i := range papers {
 		normalizePaper(&papers[i])
 		papers[i].ReviewedAt = "" // Imports come from agents, never from a reviewer.
+		papers[i].AwaitingReview = false
 		papers[i].BatchID = batchID
 		existing := ""
 		if papers[i].ID != "" {
@@ -652,8 +658,8 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO paper_curation(
 			paper_id, screening_status, screening_reason, screening_method, screening_reviewed_at,
-			proposed_screening, proposed_reason, reading_status, starred, tags_json, notes, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			proposed_screening, proposed_reason, awaiting_review, reading_status, starred, tags_json, notes, updated_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(paper_id) DO UPDATE SET
 			screening_status = excluded.screening_status,
 			screening_reason = excluded.screening_reason,
@@ -661,11 +667,12 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 			screening_reviewed_at = excluded.screening_reviewed_at,
 			proposed_screening = excluded.proposed_screening,
 			proposed_reason = excluded.proposed_reason,
+			awaiting_review = excluded.awaiting_review,
 			reading_status = excluded.reading_status,
 			starred = excluded.starred, tags_json = excluded.tags_json,
 			notes = excluded.notes, updated_at = excluded.updated_at`,
 		p.ID, p.Screening, p.ScreeningReason, method, nullableString(p.ReviewedAt),
-		p.ProposedScreening, p.ProposedReason, p.Reading, boolInt(p.Starred), tags, p.Notes, p.UpdatedAt)
+		p.ProposedScreening, p.ProposedReason, boolInt(p.AwaitingReview), p.Reading, boolInt(p.Starred), tags, p.Notes, p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save paper curation %s: %w", p.ID, err)
 	}

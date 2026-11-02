@@ -29,6 +29,10 @@ const proposalBox = (p: Paper): string => p.proposedScreening
   ? `<div class="notice-box compact proposal-box">${I("info", 16)}<span>Agent 建议：<strong>${esc(SCREEN[p.proposedScreening] ?? p.proposedScreening)}</strong>${p.proposedReason ? `<br>${esc(p.proposedReason)}` : ""}</span><span class="section-actions"><button class="text-link" data-action="accept-proposal" data-id="${esc(p.id)}">采纳</button><button class="text-link" data-action="dismiss-proposal" data-id="${esc(p.id)}">忽略</button></span></div>`
   : "";
 
+/** reviewBox explains why a record a source update added waits in 需核对, and lets a person finish it. */
+const reviewBox = (kind: "paper" | "dataset", id: string, text: string): string =>
+  `<div class="notice-box compact proposal-box">${I("alert", 16)}<span><strong>来源新增 · 尚未人工核查</strong><br>${esc(text)}</span><span class="section-actions"><button class="text-link" data-action="finish-review" data-kind="${kind}" data-id="${esc(id)}">核查完成</button></span></div>`;
+
 const FIELD_LABELS: Record<string, string> = {
   title: "题目", doi: "DOI", pmid: "PMID", authors: "作者", year: "年份", journal: "期刊", abstract: "摘要",
   species: "物种", organs: "组织", modalities: "测序类型", platforms: "测序平台", articleTypes: "文献类型",
@@ -76,7 +80,8 @@ export function renderDrawer(app: App): string | null {
     const tab = app.drawerTab;
     let body = "";
     if (tab === "overview") {
-      body = `<div class="drawer-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? "未读")}${demoBadge(p)}<button class="btn btn-secondary" data-action="edit-paper" data-id="${esc(p.id)}">编辑信息</button><button class="btn btn-danger" data-action="delete-paper" data-id="${esc(p.id)}">删除</button></div>`
+      body = (p.awaitingReview ? reviewBox("paper", p.id, `来自 ${p.source || "来源"} 的更新。做出收录判断后自动移出需核对；暂不判断也可直接标记核查完成。`) : "")
+        + `<div class="drawer-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? "未读")}${demoBadge(p)}<button class="btn btn-secondary" data-action="edit-paper" data-id="${esc(p.id)}">编辑信息</button><button class="btn btn-danger" data-action="delete-paper" data-id="${esc(p.id)}">删除</button></div>`
         + `<div class="detail-grid">${detail("研究物种", esc(speciesDisplay(p) || "待补"), `<small>${esc(joinList(speciesNames(p)))}</small>`)}${detail("组织 / 部位", esc(joinList(p.organs) || "待补"))}${detail("测序类型", esc(joinList(p.modalities) || "待补"))}${detail("测序平台", esc(joinList(p.platforms) || "待补"))}${detail("发表年份", esc(p.year || "待补"))}${detail("文献类型", esc(joinList(p.articleTypes) || "待判断"))}${detail("发表状态", PUBLICATION_LABELS[p.publicationStatus] ?? "尚未确认")}</div>`
         + `<section class="detail-section"><h3>摘要</h3><p class="abstract-text">${esc(p.abstract || "摘要尚未补充。先保留这条文献，之后可以继续完善。")}</p></section>`
         + `<section class="detail-section"><h3>主题标签</h3><div class="tag-list">${arr(p.tags).length ? arr(p.tags).map((t) => `<span class="tag">${esc(t)}</span>`).join("") : '<span class="muted">暂未设置标签</span>'}</div></section>`
@@ -116,7 +121,9 @@ export function renderDrawer(app: App): string | null {
   const accessionValue = datasetHome
     ? `<a class="text-link" href="${esc(datasetHome)}" target="_blank" rel="noopener noreferrer">${esc(d.accession || "查看仓库")}${I("arrow-up-right", 13)}</a>`
     : esc(d.accession || "编号待补");
-  const body = `<div class="drawer-body"><div class="drawer-status-row">${datasetStatusBadge(d)}${demoBadge(d)}</div>`
+  const body = `<div class="drawer-body">`
+    + (d.awaitingReview ? reviewBox("dataset", d.id, "来自数据仓库的更新，不会自动关联文献。核对仓库记录后修改整理状态即可移出需核对，也可直接标记核查完成。") : "")
+    + `<div class="drawer-status-row">${datasetStatusBadge(d)}${demoBadge(d)}</div>`
     + `<div class="detail-grid">${detail("仓库", esc(d.repository || "待补"))}${detail("Accession", accessionValue)}${detail("研究组织", esc(joinList(d.organs) || "待补"))}${detail("测序类型", esc(joinList(d.modalities) || "待补"))}${detail("测序平台", esc(joinList(d.platforms) || "待补"))}${detail("细胞数", d.cellsReported == null ? "尚未整理" : esc(d.cellsReported))}${detail("原始数据", esc(AVAILABILITY[d.availability] ?? "尚未核实"))}</div>`
     + (app.env.real && repositories ? `<section class="detail-section"><h3>数据仓库</h3>${repositories}</section>` : "")
     + `<section class="detail-section"><h3>关联文献</h3>${arr(d.paperLinks).length ? links : '<p class="muted">尚未关联文献。</p>'}</section>`

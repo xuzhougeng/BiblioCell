@@ -3,8 +3,8 @@ import { test } from "node:test";
 import type { App } from "../src/app.ts";
 import { defaultPaperColumns } from "../src/columns.ts";
 import { demoState } from "../src/demo-data.ts";
-import { decideScreening, emptyFilters, filterPapers, screeningConcern } from "../src/model.ts";
-import { paperTable, renderPapers } from "../src/views.ts";
+import { decideScreening, emptyFilters, filterDatasets, filterPapers, reviewConcern, screeningConcern } from "../src/model.ts";
+import { paperTable, renderDatasets, renderPapers } from "../src/views.ts";
 
 test("review filter keeps negative proposals distinct from actual screening decisions", () => {
   const seed = demoState().papers[0]!;
@@ -46,4 +46,53 @@ test("list exposes the proposal reason safely and explains why the total stays u
   const dismissed = renderPapers(app);
   assert.match(dismissed, /需核对 <span>0<\/span>/);
   assert.doesNotMatch(dismissed, /class="review-summary"|class="paper-review-note/);
+});
+
+test("papers a source update added wait in review until a person decides or finishes it", () => {
+  const seed = demoState().papers[0]!;
+  const added = { ...seed, id: "added", screening: "pending", proposedScreening: "", awaitingReview: true, source: "PubMed" };
+  const flagged = { ...seed, id: "flagged", screening: "pending", proposedScreening: "excluded", awaitingReview: true };
+  const own = { ...seed, id: "own", screening: "pending", proposedScreening: "", awaitingReview: false };
+  const filters = { ...emptyFilters(), review: "concern" };
+  assert.equal(reviewConcern(added), "source");
+  assert.equal(reviewConcern(flagged), "excluded"); // An agent's warning says more than where it came from.
+  assert.deepEqual(filterPapers([added, flagged, own], filters).map((p) => p.id).sort(), ["added", "flagged"]);
+
+  const app = {
+    state: { ...demoState(), papers: [added, own] }, filters: emptyFilters(),
+    paperPage: 1, paperPageSize: 10, paperColumns: defaultPaperColumns(),
+    paperDatasets: () => [], paperResources: () => [],
+  } as unknown as App;
+  const html = renderPapers(app);
+  assert.match(html, /需核对 <span>1<\/span>/);
+  assert.match(html, /1 篇由来源更新新增/);
+  assert.match(html, /来源新增 · 待你确认/);
+  assert.match(html, /来自 PubMed 的更新/);
+
+  decideScreening(added, "pending"); // Any decision is the person's review.
+  assert.equal(added.awaitingReview, false);
+  assert.equal(reviewConcern(added), null);
+});
+
+test("datasets page has its own review tab for what a source update added", () => {
+  const { datasets: [first, second] } = demoState();
+  const added = { ...first!, id: "DS-added", title: "GEO series", awaitingReview: true };
+  const known = { ...second!, id: "DS-known", awaitingReview: false };
+  assert.deepEqual(filterDatasets([added, known], "", () => "", true).map((d) => d.id), ["DS-added"]);
+  assert.equal(filterDatasets([added, known], "", () => "").length, 2);
+
+  const app = {
+    state: { ...demoState(), datasets: [added, known] }, datasetSearch: "", datasetReview: false,
+    datasetView: "table", datasetPage: 1, datasetPageSize: 10, paperById: () => undefined,
+  } as unknown as App;
+  const all = renderDatasets(app);
+  assert.match(all, /全部数据集 <span>2<\/span>/);
+  assert.match(all, /需核对 <span>1<\/span>/);
+  assert.match(all, /有 1 组数据集需要核对/);
+  app.datasetReview = true;
+  const review = renderDatasets(app);
+  assert.match(review, /GEO series/);
+  assert.doesNotMatch(review, /data-id="DS-known"/);
+  added.awaitingReview = false;
+  assert.match(renderDatasets(app), /没有需核对的数据集/);
 });

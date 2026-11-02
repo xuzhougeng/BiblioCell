@@ -35,7 +35,8 @@ export function demoState(): LibraryState {
       organs: r[2], modalities: r[3], platforms: r[4],
       articleTypes: i === 13 ? ["相关资料"] : i === 3 ? ["原创研究", "方法研究"] : i === 10 || i === 12 ? ["方法研究"] : ["原创研究"],
       year: r[5], screening: r[6], fulltext: r[7], fulltextUrl: "", reading: r[8], starred: r[9],
-      reviewedAt: "", proposedScreening: "", proposedReason: "", batchId: "",
+      // Pending demo papers from a source stand in for what a source update added.
+      reviewedAt: "", proposedScreening: "", proposedReason: "", awaitingReview: r[6] === "pending" && i % 4 !== 3, batchId: "",
       doi: "", pmid: "", authors: `示例研究组 ${String.fromCharCode(65 + i)}`,
       journal: i === 3 || i === 10 || i === 12 ? "方法研究 · 示例" : "原创研究 · 示例",
       publicationStatus: i === 2 || i === 11 ? "preprint" : "published",
@@ -67,7 +68,7 @@ export function demoState(): LibraryState {
       availability: "unknown", matrixAvailability: "unknown", annotationAvailability: "unknown",
       cellsReported: null, cellCountUnit: "", cellCountScope: "",
       paperLinks: indexes.map((index) => ({ paperId: paperAt(index).id, role: "generated", evidenceUrl: "", evidenceText: "", verified: false })),
-      reviewedAt: "", batchId: "", addedAt: p.addedAt, updatedAt: p.addedAt, isDemo: true,
+      reviewedAt: "", awaitingReview: i >= links.length - 2, batchId: "", addedAt: p.addedAt, updatedAt: p.addedAt, isDemo: true,
     };
   });
   const link = (dataset: number, paper: number, role: string) =>

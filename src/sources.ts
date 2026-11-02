@@ -15,7 +15,7 @@ const FALLBACK_SOURCES: SourceStatus[] = [
   fallbackSource({ id: "europe-pmc", name: "Europe PMC", kind: "literature", description: "检索文献、摘要与标识符。", homeUrl: "https://europepmc.org/" }),
   fallbackSource({ id: "crossref", name: "Crossref", kind: "literature", description: "检索 DOI 与出版信息。", homeUrl: "https://www.crossref.org/" }),
   fallbackSource({ id: "biorxiv", name: "bioRxiv", kind: "literature", description: "扫描最近 30 天的预印本并匹配关键词。", homeUrl: "https://www.biorxiv.org/" }),
-  fallbackSource({ id: "sequence-repositories", name: "GEO / SRA / ENA", kind: "repository", description: "保存公共仓库 accession 线索。", homeUrl: "https://www.ebi.ac.uk/ena/browser/home", provider: "geo" }),
+  fallbackSource({ id: "sequence-repositories", name: "GEO / SRA / ENA", kind: "repository", description: "检索公共仓库，新数据集进入待核查。", homeUrl: "https://www.ebi.ac.uk/ena/browser/home", provider: "geo" }),
   fallbackSource({ id: "cncb-gsa", name: "CNCB GSA", kind: "repository", description: "站点需要浏览器安全检查，当前仅保留手动入口。", homeUrl: "https://ngdc.cncb.ac.cn/gsa/", supported: false, enabled: false }),
 ];
 
@@ -61,7 +61,7 @@ export function renderSources(app: App): string {
   const realMode = app.env.real;
   const items = app.env.sources.length ? app.env.sources : FALLBACK_SOURCES;
   const notice = realMode
-    ? "自动更新开启后才会在后台访问公开 API，否则只在点击“同步”时访问。新文献进入“待判断”；按 DOI、PMID、题目判定已存在的记录会跳过，不改动人工内容；仓库结果只保存为 accession 线索。"
+    ? "自动更新开启后才会在后台访问公开 API，否则只在点击“同步”时访问。新增的文献和数据集都进入文献库与数据集的“需核对”，等你确认；按 DOI、PMID、题目判定已存在的文献、按 accession 判定已存在的数据集会跳过，不改动人工内容；仓库结果不自动关联文献。"
     : "来源同步只写入真实 SQLite 数据库。请先在设置中关闭 Demo 演示模式，再配置和运行同步。";
   const cards = items.map((source) => {
     const run = source.lastRun;
@@ -69,7 +69,7 @@ export function renderSources(app: App): string {
     const failed = run?.status === "failed";
     const stateLabel = !source.supported ? "手动入口" : running ? "同步中" : !source.enabled ? "已停用" : failed ? "上次失败" : "已配置";
     const stateColor = failed ? "amber" : source.supported && source.enabled ? "green" : "gray";
-    const counts = run?.status === "succeeded" ? ` · 新增 ${source.kind === "repository" ? run.recordsNew : run.papersAdded} · 跳过 ${run.duplicates}` : "";
+    const counts = run?.status === "succeeded" ? ` · 新增 ${source.kind === "repository" ? run.datasetsAdded : run.papersAdded} · 跳过 ${run.duplicates}` : "";
     const last = source.lastSuccessAt ? `最近成功：${shortTime(source.lastSuccessAt)}${counts}` : "最近同步：尚未成功";
     const query = source.id === "sequence-repositories" ? `${String(source.provider || "geo").toUpperCase()} · ${source.query}` : source.query;
     const actions = source.supported
@@ -168,7 +168,8 @@ export async function syncSource(app: App, id: string): Promise<void> {
     await refreshSources(app);
     await app.reload();
     const source = app.env.sources.find((item) => item.id === id);
-    const message = `${source ? source.name : id} 同步完成：${result.recordsSeen} 条外部记录，新增 ${result.papersAdded} 篇文献，${result.duplicates} 条已存在。`;
+    const added = source?.kind === "repository" ? `${result.datasetsAdded} 组数据集` : `${result.papersAdded} 篇文献`;
+    const message = `${source ? source.name : id} 同步完成：${result.recordsSeen} 条外部记录，新增 ${added}（进入需核对），${result.duplicates} 条已存在。`;
     app.logActivity(message, "sync");
     app.toast(message);
   } catch (error) {
