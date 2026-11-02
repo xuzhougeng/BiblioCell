@@ -724,6 +724,13 @@ export class App {
       this.toast(t("标签已保存。"));
       this.render();
     },
+    "clear-filter": (el) => {
+      const key = el.dataset.filterKey as keyof Filters | undefined;
+      if (!key || key === "starred" || !(key in this.filters)) return;
+      this.filters[key] = "";
+      this.paperPage = 1;
+      this.render();
+    },
     "clear-filters": () => {
       this.filters = emptyFilters();
       this.paperPage = 1;

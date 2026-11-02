@@ -100,7 +100,7 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
       datasets: `<td class="link-cell">${datasetChips(app, p)}</td>`,
       modality: `<td>${modalityBadges(p)}</td>`,
       fulltext: `<td>${fulltextCell(app, p)}</td>`,
-      screening: `<td>${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}">${I("alert", 13)}${concernLabel}<small>${t("尚未确认")}</small></div>` : ""}</td>`,
+      screening: `<td class="screening-cell">${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}">${I("alert", 13)}${concernLabel}<small>${t("尚未确认")}</small></div>` : ""}</td>`,
     };
     return `<tr${concern ? ` class="paper-needs-review ${concern}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? t("{label}，待确认：{title}", { label: concernLabel, title: esc(p.title) }) : t("查看 {title}", { title: esc(p.title) })}">${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
@@ -178,16 +178,16 @@ export function renderPapers(app: App): string {
     + (concerns.length ? `<div class="review-summary">${I("alert", 20)}<div><strong>${t("有 {n} 篇文献的收录范围需要核对", { n: concerns.length })}</strong><p>${t("{summary}。确认前仍计入全部文献；打开详情可做出收录判断、采纳或忽略建议，或标记核查完成。", { summary: concernSummary })}</p></div><button class="btn btn-secondary" data-action="review-papers">${t("查看待核对")} ${I("arrow-right", 15)}</button></div>` : "")
     + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="${t("搜索题目、物种、作者或 DOI…")}" value="${esc(filters.search)}" aria-label="${t("搜索文献")}"></label><select class="filter-select" data-filter="sort" aria-label="${t("排序方式")}">${SORT_OPTIONS.map(([value, label]) => option(value, label, filters.sort)).join("")}</select></div>`
     + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} ${t("筛选")}</span>`
-    + selectFilter(filters, "species", t("全部物种"), uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))
-    + selectFilter(filters, "organ", t("全部组织"), uniqueValues(papers, "organ"))
-    + selectFilter(filters, "year", t("全部年份"), uniqueValues(papers, "year").reverse())
-    + selectFilter(filters, "modality", t("全部技术"), uniqueValues(papers, "modality").map((v) => ({ value: v, label: tv(v) })))
-    + selectFilter(filters, "platform", t("全部平台"), uniqueValues(papers, "platform"))
-    + selectFilter(filters, "fulltext", t("全文情况"), entries(FULL))
-    + selectFilter(filters, "screening", t("收录状态"), entries(SCREEN))
-    + selectFilter(filters, "source", t("全部来源"), uniqueValues(papers, "source").map((v) => ({ value: v, label: tv(v) })))
-    + selectFilter(filters, "preprint", t("是否为 preprint（全部）"), [{ value: "yes", label: t("是（预印本）") }, { value: "no", label: t("否（未标记为预印本）") }])
-    + (filterCount || filters.search ? `<button class="text-link" data-action="clear-filters">${t("清空")}${filterCount ? ` (${filterCount})` : ""}</button>` : "")
+    + selectFilter(filters, "species", t("物种"), uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))
+    + selectFilter(filters, "organ", t("组织"), uniqueValues(papers, "organ"))
+    + selectFilter(filters, "year", t("年份"), uniqueValues(papers, "year").reverse())
+    + selectFilter(filters, "modality", t("技术"), uniqueValues(papers, "modality").map((v) => ({ value: v, label: tv(v) })))
+    + selectFilter(filters, "platform", t("平台"), uniqueValues(papers, "platform"))
+    + selectFilter(filters, "fulltext", t("全文"), entries(FULL))
+    + selectFilter(filters, "screening", t("收录"), entries(SCREEN))
+    + selectFilter(filters, "source", t("来源"), uniqueValues(papers, "source").map((v) => ({ value: v, label: tv(v) })))
+    + selectFilter(filters, "preprint", t("预印本"), [{ value: "yes", label: t("是") }, { value: "no", label: t("否") }])
+    + (filterCount || filters.search ? `<button class="text-link filter-clear-all" data-action="clear-filters">${I("x", 13)} ${filterCount ? t("清空 {n} 项筛选", { n: filterCount }) : t("清空")}</button>` : "")
     + `</div>${paperTable(items.slice(info.start, info.end), app, false, filters.sort)}<div class="table-footer"><span>${t("显示 {range} / {total} 篇文献", { range: items.length ? `${info.start + 1}–${info.end}` : 0, total: items.length })}</span><span class="muted footer-hint">${t("↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情")}</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
 }
 
