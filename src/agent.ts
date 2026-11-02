@@ -3,10 +3,13 @@
 import type { App } from "./app.ts";
 import { Library, events, type Event as AgentEvent, type Message as AgentMessage } from "./mygo.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { esc } from "./model.ts";
+import { esc, shortTime } from "./model.ts";
 import { $, I, badge, empty, errorMessage } from "./ui.ts";
 
 export interface AgentState {
+  /** The saved conversation this transcript belongs to; empty until the first completed run saves it. */
+  id: string;
+  title: string;
   /** The whole transcript, as the Go side returned it last; it goes back whole on the next send. */
   messages: AgentMessage[];
   busy: boolean;
@@ -16,7 +19,7 @@ export interface AgentState {
   queue: string[];
 }
 
-export const emptyAgentState = (): AgentState => ({ messages: [], busy: false, live: [], queue: [] });
+export const emptyAgentState = (): AgentState => ({ id: "", title: "", messages: [], busy: false, live: [], queue: [] });
 
 export const AGENT_EXAMPLES = [
   "库里现在有多少篇文献？哪些还没有判断收录？",
@@ -96,7 +99,7 @@ export function renderAgent(app: App): string {
   const demoNote = env.real ? "" : `<p class="agent-notice">${I("info", 15)}<span>当前是 Demo 模式。助手只操作正式数据库，这里的虚构示例它看不到；要查看它的改动，请在设置中关闭 Demo。</span></p>`;
   const endpoint = ai.baseUrl || (protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1");
   const header = `<header class="agent-chat-header"><span class="agent-avatar assistant" aria-hidden="true">${I("sparkle", 18)}</span><div class="agent-chat-title"><strong>AI 助手 · ${esc(model || "未配置模型")}</strong><span class="muted">${protocol === "anthropic" ? "Anthropic Messages" : "OpenAI Chat Completions"} · ${esc(endpoint)}${ai.effort ? ` · 思考 ${esc(ai.effort)}` : ""}</span></div>`
-    + `<span class="agent-chat-meta" title="${esc(env.mcp.tools.join("\n"))}">${I("code", 14)} ${env.mcp.tools.length} 个工具</span><a class="text-link" href="#settings" data-page="settings">${I("settings", 14)} 设置</a><button type="button" class="btn btn-secondary" data-action="agent-clear" ${state.busy || !state.messages.length ? "disabled" : ""}>新对话</button></header>`;
+    + `<span class="agent-chat-meta" title="${esc(env.mcp.tools.join("\n"))}">${I("code", 14)} ${env.mcp.tools.length} 个工具</span><a class="text-link" href="#settings" data-page="settings">${I("settings", 14)} 设置</a><button type="button" class="btn btn-secondary" data-action="agent-history" ${state.busy ? "disabled" : ""}>${I("clock", 15)} 历史对话</button><button type="button" class="btn btn-secondary" data-action="agent-clear" ${state.busy || !state.messages.length ? "disabled" : ""}>新对话</button></header>`;
   // One chat window: a title bar, a scrolling conversation, and the composer pinned at the bottom.
   return `<section class="panel agent-chat">${header}${notice}${demoNote}`
     + `<div class="agent-transcript" id="agent-transcript">${body}<div id="agent-live">${liveHTML(state)}</div></div>`
@@ -167,10 +170,11 @@ function runAgent(app: App, prompt: string): void {
   state.live = [];
   rerender(app, "", true); // Sending keeps the cursor in the box for the next message.
   scrollToEnd();
-  Library.agentChat(sent).then((result) => {
+  Library.agentChat(sent).then(async (result) => {
     state.messages = result.messages;
     if (result.stopReason === "max_tokens") app.toast("回复在输出上限处被截断，可以让它继续。", true);
     if (result.stopReason === "refusal") app.toast("模型拒绝了这次请求。", true);
+    await saveConversation(app);
     return true;
   }).catch((error: unknown) => {
     // Keep the transcript as it was and hand the text back for a retry; queued messages wait.
@@ -194,6 +198,36 @@ function runAgent(app: App, prompt: string): void {
   });
 }
 
+/** saveConversation keeps the transcript in the database after each completed run, so it shows up in 历史对话. */
+async function saveConversation(app: App): Promise<void> {
+  const state = app.agent;
+  if (!state.messages.length) return;
+  try {
+    const saved = await Library.saveAgentConversation(state.id, state.title, state.messages);
+    state.id = saved.id;
+    state.title = saved.title;
+  } catch (error: unknown) {
+    app.toast(`对话未能保存到历史：${errorMessage(error, "请重试。")}`, true);
+  }
+}
+
+/** agentHistoryModal lists saved conversations to reopen or delete. */
+export function agentHistoryModal(app: App): void {
+  if (!app.env.desktop) return;
+  Library.listAgentConversations().then((list) => {
+    const items = list.map((c) => {
+      const current = c.id === app.agent.id;
+      return `<li class="agent-history-item${current ? " current" : ""}"><button type="button" class="agent-history-open" data-action="agent-load" data-id="${esc(c.id)}"><strong>${esc(c.title)}</strong><span class="muted">${esc(shortTime(c.updatedAt))} · ${c.messageCount} 条${current ? " · 当前对话" : ""}</span></button><button type="button" class="btn-icon" data-action="agent-delete-conversation" data-id="${esc(c.id)}" aria-label="删除这段对话" title="删除">${I("trash", 16)}</button></li>`;
+    }).join("");
+    const body = list.length
+      ? `<p class="muted">对话在每轮回复结束后自动保存，随存放文件夹迁移。</p><ul class="agent-history">${items}</ul>`
+      : '<p class="muted">还没有保存的对话。发送第一条消息并收到回复后，对话会出现在这里。</p>';
+    app.showModal("历史对话", body, '<button class="btn btn-secondary" data-action="close-modal">关闭</button>', true);
+  }).catch((error: unknown) => {
+    app.toast(`读取历史对话失败：${errorMessage(error, "请重试。")}`, true);
+  });
+}
+
 /** openAgent goes to the assistant page, with a prompt ready to send when given. */
 export function openAgent(app: App, prompt = ""): void {
   app.navigate("agent");
@@ -207,8 +241,32 @@ export const agentActions = (app: App): Record<string, (el: HTMLElement) => void
   "agent-open": (el) => openAgent(app, el.dataset.prompt ?? ""),
   "agent-clear": () => {
     if (app.agent.busy) return;
-    app.agent = emptyAgentState();
+    app.agent = emptyAgentState(); // The previous conversation is already saved in history.
     app.render();
+    $<HTMLTextAreaElement>("#agent-input")?.focus();
+  },
+  "agent-history": () => agentHistoryModal(app),
+  "agent-load": (el) => {
+    if (app.agent.busy) return;
+    const id = el.dataset.id ?? "";
+    Library.getAgentConversation(id).then((c) => {
+      app.agent = { ...emptyAgentState(), id: c.id, title: c.title, messages: c.messages };
+      app.closeModal();
+      app.navigate("agent");
+      $<HTMLTextAreaElement>("#agent-input")?.focus();
+    }).catch((error: unknown) => {
+      app.toast(`打开对话失败：${errorMessage(error, "它可能已被删除。")}`, true);
+    });
+  },
+  "agent-delete-conversation": (el) => {
+    const id = el.dataset.id ?? "";
+    Library.deleteAgentConversation(id).then(() => {
+      if (app.agent.id === id) app.agent.id = ""; // The open transcript stays; its next save creates a new record.
+      app.toast("已删除这段对话。");
+      agentHistoryModal(app);
+    }).catch((error: unknown) => {
+      app.toast(`删除失败：${errorMessage(error, "请重试。")}`, true);
+    });
   },
   "agent-example": (el) => {
     const input = $<HTMLTextAreaElement>("#agent-input");
