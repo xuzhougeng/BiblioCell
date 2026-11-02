@@ -28,10 +28,19 @@ export const options = (entries: Record<string, string>, selected: unknown): str
   Object.entries(entries).map(([value, label]) => option(value, label, selected)).join("");
 
 type FilterValue = string | { value: string; label: string };
-export function selectFilter(filters: Filters, name: keyof Filters, label: string, values: FilterValue[]): string {
-  const current = filters[name];
-  const items = values.map((v) => (typeof v === "object" ? option(v.value, v.label, current) : option(v, v, current))).join("");
-  return `<label class="filter-field"><span class="sr-only">${esc(label)}</span><select class="filter-select" data-filter="${name}" aria-label="${esc(label)}">${option("", label, current)}${items}</select></label>`;
+// A filter renders as a "key: value" chip. The native <select> sits invisibly on
+// top so it keeps keyboard access and the platform dropdown; the visible text is
+// drawn by the chip, which an active filter can clear with its own × button.
+export function selectFilter(filters: Filters, name: keyof Filters, key: string, values: FilterValue[]): string {
+  const current = String(filters[name] ?? "");
+  const items = values.map((v) => (typeof v === "object" ? v : { value: v, label: v }));
+  const selected = items.find((v) => v.value === current);
+  const on = Boolean(current && selected);
+  const label = on ? selected!.label : t("全部");
+  return `<div class="filter-chip${on ? " on" : ""}"><label class="filter-chip-body"><span class="filter-chip-key">${esc(key)}</span><span class="filter-chip-value">${esc(label)}</span>${I("chevron-down", 13)}`
+    + `<select class="filter-chip-select" data-filter="${name}" aria-label="${esc(key)}">${option("", t("全部"), current)}${items.map((v) => option(v.value, v.label, current)).join("")}</select></label>`
+    + (on ? `<button class="filter-chip-clear" data-action="clear-filter" data-filter-key="${name}" aria-label="${esc(t("清除{key}筛选", { key }))}">${I("x", 12)}</button>` : "")
+    + `</div>`;
 }
 
 export function modalityBadges(item: { modalities: string[] | null | undefined }): string {
