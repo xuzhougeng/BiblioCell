@@ -14,6 +14,7 @@ export const fileActions = (app: App): Record<string, (el: HTMLElement, id: stri
     try {
       const files = await Library.importPaperFiles(id, button.dataset.type ?? "fulltext");
       if (!files.length) return;
+      if (button.dataset.screenPdf === "true") app.screenPdf = true;
       await app.reload();
       app.toast(t("已导入 {n} 个文件。", { n: files.length }));
     } catch (error) {

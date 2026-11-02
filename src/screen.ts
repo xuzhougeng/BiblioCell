@@ -54,11 +54,12 @@ export function translationPop(tr: Translation): string {
 const paperFileURL = (id: string): string =>
   `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(id)}`;
 
-/** pdfPane shows the stored full text beside the paper when it is a PDF the window can render. */
+/** pdfPane shows the stored PDF, or an upload entry when the paper has none. */
 function pdfPane(app: App, p: Paper): string {
-  if (!app.env.desktop || !app.env.real || !app.screenPdf) return "";
+  if (!app.env.desktop || !app.env.real) return "";
   const file = app.paperResources(p.id).find((r) => r.type === "fulltext" && r.localPath && /\.pdf$/i.test(r.localPath));
-  if (!file) return "";
+  if (!file) return `<aside class="screen-pdf screen-pdf-empty" aria-label="${t("全文")}"><div class="screen-pdf-head"><span>${I("file", 15)} ${t("全文")}</span></div><div class="screen-upload"><div class="screen-upload-card"><div class="empty-icon">${I("upload", 32)}</div><h3>${t("暂无 PDF 全文")}</h3><p>${t("上传这篇文献的 PDF，即可在右侧阅读全文。")}</p><button class="btn btn-primary" data-action="import-file" data-id="${esc(p.id)}" data-type="fulltext" data-screen-pdf="true">${I("upload", 16)} ${t("上传 PDF")}</button><p class="small muted">${t("文件会复制到文献库，并关联到当前文献。")}</p></div></div></aside>`;
+  if (!app.screenPdf) return "";
   return `<aside class="screen-pdf"><div class="screen-pdf-head"><span>${I("file", 15)} ${esc(file.title)}</span><span class="section-actions"><button class="text-link" data-action="open-file" data-id="${esc(file.id)}">${t("在系统中打开")}</button><button class="text-link" data-action="screen-pdf-toggle">${t("隐藏")}</button></span></div><iframe class="screen-pdf-frame" src="${esc(paperFileURL(file.id))}" title="${esc(file.title)}"></iframe></aside>`;
 }
 
