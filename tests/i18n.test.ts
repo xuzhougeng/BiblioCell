@@ -49,7 +49,7 @@ test("every t() literal has an English entry with the same placeholders", () => 
 test("no Chinese interface text bypasses t()", () => {
   const leaks: string[] = [];
   for (const file of sources) {
-    read(file).split("\n").forEach((line, i) => {
+    read(file).split(/\r?\n/).forEach((line, i) => {
       if (!HAN.test(line) || line.includes("i18n-ignore")) return;
       const code = line
         .replace(/^\s*(\/\/|\*|\/\*\*).*$/, "")

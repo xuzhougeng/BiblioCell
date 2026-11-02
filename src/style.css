@@ -571,6 +571,25 @@ code { font-family: var(--mono) }
 .detail-item strong { font-size: calc(14px * var(--font-scale, 1)); font-weight: 650 }
 .detail-item select { width: 100%; max-width: 230px }
 .detail-item.full { grid-column: 1 / -1 }
+.detail-edit { appearance: none; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 10px; text-align: left; font-family: inherit; cursor: pointer; overflow-wrap: anywhere }
+.detail-edit:hover, .detail-edit:focus-visible { background: var(--surface-deep); border-color: var(--primary); outline: none }
+.detail-edit > span:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px }
+.detail-edit > span > svg { opacity: 0; color: var(--primary); flex-shrink: 0 }
+.detail-edit:hover > span > svg, .detail-edit:focus-visible > span > svg { opacity: 1 }
+.detail-edit small { display: block }
+.field-tabs, .field-mode { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px }
+.field-tabs .btn { padding: 6px 10px; font-size: calc(12px * var(--font-scale, 1)) }
+.field-tabs [aria-pressed=true], .field-mode [aria-pressed=true] { background: var(--primary); color: white; border-color: var(--primary) }
+.field-panel { min-height: 150px }
+.field-panel[hidden], .field-panel [hidden] { display: none !important }
+.field-panel fieldset { border: 0; padding: 0; margin: 0; min-width: 0 }
+.field-panel .form-field { margin-bottom: 16px }
+.field-step { display: flex; gap: 6px; margin-right: auto }
+.dataset-picker { max-height: 250px; overflow-y: auto; margin: 12px 0 }
+.dataset-choice { display: flex; gap: 12px; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); cursor: pointer }
+.dataset-choice:hover { background: var(--surface-deep) }
+.dataset-choice span { min-width: 0; overflow-wrap: anywhere }
+.dataset-choice small { display: block; color: var(--muted); margin-top: 4px }
 .resource-item { padding: 14px 0; border-bottom: 1px solid #e6dec6; display: flex; align-items: center; gap: 13px }
 .resource-item:last-child { border: 0 }
 .resource-item h4 { font-size: calc(14.5px * var(--font-scale, 1)) }
@@ -1266,14 +1285,6 @@ select.input { appearance: auto }
 .screen-body .paper-meta { font-size: calc(14px * var(--font-scale, 1)); color: var(--muted); margin-bottom: 14px }
 .screen-body .doi-bar { margin-bottom: 16px }
 .screen-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px 22px }
-/* The metadata block in screening mode edits in place: an edit link in its corner, then the paper form's fields. */
-.screen-meta { position: relative }
-.screen-meta-edit { position: absolute; top: 19px; right: 0; z-index: 1 }
-.screen-meta-form { display: grid; gap: 16px; padding: 19px 0; margin-bottom: 21px; border-bottom: 1px solid #e8e1c9 }
-.screen-meta-form > .form-field > span:first-child { font-size: calc(12.5px * var(--font-scale, 1)); color: #77725f }
-.screen-meta-form .species-rows { display: grid; gap: 8px }
-.screen-meta-form .species-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; margin: 0 }
-.screen-meta-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px }
 .screen-actionbar { position: sticky; top: 60px; z-index: 2; margin: -24px -32px 22px; display: flex; flex-direction: column; gap: 10px; padding: 13px 22px; border-bottom: 1px solid #e8e1c9; background: var(--surface-deep); box-shadow: 0 8px 24px rgba(38, 46, 36, 0.06) }
 .screen-decisions { display: flex; flex-wrap: wrap; gap: 10px }
 .screen-decision { position: relative }

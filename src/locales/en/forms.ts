@@ -1,5 +1,22 @@
 // English strings for forms.
 export const forms: Record<string, string> = {
+  "编辑{field}": "Edit {field}",
+  "已关联：{names}": "Linked: {names}",
+  "检索并关联": "Find and link",
+  "新建并关联": "Create and link",
+  "检索数据集": "Search datasets",
+  "名称、Accession、物种或组织": "Name, accession, species or tissue",
+  "没有匹配的数据集，可以新建并关联。": "No matching datasets. You can create and link one.",
+  "物种、组织和测序信息将沿用当前文献，之后可在数据集详情继续完善。": "Species, tissues and sequencing details will be copied from this paper. You can complete the dataset details later.",
+  "切换字段会保留草稿，点击保存后统一生效。← → 切换；输入时用 Alt + ← →。": "Drafts are kept when switching fields and applied together on Save. Use ← → to switch, or Alt + ← → while typing.",
+  "编辑字段": "Fields to edit",
+  "上一个字段": "Previous field",
+  "下一个字段": "Next field",
+  "请填写有效的加入时间。": "Enter a valid date added.",
+  "请为物种填写学名。": "Enter a scientific name for the species.",
+  "这个仓库编号已存在，请检索并关联已有数据集。": "This repository accession already exists. Find and link the existing dataset.",
+  "请选择有效的数据关联关系。": "Select a valid dataset relationship.",
+  "修改已保存。": "Changes saved.",
   // files.ts
   "已导入 {n} 个文件。": "Imported {n} file(s).",
   "导入失败：{error}": "Import failed: {error}",

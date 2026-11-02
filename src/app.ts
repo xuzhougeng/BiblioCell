@@ -7,7 +7,7 @@ import type { Evidence } from "./mygo.ts";
 import { doiActions } from "./doi.ts";
 import { fileActions } from "./files.ts";
 import {
-  datasetModal, exclusionReasonModal, importSummaryModal, linkDatasetModal, paperModal, resetDemoModal, resourceModal,
+  datasetModal, exclusionReasonModal, importSummaryModal, paperModal, resetDemoModal, resourceModal,
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
@@ -16,7 +16,7 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, saveScreenMeta, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, type ScreenState, type Translation } from "./screen.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
@@ -24,6 +24,7 @@ import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
 import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
 import { renderDatasets, renderOverview, renderPapers, renderTasks } from "./views.ts";
 import { t } from "./i18n.ts";
+import { datasetPickerMode, paperFieldKey, paperFieldModal, savePaperFields, searchDatasetPicker, selectPaperField, stepPaperField } from "./paper-fields.ts";
 
 /** Env describes the runtime: desktop vs browser preview, real vs demo data, and backend-provided info. */
 export interface Env {
@@ -563,7 +564,6 @@ export class App {
     if (!this.screen) return;
     const papers = screenPapers(this);
     const next = this.screen.index + delta;
-    this.screen.editing = false;
     if (next < 0 || next >= papers.length) return;
     this.screen.index = next;
     this.clearTranslation();
@@ -578,14 +578,6 @@ export class App {
     this.toast(t("已记为：{label}", { label: SCREEN[status] ?? status }));
     this.screeningDecided();
   }
-  /** setScreenEditing opens or closes the inline metadata editor of the paper on screen. */
-  setScreenEditing(on: boolean): void {
-    if (!this.screen) return;
-    this.screen.editing = on;
-    this.render();
-    if (on) $<HTMLInputElement>("#screen-meta-form input")?.focus();
-  }
-
   /** screeningDecided moves to the next paper after a decision, or re-renders on the last one. */
   screeningDecided(): void {
     if (!this.screen) return;
@@ -601,7 +593,9 @@ export class App {
     root.innerHTML = `<div class="modal-backdrop" data-action="close-modal"></div><section class="modal${wide ? " modal-wide" : ""}" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${esc(title)}</h2><button class="btn-icon" data-action="close-modal" aria-label="${t("关闭弹窗")}">${I("x", 20)}</button></div><div class="modal-body">${body}</div><div class="modal-footer">${footer}</div></section>`;
     document.body.classList.add("modal-open");
     requestAnimationFrame(() => {
-      const target = $("#modal-root .modal input:not([type=hidden])") ?? $("#modal-root .modal textarea") ?? $("#modal-root .modal select") ?? $("#modal-root .modal button");
+      if (root.contains(document.activeElement)) return;
+      const visible = (selector: string) => $$<HTMLElement>(selector, root).find(el => !el.closest("[hidden]") && !el.matches(":disabled"));
+      const target = visible("input:not([type=hidden])") ?? visible("textarea") ?? visible("select") ?? visible("button");
       target?.focus();
     });
   }
@@ -681,6 +675,10 @@ export class App {
   private readonly actions: Record<string, Action> = {
     "new-paper": () => paperModal(this),
     "edit-paper": (_el, id) => paperModal(this, id),
+    "edit-paper-field": (el, id) => paperFieldModal(this, id, el.dataset.field),
+    "select-paper-field": (el) => selectPaperField(el.dataset.field ?? "species"),
+    "step-paper-field": (el) => stepPaperField(Number(el.dataset.step) || 1),
+    "field-dataset-mode": (el) => datasetPickerMode(el.dataset.mode ?? "existing"),
     "configure-source": (_el, id) => sourceConfigModal(this, id),
     "sync-source": (_el, id) => void syncSource(this, id),
     "source-records": (_el, id) => sourceRecordsModal(this, id),
@@ -829,7 +827,7 @@ export class App {
       this.closeModal();
       datasetModal(this, "", id);
     },
-    "link-dataset": (_el, id) => linkDatasetModal(this, id),
+    "link-dataset": (_el, id) => paperFieldModal(this, id, "datasets"),
     "add-resource": (el, id) => resourceModal(this, el.dataset.kind ?? "paper", id),
     "accept-proposal": (_el, id) => {
       const p = this.paperById(id);
@@ -888,8 +886,8 @@ export class App {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
-      "paper-form": savePaper, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
-      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "screen-meta-form": saveScreenMeta, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
+      "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
+      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
     const handler = handlers[form.getAttribute("id") ?? ""];
@@ -988,6 +986,7 @@ export class App {
       return;
     }
     if (!(target instanceof HTMLInputElement)) return;
+    if (target.id === "field-dataset-search") { searchDatasetPicker(this, target.value); return; }
     if (target.id === "settings-font-size") {
       previewFontSize(target);
       return;
@@ -1019,6 +1018,7 @@ export class App {
 
   private onKeydown(e: KeyboardEvent): void {
     const target = e.target instanceof HTMLElement ? e.target : null;
+    if (paperFieldKey(e)) return;
     if (target?.id === "agent-input" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       target.closest("form")?.requestSubmit();
@@ -1034,12 +1034,11 @@ export class App {
       if (this.translation) this.clearTranslation();
       else if ($("#modal-root .modal")) this.closeModal();
       else if (this.drawer) this.closeDrawer();
-      else if (this.screen?.editing) this.setScreenEditing(false);
       else if (this.screen) this.exitScreening();
       else document.body.classList.remove("nav-open");
       return;
     }
-    if (this.screen && !this.screen.editing && this.page === "papers" && !this.drawer && !$("#modal-root .modal") && !target?.matches("input,textarea,select") && !e.altKey && !e.ctrlKey && !e.metaKey && this.screenKey(e)) {
+    if (this.screen && this.page === "papers" && !this.drawer && !$("#modal-root .modal") && !target?.matches("input,textarea,select") && !e.altKey && !e.ctrlKey && !e.metaKey && this.screenKey(e)) {
       e.preventDefault();
       return;
     }

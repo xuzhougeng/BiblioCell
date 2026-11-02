@@ -55,13 +55,13 @@ type Paper struct {
 	Fulltext          string         `json:"fulltext"`
 	// FulltextURL is the entry link behind a "linked" fulltext status, read
 	// from the resources table; the view keeps it in sync with attachments.
-	FulltextURL       string         `json:"fulltextUrl"`
-	Starred           bool           `json:"starred"`
-	Source            string         `json:"source"`
-	BatchID           string         `json:"batchId"`
-	AddedAt           string         `json:"addedAt"`
-	UpdatedAt         string         `json:"updatedAt"`
-	IsDemo            bool           `json:"isDemo"`
+	FulltextURL string `json:"fulltextUrl"`
+	Starred     bool   `json:"starred"`
+	Source      string `json:"source"`
+	BatchID     string `json:"batchId"`
+	AddedAt     string `json:"addedAt"`
+	UpdatedAt   string `json:"updatedAt"`
+	IsDemo      bool   `json:"isDemo"`
 }
 
 // PaperPatch contains optional metadata edits. Nil fields remain unchanged;
@@ -265,6 +265,11 @@ func (s *Store) SavePaperEdits(ctx context.Context, edits []PaperEdit) ([]string
 			return nil, err
 		}
 		before, latest := *edits[i].Before, current
+		if after.AddedAt != before.AddedAt {
+			if _, err := time.Parse(time.RFC3339Nano, after.AddedAt); err != nil {
+				return nil, fmt.Errorf("invalid date added: %w", err)
+			}
+		}
 		normalizePaper(&before)
 		normalizePaper(&after)
 		normalizePaper(&latest)
@@ -284,6 +289,13 @@ func (s *Store) SavePaperEdits(ctx context.Context, edits []PaperEdit) ([]string
 		}
 		if err := savePaper(ctx, tx, &merged); err != nil {
 			return nil, err
+		}
+		// Only an explicit desktop edit can correct the first-seen timestamp.
+		// Ordinary imports and agent upserts retain the original timestamp.
+		if merged.AddedAt != current.AddedAt {
+			if _, err := tx.ExecContext(ctx, `UPDATE papers SET first_seen_at = ? WHERE id = ?`, merged.AddedAt, merged.ID); err != nil {
+				return nil, fmt.Errorf("save date added: %w", err)
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -305,7 +317,7 @@ func recordDecision(p *Paper) {
 
 // serverPaperFields are never taken from a desktop edit: the database owns them.
 var serverPaperFields = map[string]bool{
-	"id": true, "addedAt": true, "updatedAt": true, "fulltext": true, "fulltextUrl": true, "reviewedAt": true, "awaitingReview": true, "batchId": true, "isDemo": true,
+	"id": true, "updatedAt": true, "fulltext": true, "fulltextUrl": true, "reviewedAt": true, "awaitingReview": true, "batchId": true, "isDemo": true,
 }
 
 // mergeFields applies what changed from before to after onto current, field by
