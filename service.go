@@ -122,9 +122,10 @@ func (l *Library) LookupDOI(doi string) (library.Paper, error) {
 	return library.LookupDOI(context.Background(), doi, sourceCredentials(l.settings))
 }
 
-// servePaperFile answers paperfile://localhost/<id> with the stored file, for
-// the window to render a PDF beside the paper. Only files the library knows
-// are served, so the scheme cannot reach anything else on disk.
+// servePaperFile answers paperfile://localhost/<id> (the page asks
+// http://paperfile.localhost/<id> on Windows, which mygo maps back) with the
+// stored file, for the window to render a PDF beside the paper. Only files the
+// library knows are served, so the scheme cannot reach anything else on disk.
 func (l *Library) servePaperFile(w http.ResponseWriter, r *http.Request) {
 	if l.store == nil {
 		http.Error(w, "library database is not ready", http.StatusServiceUnavailable)

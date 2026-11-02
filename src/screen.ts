@@ -45,12 +45,19 @@ export function translationPop(tr: Translation): string {
   return `${head}<p class="translate-pop-text">${esc(tr.text)}</p>`;
 }
 
+/** paperFileURL is where the window loads a stored file. WebView2 cannot load a
+ * custom scheme itself, so on Windows mygo serves paperfile:// at
+ * http://paperfile.localhost and only maps the URLs it navigates to, not an
+ * iframe's src: the page has to use that address directly. */
+const paperFileURL = (id: string): string =>
+  `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(id)}`;
+
 /** pdfPane shows the stored full text beside the paper when it is a PDF the window can render. */
 function pdfPane(app: App, p: Paper): string {
   if (!app.env.desktop || !app.env.real || !app.screenPdf) return "";
   const file = app.paperResources(p.id).find((r) => r.type === "fulltext" && r.localPath && /\.pdf$/i.test(r.localPath));
   if (!file) return "";
-  return `<aside class="screen-pdf"><div class="screen-pdf-head"><span>${I("file", 15)} ${esc(file.title)}</span><span class="section-actions"><button class="text-link" data-action="open-file" data-id="${esc(file.id)}">${t("在系统中打开")}</button><button class="text-link" data-action="screen-pdf-toggle">${t("隐藏")}</button></span></div><iframe class="screen-pdf-frame" src="paperfile://localhost/${esc(encodeURIComponent(file.id))}" title="${esc(file.title)}"></iframe></aside>`;
+  return `<aside class="screen-pdf"><div class="screen-pdf-head"><span>${I("file", 15)} ${esc(file.title)}</span><span class="section-actions"><button class="text-link" data-action="open-file" data-id="${esc(file.id)}">${t("在系统中打开")}</button><button class="text-link" data-action="screen-pdf-toggle">${t("隐藏")}</button></span></div><iframe class="screen-pdf-frame" src="${esc(paperFileURL(file.id))}" title="${esc(file.title)}"></iframe></aside>`;
 }
 
 /** hasPdf says whether the paper has a stored PDF, for the toolbar toggle. */
