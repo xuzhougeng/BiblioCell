@@ -92,7 +92,7 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
     const concernHint = concern === "source" ? t("查看详情，确认收录范围") : t("查看详情，核对依据");
     const warning = concern ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: concernLabel })}</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">${concernHint} ${I("arrow-right", 12)}</span></div>` : "";
     const cells: Record<PaperColumn, string> = {
-      star: `<td><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? t("取消收藏") : t("加入收藏")}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`,
+      star: `<td class="star-cell"><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? t("取消收藏") : t("加入收藏")}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`,
       title: `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || t("作者待补"))}</span><span class="meta-separator">·</span><span>${esc(p.year || t("年份待补"))}</span>${p.publicationStatus === "preprint" ? `<span class="preprint-label">${t("预印本")}</span>` : ""}</div>${warning}</td>`,
       journal: `<td class="journal-cell">${p.journal ? esc(p.journal) : `<span class="muted">${t("期刊待补")}</span>`}</td>`,
       year: `<td class="year-cell">${p.year ? esc(String(p.year)) : `<span class="muted">${t("年份待补")}</span>`}</td>`,

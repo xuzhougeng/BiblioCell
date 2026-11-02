@@ -56,4 +56,12 @@ export function initShell(): void {
     const open = document.body.classList.toggle("nav-open");
     menu.setAttribute("aria-expanded", String(open));
   });
+  // On phones the open sidebar covers the page; a tap anywhere outside it closes it again.
+  document.addEventListener("click", (e) => {
+    if (!document.body.classList.contains("nav-open")) return;
+    const target = e.target as Element | null;
+    if (target?.closest(".sidebar, #mobile-menu")) return;
+    document.body.classList.remove("nav-open");
+    menu?.setAttribute("aria-expanded", "false");
+  });
 }

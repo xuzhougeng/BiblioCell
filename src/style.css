@@ -632,8 +632,8 @@ code { font-family: var(--mono) }
   :root {
     --sidebar-width: 0px;
   }
-  .sidebar { width: 245px; transform: translateX(-100%); transition: transform 0.2s; box-shadow: 12px 0 45px rgba(64, 58, 38, 0.25) }
-  .nav-open .sidebar { transform: translateX(0); z-index: 60 }
+  .sidebar { width: 245px; transform: translateX(-100%); transition: transform 0.2s, box-shadow 0.2s; box-shadow: none }
+  .nav-open .sidebar { transform: translateX(0); z-index: 60; box-shadow: 12px 0 45px rgba(64, 58, 38, 0.25) }
   .brand strong { font-size: calc(18px * var(--font-scale, 1)) }
   .brand-light { display: inline }
   .brand small { display: block }
@@ -1179,3 +1179,42 @@ select.input { appearance: auto }
 .agent-history-open strong { font-size: calc(14px * var(--font-scale, 1)); color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .agent-history-open .muted { font-size: calc(12px * var(--font-scale, 1)) }
 .agent-history-item .btn-icon { flex: 0 0 auto }
+
+/* ---------------- 移动端：列表转卡片、触控尺寸、导航遮罩 ---------------- */
+@media (max-width: 760px) {
+  /* 打开的侧栏下方加一层遮罩，点外部即关闭（见 shell.ts） */
+  .nav-open .app-main::after { content: ""; position: fixed; inset: 0; z-index: 55; background: rgba(31, 38, 30, 0.32); animation: fade-in 0.2s }
+  .topbar { gap: 6px; padding: 0 12px }
+  .topbar-right { gap: 4px; min-width: 0 }
+  .global-search { flex: 1 1 auto; min-width: 0; width: auto }
+  .global-search kbd { display: none }
+  /* iOS 聚焦字号小于 16px 的输入框会自动放大页面 */
+  .global-search input, .search-input input, .table-search > .search-input, .input, select.input, .filter-select, textarea { font-size: 16px }
+  .filter-field { flex: 1 1 calc(50% - 4px) }
+  .filter-field .filter-select { font-size: 15px }
+
+  /* 文献表、总览紧凑表、数据集表：每行一张卡片，不再横向滚动 */
+  .table-wrap { overflow: visible }
+  .paper-table, .compact-table, .dataset-table { display: block; min-width: 0; width: 100%; table-layout: auto }
+  .paper-table thead { display: none }
+  .paper-table tbody { display: block }
+  .paper-table tbody tr { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 14px 16px; border-bottom: 1px solid #e6dec6 }
+  .paper-table tbody tr:last-child { border-bottom: 0 }
+  .paper-table tbody tr:has(> .star-cell) { padding-left: 46px }
+  .paper-table tbody td, .paper-table th:first-child, .paper-table td:first-child, .paper-table td:last-child { display: block; width: auto; min-width: 0; max-width: none; padding: 0; border: 0 }
+  .paper-table td.star-cell { position: absolute; top: 12px; left: 10px }
+  .paper-table .paper-main-cell, .compact-table .paper-main-cell, .dataset-table .dataset-main-cell { flex: 1 1 100%; width: auto; min-width: 0 }
+  .paper-table td.row-arrow { display: none }
+  .paper-table .species-label, .paper-table .species-name { display: inline }
+  .paper-table .species-name::before { content: " · " }
+  .paper-table .journal-cell { flex-basis: 100%; font-style: italic; font-size: calc(13px * var(--font-scale, 1)) }
+  .paper-table tbody tr.cursor-row td:first-child, .paper-table tbody tr:focus-visible td:first-child { box-shadow: none }
+  .paper-table tbody tr.cursor-row, .paper-table tbody tr:focus-visible { box-shadow: inset 3px 0 0 var(--primary) }
+  .dataset-table .link-cell { flex-basis: 100% }
+  .dataset-table .repo-cell { white-space: normal }
+  .link-chip-title { max-width: 180px }
+  .paper-review-note { margin-top: 8px }
+  .paper-table tr.paper-needs-review > td:first-child { box-shadow: none }
+  .paper-table tr.paper-needs-review { box-shadow: inset 3px 0 #bd8c36 }
+  .paper-table tr.paper-needs-review.excluded { box-shadow: inset 3px 0 #ac5545 }
+}
