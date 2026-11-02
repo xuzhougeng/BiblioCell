@@ -302,7 +302,7 @@ function Invoke-Sign([string]$FilePath) {
         if ("$($signature.Status)" -ne 'Valid') { throw "$leaf Authenticode status $($signature.Status): $($signature.StatusMessage)" }
         if (-not $signature.TimeStamperCertificate) { throw "$leaf has no RFC3161 timestamp" }
         Add-SignLog $FilePath $signature.SignerCertificate.Thumbprint
-        Write-Host "Signed $leaf: $($signature.Status), $($signature.SignerCertificate.Subject), timestamped by $($signature.TimeStamperCertificate.Subject)"
+        Write-Host "Signed ${leaf}: $($signature.Status), $($signature.SignerCertificate.Subject), timestamped by $($signature.TimeStamperCertificate.Subject)"
     } finally {
         Clear-CodeSignLog $tool.Home
     }

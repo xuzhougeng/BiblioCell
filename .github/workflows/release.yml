@@ -286,7 +286,7 @@ jobs:
             $leaf = [IO.Path]::GetFileName($file)
             if ("$($sig.Status)" -ne 'Valid') { throw "$leaf Authenticode status $($sig.Status): $($sig.StatusMessage)" }
             if (-not $sig.TimeStamperCertificate) { throw "$leaf has no RFC3161 timestamp" }
-            Write-Host "$leaf: $($sig.Status), $($sig.SignerCertificate.Subject)"
+            Write-Host "${leaf}: $($sig.Status), $($sig.SignerCertificate.Subject)"
           }
           if (-not (Test-Path -LiteralPath $env:ESIGNER_SIGN_LOG)) { throw "eSigner sign log not found: $env:ESIGNER_SIGN_LOG" }
           $log = Get-Content -LiteralPath $env:ESIGNER_SIGN_LOG
