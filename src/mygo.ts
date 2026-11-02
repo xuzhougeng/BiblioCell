@@ -140,6 +140,14 @@ export interface HarvestRun {
   errorMessage: string;
 }
 
+export interface Judgement {
+  verdict: string;
+  reason: string;
+  basis: string;
+  skipped: boolean;
+  usage: Usage;
+}
+
 /** MCPInfo describes the optional local AI integration. */
 export interface MCPInfo {
   enabled: boolean;
@@ -462,6 +470,14 @@ export const Library = {
   /** SaveSourceConfig persists one connector without starting a network request. */
   saveSourceConfig(config: SourceConfig): Promise<SourceStatus> {
     return call("Library.SaveSourceConfig", config);
+  },
+  /**
+   * ScreenPaper asks the configured model whether one paper meets a requirement,
+   * reading its stored full text when there is one and its abstract otherwise.
+   * The answer is a suggestion for the person; nothing is written.
+   */
+  screenPaper(paperID: string, requirement: string): Promise<Judgement> {
+    return call("Library.ScreenPaper", paperID, requirement);
   },
   /** SourceAutomation returns the update schedule and the latest runs' results. */
   sourceAutomation(): Promise<SourceAutomation> {

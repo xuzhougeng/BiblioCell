@@ -1266,3 +1266,19 @@ select.input { appearance: auto }
   .screen-extra .footer-hint { display: none }
   .screen-key { display: none }
 }
+
+/* ---- screening mode: AI suggestion ---- */
+.ai-toggle.is-on { border-color: var(--primary); color: var(--primary); background: var(--green-soft) }
+.ai-box { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 18px; padding: 13px 16px; border: 1.5px solid var(--line); border-left: 3px solid var(--primary); border-radius: var(--radius); background: var(--surface-deep); font-size: calc(13.5px * var(--font-scale, 1)) }
+.ai-box.excluded { border-left-color: #8c3a2b }
+.ai-box.uncertain { border-left-color: var(--amber) }
+.ai-box.is-error { border-left-color: #8c3a2b; color: #8c3a2b }
+.ai-box.is-skipped, .ai-box.is-loading { border-left-color: var(--line-strong) }
+.ai-box-label { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; color: var(--primary); letter-spacing: 0.3px }
+.ai-box.is-error .ai-box-label { color: #8c3a2b }
+.ai-box-reason { flex-basis: 100%; margin: 0; line-height: 1.85; color: #4a5142 }
+.ai-box .section-actions { margin-left: auto }
+.ai-box .text-link { margin-left: auto }
+.ai-box.is-loading .ai-box-label::after { content: ""; width: 12px; height: 12px; border: 2px solid var(--line-strong); border-top-color: var(--primary); border-radius: 50%; animation: ai-spin 0.9s linear infinite }
+@keyframes ai-spin { to { transform: rotate(360deg) } }
+@media (prefers-reduced-motion: reduce) { .ai-box.is-loading .ai-box-label::after { animation: none } }

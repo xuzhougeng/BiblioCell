@@ -1,5 +1,25 @@
 // English strings for views.
 export const views: Record<string, string> = {
+  // screen.ts: AI suggestions while screening
+  "写下你的筛选要求，AI 会结合每篇文献的全文（没有全文时用摘要）判断是否符合，给出建议供你采纳。没有全文也没有摘要的文献会自动跳过。": "Describe what you are screening for. The AI reads each paper's full text (or its abstract when there is none) and suggests whether it fits, for you to adopt or ignore. Papers with neither full text nor abstract are skipped.",
+  "筛选要求": "Screening requirement",
+  "例如：只保留对植物根组织做了单细胞或单核 RNA 测序、并公开了原始数据的研究": "For example: keep only studies that ran single-cell or single-nucleus RNA-seq on plant root tissue and released the raw data",
+  "进入筛选时不再自动询问（可在筛选页的“AI 建议”按钮重新开启）": "Don't ask again when screening starts (turn it back on with the \"AI suggestions\" button on the screening page)",
+  "让 AI 一起筛选？": "Screen with AI suggestions?",
+  "不用，直接筛选": "No, just screen",
+  "启用 AI 建议": "Enable AI suggestions",
+  "请填写筛选要求。": "Please describe the screening requirement.",
+  "依据全文": "From the full text",
+  "依据摘要": "From the abstract",
+  "AI 建议": "AI suggestions",
+  "正在阅读这篇文献…": "Reading this paper…",
+  "重试": "Retry",
+  "没有全文也没有摘要，已跳过 AI 判断。": "No full text or abstract, so the AI judgement was skipped.",
+  "与当前判断一致": "Matches your current decision",
+  "采纳为“{label}”": "Adopt as \"{label}\"",
+  "AI 建议：开": "AI suggestions: on",
+  "AI 判断失败，请重试。": "The AI judgement failed. Please retry.",
+  "已采纳 AI 建议：{label}": "Adopted the AI suggestion: {label}",
   // screen.ts: screening mode
   "没有可筛选的文献": "No papers to screen",
   "当前筛选结果为空。回到列表调整筛选条件后再进入逐篇筛选。": "The current filter matches nothing. Go back to the list, adjust the filters, then start screening again.",
