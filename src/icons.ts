@@ -27,7 +27,6 @@ const paths: Record<string, string> = {
   leaf: '<path d="M20 4c-7-2-15 1-15 8a7 7 0 0 0 7 7c7 0 9-8 8-15Z"/><path d="m4 21 11-11M9 16v-5m0 5h5"/>',
   refresh: '<path d="M4 12a8 8 0 0 1 14-5.3L20 8.5"/><path d="M20 3.75V8.5h-4.75"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15.5"/><path d="M4 20.25V15.5h4.75"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  schema: '<rect x="8.5" y="3.5" width="7" height="5.5" rx="1.5"/><rect x="3.5" y="15" width="7" height="5.5" rx="1.5"/><rect x="13.5" y="15" width="7" height="5.5" rx="1.5"/><path d="M12 9v3M7 15v-1.5A1.5 1.5 0 0 1 8.5 12h7a1.5 1.5 0 0 1 1.5 1.5V15"/>',
   code: '<path d="m8 5-7 7 7 7m8-14 7 7-7 7m-3-17-2 20"/>',
   folder: '<path d="M3 5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
   upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/>',

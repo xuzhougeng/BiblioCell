@@ -203,7 +203,6 @@ th { font-weight: 600 }
 .brand-light { font-weight: 450 }
 .brand small { display: block; font-size: calc(11.5px * var(--font-scale, 1)); color: #6d6752; letter-spacing: 2.2px; margin-top: 3px }
 .nav-label { font-size: calc(12px * var(--font-scale, 1)); color: #6d6753; letter-spacing: 2.2px; padding: 0 14px; margin-bottom: 12px }
-.nav-label-spaced { margin-top: 30px }
 .nav-list { display: flex; flex-direction: column; gap: 5px }
 .nav-item { height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 13px; border-radius: 5px; color: #56614e; font-size: calc(15px * var(--font-scale, 1)); font-weight: 550; transition: background 0.15s, color 0.15s }
 .nav-item > [data-icon] { opacity: 0.85; display: flex }
@@ -477,16 +476,6 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 }
 .notice > svg { margin-top: 3px; color: var(--primary); flex-shrink: 0 }
 .notice strong { color: var(--primary-deep) }
-/* ---------------- 数据库设计页 ---------------- */
-.schema-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; margin: 22px 0 }
-.schema-card { background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius); padding: 24px; position: relative }
-.schema-card h3 { font-size: calc(17px * var(--font-scale, 1)); margin: 12px 0 6px }
-.schema-card p { color: var(--muted); margin-bottom: 15px; margin: 15px 0 0; font-size: calc(14px * var(--font-scale, 1)); line-height: 1.9 }
-.schema-card ul { padding: 0; margin: 0; list-style: none }
-.schema-card li { font-size: calc(13.5px * var(--font-scale, 1)); padding: 6px 0; color: #5a614f; border-bottom: 1px dashed #ddd3b8 }
-.schema-card code { font-family: var(--mono); font-size: calc(13px * var(--font-scale, 1)); color: var(--primary-deep); background: #efe9d3; padding: 2px 6px; border-radius: 3px }
-.relation-note { padding: 18px 21px; border: 1.5px solid var(--line); background: var(--surface-deep); border-radius: var(--radius); font-size: calc(14px * var(--font-scale, 1)); color: #5a614f; line-height: 1.9; margin: 21px 0 }
-.relation-note code { font-size: calc(13px * var(--font-scale, 1)); color: var(--primary-deep) }
 code { font-family: var(--mono) }
 /* ---------------- 弹窗 · 抽屉 · 表单 ---------------- */
 .modal-backdrop, .drawer-backdrop { position: fixed; inset: 0; background: rgba(24, 36, 27, 0.55); z-index: 70; display: flex; backdrop-filter: blur(2px) }
@@ -632,10 +621,6 @@ code { font-family: var(--mono) }
   .stat-grid { gap: 12px }
   .stat-value { font-size: calc(30px * var(--font-scale, 1)) }
   .global-search { width: 250px }
-  .schema-grid { grid-template-columns: 1fr }
-  .schema-card { padding: 21px }
-  .schema-card ul { display: flex; flex-wrap: wrap; gap: 8px }
-  .schema-card li { border: 0 }
   h1 { font-size: calc(28px * var(--font-scale, 1)) }
   .page-heading { gap: 15px }
   .heading-actions .btn-secondary { padding: 8px }
@@ -941,17 +926,6 @@ a.link-chip:hover svg { color: var(--primary) }
 .source-record-item span { color: var(--muted); font-size: calc(11.5px * var(--font-scale, 1)) }
 .activity-item p { font-size: calc(14px * var(--font-scale, 1)); color: #454d3c }
 .activity-item .muted { font-size: calc(12.5px * var(--font-scale, 1)) }
-.schema-number { position: absolute; right: 21px; top: 21px; color: #cfc4a6; font-family: var(--serif); font-size: calc(36px * var(--font-scale, 1)) }
-.schema-card h2 { font-size: calc(21px * var(--font-scale, 1)); margin: 17px 0 8px }
-.relation-list { padding-top: 8px; padding-bottom: 8px }
-.relation-list > .relation-note { background: transparent; border: 0; border-bottom: 1px solid #e6dec6; border-radius: 0; margin: 0; padding: 19px 0; display: grid; grid-template-columns: 175px 1fr; gap: 6px 19px }
-.relation-list > .relation-note:last-child { border: 0 }
-.relation-note strong { font-size: calc(14.5px * var(--font-scale, 1)); font-weight: 650; color: var(--primary-deep) }
-.relation-note > span { font-size: calc(13.5px * var(--font-scale, 1)); color: #6a6450 }
-.relation-note > code { grid-column: 2; font-size: calc(12.5px * var(--font-scale, 1)); color: #78725e }
-.status-definitions p { margin-bottom: 12px; font-size: calc(13.5px * var(--font-scale, 1)) !important }
-.status-definitions p:last-child { margin: 0 }
-.status-definitions strong { font-weight: 650; color: var(--primary-deep) }
 .overview-bottom-grid > .panel:last-child .panel-body p + p { margin-top: 10px }
 /* Overlays are siblings of their backdrops; positioning must not depend on nesting. */
 .modal.modal-wide { width: min(720px, calc(100vw - 36px)) }
@@ -1015,7 +989,6 @@ a.link-chip:hover svg { color: var(--primary) }
   .compact-table th:nth-child(4) { width: 100px }
   .compact-table th:nth-child(5) { width: 95px }
   .source-footer { flex-direction: row; align-items: center }
-  .relation-list > .relation-note { grid-template-columns: 145px 1fr }
 }
 
 @media (max-width: 760px) {
@@ -1051,16 +1024,12 @@ a.link-chip:hover svg { color: var(--primary) }
   .task-list { padding: 0 18px }
   .panel-footnote { font-size: calc(12px * var(--font-scale, 1)); padding: 13px 18px; align-items: flex-start }
   .panel-footnote svg { margin-top: 2px; flex-shrink: 0 }
-  .relation-list > .relation-note { display: block }
-  .relation-note > strong, .relation-note > span, .relation-note > code { display: block; margin-bottom: 6px }
   .source-footer { flex-direction: row }
   .drawer-footer .reading-select { font-size: calc(12.5px * var(--font-scale, 1)) }
   .drawer-footer .btn { font-size: calc(13px * var(--font-scale, 1)) }
   .detail-dl { grid-template-columns: 78px 1fr }
   .notice-box { font-size: calc(13px * var(--font-scale, 1)); padding: 14px 16px }
   .source-card .source-description { min-height: 0 }
-  .schema-grid { margin-top: 10px }
-  .schema-card ul { display: block }
 }
 
 .paper-context-menu { position: fixed; z-index: 1000; padding: 6px; background: #faf8ef; border: 1px solid #c9bd99; border-radius: 6px; box-shadow: 0 4px 16px #0003; }

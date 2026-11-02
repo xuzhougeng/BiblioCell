@@ -20,7 +20,7 @@ import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgen
 import { Library } from "./mygo.ts";
 import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
 import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
-import { renderDatasets, renderOverview, renderPapers, renderSchema, renderTasks } from "./views.ts";
+import { renderDatasets, renderOverview, renderPapers, renderTasks } from "./views.ts";
 
 /** Env describes the runtime: desktop vs browser preview, real vs demo data, and backend-provided info. */
 export interface Env {
@@ -257,7 +257,6 @@ export class App {
       tasks: () => renderTasks(this),
       sources: () => renderSources(this),
       agent: () => renderAgent(this),
-      schema: () => renderSchema(),
       settings: () => renderSettings(this),
     };
     content.innerHTML = renderers[this.page]();
