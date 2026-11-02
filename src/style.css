@@ -1094,12 +1094,36 @@ body.page-agent #app-content { flex: 1; min-height: 0; display: flex; flex-direc
 .agent-turn p + p { margin-top: 10px }
 .agent-turn.user { background: var(--primary); color: #f7f8f5; border-top-right-radius: 3px }
 .agent-turn.assistant { background: var(--surface); border: 1px solid var(--line); border-top-left-radius: 3px; color: #333a2d }
-.agent-tool { width: min(100%, 860px); border: 1px dashed #c8bda0; border-radius: 6px; padding: 5px 12px; font-size: calc(12.5px * var(--font-scale, 1)); color: #5a614f; background: var(--surface) }
-.agent-tool summary { cursor: pointer; display: flex; align-items: center; gap: 8px; font-family: var(--mono); list-style: none }
-.agent-tool summary::-webkit-details-marker { display: none }
-.agent-tool summary svg { color: var(--primary) }
-.agent-tool summary .badge { margin-left: auto }
-.agent-tool pre { margin: 8px 0 0; max-height: 240px; overflow: auto; padding: 8px 10px; border-radius: 4px; background: #fffdf7; font-family: var(--mono); font-size: calc(12px * var(--font-scale, 1)); white-space: pre-wrap; overflow-wrap: anywhere }
+/* 工具调用卡片:连续的调用合成一张卡,顶部一行状态,里面每次调用一行,可展开看参数与结果 */
+.agent-tools { width: min(100%, 860px); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: calc(12.5px * var(--font-scale, 1)); color: #5a614f; overflow: hidden }
+.agent-tools-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; list-style: none; user-select: none }
+.agent-tools-head::-webkit-details-marker { display: none }
+.agent-tools-head:hover { background: var(--surface-deep) }
+.agent-tools-icon { display: inline-flex; flex: 0 0 auto }
+.agent-tools-icon.running { color: var(--accent); animation: agent-spin 1.6s linear infinite }
+.agent-tools-icon.done { color: var(--primary) }
+.agent-tools-icon.failed { color: var(--amber) }
+.agent-tools-label { flex: 0 0 auto; color: var(--text-strong); font-size: calc(13.5px * var(--font-scale, 1)); font-weight: 600; white-space: nowrap }
+.agent-tools-label code, .agent-tool-item code { font-family: var(--mono); font-size: 0.95em }
+.agent-tools-sub { flex: 1; min-width: 0; color: var(--muted); font-family: var(--mono); font-size: calc(12px * var(--font-scale, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.agent-tools-meta { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap }
+.agent-tools-chevron { display: inline-flex; flex: 0 0 auto; color: var(--muted); transition: transform 0.15s ease }
+details[open] > summary .agent-tools-chevron { transform: rotate(90deg) }
+.agent-tools-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); max-height: 420px; overflow-y: auto; overscroll-behavior: contain }
+.agent-tools-list li + li { border-top: 1px solid #ece5d2 }
+.agent-tool-item summary { display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 36px; cursor: pointer; list-style: none }
+.agent-tool-item summary::-webkit-details-marker { display: none }
+.agent-tool-item summary:hover { background: var(--surface-deep) }
+.agent-tool-item code { flex: 0 0 auto; color: var(--text-strong) }
+.agent-tool-hint { flex: 1; min-width: 0; color: var(--muted); font-family: var(--mono); font-size: calc(12px * var(--font-scale, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.agent-tool-state { flex: 0 0 auto; font-weight: 600; white-space: nowrap }
+.agent-tool-state.running { color: var(--accent); font-weight: 500 }
+.agent-tool-state.failed { color: #a0392a }
+.agent-tool-body { display: grid; gap: 4px; padding: 6px 12px 10px 36px; background: #fffdf7; border-top: 1px solid #ece5d2 }
+.agent-tools > .agent-tool-body { padding-left: 12px }
+.agent-tool-caption { color: var(--muted); font-size: calc(11.5px * var(--font-scale, 1)); letter-spacing: 0.4px }
+.agent-tool-caption + pre + .agent-tool-caption { margin-top: 6px }
+.agent-tool-body pre { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border-radius: 4px; background: var(--surface); border: 1px solid #ece5d2; font-family: var(--mono); font-size: calc(12px * var(--font-scale, 1)); white-space: pre-wrap; overflow-wrap: anywhere }
 .agent-thinking { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: calc(13px * var(--font-scale, 1)) }
 .agent-thinking svg { color: var(--accent); animation: agent-spin 1.6s linear infinite }
 @keyframes agent-spin { to { transform: rotate(360deg) } }

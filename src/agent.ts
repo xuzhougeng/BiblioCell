@@ -4,7 +4,8 @@ import type { App } from "./app.ts";
 import { Library, events, type Event as AgentEvent, type Message as AgentMessage } from "./mygo.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { esc, shortTime } from "./model.ts";
-import { $, I, badge, empty, errorMessage } from "./ui.ts";
+import { $, $$, I, empty, errorMessage } from "./ui.ts";
+import { formatElapsed, toolCardHTML, type ToolRun } from "./agent-tools.ts";
 
 export interface AgentState {
   /** The saved conversation this transcript belongs to; empty until the first completed run saves it. */
@@ -17,9 +18,11 @@ export interface AgentState {
   live: AgentEvent[];
   /** Messages typed while a run was in flight; each goes out when the previous run ends. */
   queue: string[];
+  /** Epoch ms the run in flight started; 0 when idle. */
+  startedAt: number;
 }
 
-export const emptyAgentState = (): AgentState => ({ id: "", title: "", messages: [], busy: false, live: [], queue: [] });
+export const emptyAgentState = (): AgentState => ({ id: "", title: "", messages: [], busy: false, live: [], queue: [], startedAt: 0 });
 
 export const AGENT_EXAMPLES = [
   "库里现在有多少篇文献？哪些还没有判断收录？",
@@ -27,34 +30,42 @@ export const AGENT_EXAMPLES = [
   "检查待判断的文献里哪些是综述，建议排除并记录依据。",
 ];
 
-const DISPLAY_LIMIT = 4000;
-
-const clip = (text: string): string => (text.length > DISPLAY_LIMIT ? text.slice(0, DISPLAY_LIMIT) + "\n…（已省略）" : text);
-
 const paragraphs = (text: string): string =>
   text.trim().split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join("") || "<p class=\"muted\">（没有文字回复）</p>";
-
-function toolBlock(name: string, args: string, result: AgentMessage | undefined, pending: boolean): string {
-  const state = pending ? badge("运行中", "amber") : result?.isError ? badge("失败", "amber") : badge("完成", "green");
-  const output = result ? `<pre>${esc(clip(result.content))}</pre>` : "";
-  return `<div class="agent-row block"><details class="agent-tool"><summary>${I("code", 14)}<span>${esc(name)}</span>${state}</summary><pre>${esc(clip(args))}</pre>${output}</details></div>`;
-}
 
 const userRow = (html: string): string => `<div class="agent-row user"><span class="agent-avatar user" aria-hidden="true">我</span><div class="agent-turn user">${html}</div></div>`;
 const assistantRow = (html: string): string => `<div class="agent-row assistant"><span class="agent-avatar assistant" aria-hidden="true">${I("sparkle", 18)}</span><div class="agent-turn assistant">${html}</div></div>`;
 
+/** transcript renders the saved conversation. Tool calls that follow one another with nothing said in between share one card. */
 function transcript(state: AgentState): string {
   const results = new Map<string, AgentMessage>();
   for (const m of state.messages) if (m.role === "tool" && m.toolCallId) results.set(m.toolCallId, m);
   const parts: string[] = [];
+  let runs: ToolRun[] = [];
+  const flush = (): void => {
+    if (runs.length) parts.push(toolCardHTML(runs));
+    runs = [];
+  };
   for (const m of state.messages) {
-    if (m.role === "user") parts.push(userRow(paragraphs(m.content)));
-    else if (m.role === "assistant") {
-      if (m.thinking?.trim()) parts.push(`<div class="agent-row block"><details class="agent-thought"><summary>${I("info", 14)}<span>思考摘要</span></summary><div>${renderMarkdown(m.thinking)}</div></details></div>`);
-      if (m.content.trim()) parts.push(assistantRow(renderMarkdown(m.content)));
-      for (const call of m.toolCalls ?? []) parts.push(toolBlock(call.name, call.arguments, results.get(call.id), false));
+    if (m.role === "user") {
+      flush();
+      parts.push(userRow(paragraphs(m.content)));
+    } else if (m.role === "assistant") {
+      if (m.thinking?.trim()) {
+        flush();
+        parts.push(`<div class="agent-row block"><details class="agent-thought"><summary>${I("info", 14)}<span>思考摘要</span></summary><div>${renderMarkdown(m.thinking)}</div></details></div>`);
+      }
+      if (m.content.trim()) {
+        flush();
+        parts.push(assistantRow(renderMarkdown(m.content)));
+      }
+      for (const call of m.toolCalls ?? []) {
+        const result = results.get(call.id);
+        runs.push({ call, result: result ? { content: result.content, isError: result.isError } : undefined });
+      }
     }
   }
+  flush();
   return parts.join("");
 }
 
@@ -67,19 +78,24 @@ function queueHTML(state: AgentState): string {
   return `<div class="agent-row block"><div class="agent-queue"><span class="agent-queue-label">${I("clock", 14)} 排队中 ${state.queue.length} · 发送前可以继续修改</span><ol>${items}</ol></div></div>`;
 }
 
-/** liveHTML shows the run in flight: each tool call as it starts and finishes, then the queue. */
+/** liveHTML shows the run in flight: one card that grows with each tool call, then the queue. */
 function liveHTML(state: AgentState): string {
   if (!state.busy) return queueHTML(state);
   const done = new Map<string, AgentEvent>();
   for (const e of state.live) if (e.type === "tool_result" && e.toolCall) done.set(e.toolCall.id, e);
-  const calls = state.live.filter((e) => e.type === "tool_call" && e.toolCall);
-  const blocks = calls.map((e) => {
+  const runs: ToolRun[] = state.live.filter((e) => e.type === "tool_call" && e.toolCall).map((e) => {
     const call = e.toolCall!;
     const result = done.get(call.id);
-    return toolBlock(call.name, call.arguments, result ? { role: "tool", content: result.output ?? "", isError: result.isError } : undefined, !result);
+    return { call, result: result ? { content: result.output ?? "", isError: result.isError } : undefined };
   });
   const step = state.live.reduce((n, e) => Math.max(n, e.step), 0);
-  return blocks.join("") + `<div class="agent-row block"><div class="agent-thinking">${I("clock", 15)}<span>模型正在思考${step ? `（第 ${step} 步）` : ""}…</span></div></div>` + queueHTML(state);
+  const card = toolCardHTML(runs, { running: true, step, startedAt: state.startedAt });
+  return card + `<div class="agent-row block"><div class="agent-thinking">${I("clock", 15)}<span>模型正在思考${step ? `（第 ${step} 步）` : ""}…</span></div></div>` + queueHTML(state);
+}
+
+/** tickElapsed keeps the running card's timer moving between events. */
+function tickElapsed(): void {
+  for (const el of $$("#agent-live .agent-tools-elapsed")) el.textContent = formatElapsed(Date.now() - Number(el.dataset.started));
 }
 
 export function renderAgent(app: App): string {
@@ -113,7 +129,7 @@ function scrollToEnd(): void {
   if (transcript) transcript.scrollTop = transcript.scrollHeight;
 }
 
-/** refreshLive repaints only the in-flight block, so the prompt box keeps its text and a queued message being edited keeps its cursor. */
+/** refreshLive repaints only the in-flight block, so the prompt box keeps its text, a queued message being edited keeps its cursor, and cards the user opened or closed stay that way. */
 function refreshLive(app: App): void {
   const live = $("#agent-live");
   if (!live) return;
@@ -121,7 +137,14 @@ function refreshLive(app: App): void {
   const editing = active instanceof HTMLTextAreaElement && active.dataset.queueIndex !== undefined
     ? { index: active.dataset.queueIndex, start: active.selectionStart, end: active.selectionEnd }
     : null;
+  const folds = new Map<string, boolean>();
+  for (const d of $$<HTMLDetailsElement>("details[data-key]", live)) folds.set(d.dataset.key ?? "", d.open);
   live.innerHTML = liveHTML(app.agent);
+  for (const d of $$<HTMLDetailsElement>("details[data-key]", live)) {
+    const open = folds.get(d.dataset.key ?? "");
+    if (open !== undefined) d.open = open;
+  }
+  for (const list of $$(".agent-tools-list", live)) list.scrollTop = list.scrollHeight; // The newest call stays in view.
   if (editing) {
     const again = $<HTMLTextAreaElement>(`.agent-queue-edit[data-queue-index="${editing.index}"]`, live);
     if (again) {
@@ -168,8 +191,10 @@ function runAgent(app: App, prompt: string): void {
   state.messages = sent;
   state.busy = true;
   state.live = [];
+  state.startedAt = Date.now();
   rerender(app, "", true); // Sending keeps the cursor in the box for the next message.
   scrollToEnd();
+  const timer = setInterval(tickElapsed, 1000);
   Library.agentChat(sent).then(async (result) => {
     state.messages = result.messages;
     if (result.stopReason === "max_tokens") app.toast("回复在输出上限处被截断，可以让它继续。", true);
@@ -182,12 +207,15 @@ function runAgent(app: App, prompt: string): void {
     app.toast(`助手运行失败：${errorMessage(error, "请检查模型设置和网络。")}`, true);
     state.busy = false;
     state.live = [];
+    state.startedAt = 0;
     rerender(app, prompt, true);
     return false;
   }).then(async (finished) => {
+    clearInterval(timer);
     if (!finished) return;
     state.busy = false;
     state.live = [];
+    state.startedAt = 0;
     if (app.env.real) await app.reload(); // Tool calls wrote to the database; reload renders too.
     rerender(app);
     scrollToEnd();
