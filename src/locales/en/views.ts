@@ -1,5 +1,20 @@
 // English strings for views.
 export const views: Record<string, string> = {
+  // screen.ts: screening mode
+  "没有可筛选的文献": "No papers to screen",
+  "当前筛选结果为空。回到列表调整筛选条件后再进入逐篇筛选。": "The current filter matches nothing. Go back to the list, adjust the filters, then start screening again.",
+  "返回列表": "Back to list",
+  "逐篇筛选": "Screen one by one",
+  "以单篇文献为中心逐篇查看并做收录判断": "Read each paper on its own page and decide whether to keep it",
+  "退出筛选": "Exit screening",
+  "第 {n} / {total} 篇": "Paper {n} of {total}",
+  "已判断 {done} 篇": "{done} decided",
+  "上一篇": "Previous",
+  "下一篇": "Next",
+  "判断依据：{reason}": "Basis: {reason}",
+  "完整详情": "Full details",
+  "←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · 判断后自动跳到下一篇": "←→ previous / next · Y include · N exclude · U uncertain · moves on after each decision",
+  "已记为：{label}": "Marked as {label}",
   // views.ts: task groups and overview
   "确认收录范围": "Confirm screening",
   "待补全文": "Full text missing",
