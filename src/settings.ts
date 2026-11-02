@@ -56,8 +56,9 @@ function aiSection(ai: AgentConfig, disabled: string): string {
     + `<div class="settings-field"><label for="settings-ai-model">模型名称</label><input class="input" id="settings-ai-model" name="aiModel" type="text" value="${esc(ai.model)}" placeholder="${esc(defaults.model)}" autocomplete="off" spellcheck="false" maxlength="200" ${disabled}></div></div>`
     + `<div class="settings-field"><label for="settings-ai-base-url">服务地址</label><input class="settings-path-input" id="settings-ai-base-url" name="aiBaseUrl" type="url" value="${esc(ai.baseUrl)}" placeholder="${esc(defaults.baseUrl)}" autocomplete="off" spellcheck="false" maxlength="500" ${disabled}><p class="form-hint" id="settings-ai-hint">${esc(defaults.hint)}</p></div>`
     + `<div class="settings-field"><label for="settings-ai-api-key">API Key</label><div class="settings-path-row"><input class="settings-path-input" id="settings-ai-api-key" name="aiApiKey" type="password" value="${esc(ai.apiKey)}" placeholder="本地模型服务可留空" autocomplete="off" spellcheck="false" maxlength="1000" ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-ai-key" ${disabled}>显示</button></div></div>`
-    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-max-steps">单次运行步数上限</label><input class="input" id="settings-ai-max-steps" name="aiMaxSteps" type="number" min="1" max="200" value="${ai.maxSteps || ""}" placeholder="20" ${disabled}></div>`
-    + `<div class="settings-field"><label for="settings-ai-max-tokens">单次回复 token 上限</label><input class="input" id="settings-ai-max-tokens" name="aiMaxTokens" type="number" min="0" max="1000000" value="${ai.maxTokens || ""}" placeholder="默认" ${disabled}></div></div>`
+    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-effort">思考强度</label><select class="input" id="settings-ai-effort" name="aiEffort" ${disabled}>${option("", "服务默认", ai.effort)}${option("low", "低 · 快速简答", ai.effort)}${option("medium", "中", ai.effort)}${option("high", "高", ai.effort)}${option("xhigh", "很高 · 适合多步整理", ai.effort)}${option("max", "最高", ai.effort)}</select><p class="form-hint">Anthropic 发送 output_config.effort；OpenAI 兼容协议发送 reasoning_effort，很高与最高都按 high 发送。老模型不支持时请选“服务默认”。</p></div>`
+    + `<div class="settings-field"><label for="settings-ai-max-steps">单次运行步数上限</label><input class="input" id="settings-ai-max-steps" name="aiMaxSteps" type="number" min="1" max="200" value="${ai.maxSteps || ""}" placeholder="20" ${disabled}></div></div>`
+    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-max-tokens">单次回复 token 上限</label><input class="input" id="settings-ai-max-tokens" name="aiMaxTokens" type="number" min="0" max="1000000" value="${ai.maxTokens || ""}" placeholder="默认" ${disabled}></div></div>`
     + `<div class="settings-inline-note">${I("info", 16)}<span>Key 和地址只保存在本机 settings.json，不随存放文件夹迁移，也不会通过 MCP 返回。修改后下一次对话生效，无需重启。</span></div></section>`;
 }
 
@@ -83,7 +84,7 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   const button = $<HTMLButtonElement>("button[type=submit]", form);
   const ai: AgentConfig = {
     protocol: text(data, "aiProtocol"), baseUrl: text(data, "aiBaseUrl"), apiKey: text(data, "aiApiKey"), model: text(data, "aiModel"),
-    maxSteps: Number(data.get("aiMaxSteps")) || 0, maxTokens: Number(data.get("aiMaxTokens")) || 0,
+    maxSteps: Number(data.get("aiMaxSteps")) || 0, maxTokens: Number(data.get("aiMaxTokens")) || 0, effort: text(data, "aiEffort"),
   };
   const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken"), ai };
   if (ai.protocol === "openai" && !ai.model) {

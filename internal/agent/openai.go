@@ -35,17 +35,30 @@ type openAIToolCall struct {
 }
 
 type openAIMessage struct {
-	Role       string           `json:"role"`
-	Content    *string          `json:"content"`
-	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
+	Role    string  `json:"role"`
+	Content *string `json:"content"`
+	// ReasoningContent is what DeepSeek-style services return as the visible
+	// reasoning; it rides along in Raw for replay.
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
 }
 
 type openAIRequest struct {
-	Model     string            `json:"model"`
-	Messages  []json.RawMessage `json:"messages"`
-	Tools     []openAITool      `json:"tools,omitempty"`
-	MaxTokens int               `json:"max_tokens,omitempty"`
+	Model           string            `json:"model"`
+	Messages        []json.RawMessage `json:"messages"`
+	Tools           []openAITool      `json:"tools,omitempty"`
+	MaxTokens       int               `json:"max_tokens,omitempty"`
+	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
+}
+
+// openAIEffort maps the shared levels onto the three Chat Completions knows.
+func openAIEffort(effort string) string {
+	switch effort {
+	case "xhigh", "max":
+		return "high"
+	}
+	return effort
 }
 
 type openAIResponse struct {
@@ -62,7 +75,7 @@ type openAIResponse struct {
 func (p *openAIProvider) Protocol() string { return ProtocolOpenAI }
 
 func (p *openAIProvider) Complete(ctx context.Context, request Request) (Response, error) {
-	body := openAIRequest{Model: p.config.Model, MaxTokens: p.config.MaxTokens}
+	body := openAIRequest{Model: p.config.Model, MaxTokens: p.config.MaxTokens, ReasoningEffort: openAIEffort(p.config.Effort)}
 	for _, tool := range request.Tools {
 		body.Tools = append(body.Tools, openAITool{Type: "function", Function: openAIFunction{
 			Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema,
@@ -130,6 +143,7 @@ func (p *openAIProvider) Complete(ctx context.Context, request Request) (Respons
 	if decoded.Content != nil {
 		message.Content = *decoded.Content
 	}
+	message.Thinking = decoded.ReasoningContent
 	for _, call := range decoded.ToolCalls {
 		message.ToolCalls = append(message.ToolCalls, ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: string(argumentsJSON(call.Function.Arguments))})
 	}

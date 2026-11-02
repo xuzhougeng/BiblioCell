@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -31,7 +32,14 @@ type Config struct {
 	MaxTokens int `json:"maxTokens"`
 	// MaxSteps caps the completions of one run; 0 uses DefaultMaxSteps.
 	MaxSteps int `json:"maxSteps"`
+	// Effort asks the model how hard to think: low, medium, high, xhigh, or
+	// max; empty leaves the service's default. Anthropic takes it as
+	// output_config.effort, Chat Completions as reasoning_effort.
+	Effort string `json:"effort"`
 }
+
+// Efforts are the levels a person can pick, lowest first.
+var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
 // Defaults for a blank configuration.
 const (
@@ -71,6 +79,7 @@ func Trim(config Config) Config {
 	config.BaseURL = strings.TrimRight(strings.TrimSpace(config.BaseURL), "/")
 	config.APIKey = strings.TrimSpace(config.APIKey)
 	config.Model = strings.TrimSpace(config.Model)
+	config.Effort = strings.ToLower(strings.TrimSpace(config.Effort))
 	return config
 }
 
@@ -116,6 +125,9 @@ func Validate(config Config) error {
 	}
 	if config.MaxSteps > 200 {
 		return errors.New("AI max steps must be at most 200")
+	}
+	if config.Effort != "" && !slices.Contains(Efforts, config.Effort) {
+		return fmt.Errorf("AI effort must be one of %s", strings.Join(Efforts, ", "))
 	}
 	for _, value := range []string{config.APIKey, config.Model} {
 		if strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {

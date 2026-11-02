@@ -57,7 +57,7 @@ Commands:
                                       show or set the schedule the desktop app runs
   settings get                        current settings.json
   settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN] [-ncbi-api-key KEY] [-contact-email EMAIL]
-               [-ai-protocol anthropic|openai] [-ai-base-url URL] [-ai-api-key KEY] [-ai-model NAME] [-ai-max-steps N]
+               [-ai-protocol anthropic|openai] [-ai-base-url URL] [-ai-api-key KEY] [-ai-model NAME] [-ai-max-steps N] [-ai-effort LEVEL]
   mcp                                 MCP endpoint and bearer token
   serve [-addr HOST:PORT]             run the MCP server without a window, until interrupted
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
@@ -510,6 +510,7 @@ func (c *cli) configure(args []string) error {
 		flags.StringVar(&config.AI.Model, "ai-model", config.AI.Model, "model name")
 		flags.IntVar(&config.AI.MaxTokens, "ai-max-tokens", config.AI.MaxTokens, "output tokens per completion, 0 for the default")
 		flags.IntVar(&config.AI.MaxSteps, "ai-max-steps", config.AI.MaxSteps, "completions per run, 0 for 20")
+		flags.StringVar(&config.AI.Effort, "ai-effort", config.AI.Effort, "thinking effort: low, medium, high, xhigh, max; empty for the service default")
 		if err := flags.Parse(rest); err != nil {
 			return err
 		}

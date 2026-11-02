@@ -11,6 +11,7 @@ export interface AgentConfig {
   model: string;
   maxTokens: number;
   maxSteps: number;
+  effort: string;
 }
 
 export interface Config {
@@ -131,6 +132,7 @@ export interface MCPInfo {
 export interface Message {
   role: string;
   content: string;
+  thinking?: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
   toolName?: string;
