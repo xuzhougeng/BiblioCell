@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 
+	"bibliocell/internal/agent"
 	"bibliocell/internal/library"
 	"bibliocell/internal/settings"
 )
@@ -308,9 +311,67 @@ func (l *Library) ChooseStoragePath(ctx context.Context) (string, error) {
 
 // MCPInfo returns the loopback endpoint external AI clients can use.
 func (l *Library) MCPInfo() MCPInfo {
-	return MCPInfo{
+	info := MCPInfo{
 		Enabled: l.mcpEndpoint != "", Endpoint: l.mcpEndpoint, Token: l.mcpToken,
-		Tools:     []string{"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "delete_paper"},
 		Resources: []string{"bibliocell://schema/paper", "bibliocell://schema/sql"},
 	}
+	for _, tool := range l.agentTools() {
+		info.Tools = append(info.Tools, tool.Name)
+	}
+	return info
+}
+
+// agentTools lists the MCP tools, which the built-in agent uses as its own.
+func (l *Library) agentTools() []agent.ToolDef {
+	if l.store == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	local, err := library.ConnectLocalMCP(ctx, l.store, sourceCredentials(l.settings))
+	if err != nil {
+		return nil
+	}
+	defer local.Close()
+	defs, err := agent.MCPTools{Session: local.Session}.List(ctx)
+	if err != nil {
+		return nil
+	}
+	return defs
+}
+
+// agentProgress shows the window each step of a run while it happens.
+var agentProgress = mygo.NewEvent[agent.Event]("agentProgress")
+
+// AgentChat runs the built-in agent over the conversation and returns it grown
+// by the model's turns and tool calls. The window keeps the transcript, so
+// the next call sends it back whole. Tools run in-process against the real
+// database with write access, as the person asked for the work.
+func (l *Library) AgentChat(ctx context.Context, messages []agent.Message) (agent.Result, error) {
+	if l.store == nil || l.settings == nil {
+		return agent.Result{}, errors.New("library database is not ready")
+	}
+	config := l.settings.Get().AI
+	if config.Model == "" && agent.Normalize(config).Model == "" {
+		return agent.Result{}, errors.New("请先在设置中填写 AI 模型服务")
+	}
+	provider, err := agent.NewProvider(config)
+	if err != nil {
+		return agent.Result{}, err
+	}
+	runCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	local, err := library.ConnectLocalMCP(runCtx, l.store, sourceCredentials(l.settings))
+	if err != nil {
+		return agent.Result{}, err
+	}
+	defer local.Close()
+	return agent.Run(runCtx, provider, agent.MCPTools{Session: local.Session}, messages, agent.Options{
+		MaxSteps: agent.Normalize(config).MaxSteps,
+		OnEvent: func(event agent.Event) {
+			if err := agentProgress.Broadcast(event); err != nil {
+				log.Printf("announce agent progress: %v", err)
+			}
+		},
+	})
 }

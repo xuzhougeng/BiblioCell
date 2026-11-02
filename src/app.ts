@@ -15,7 +15,8 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { previewFontSize, renderSettings, saveSettings, settingsActions } from "./settings.ts";
+import { previewFontSize, renderSettings, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
+import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
 import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
 import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
@@ -62,6 +63,7 @@ export class App {
   datasetPage = 1;
   datasetPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-datasets-page-size"))) ? Number(localStorage.getItem("bibliocell-datasets-page-size")) : PAGE_SIZES[0]!;
   drawer: Drawer | null = null;
+  agent: AgentState = emptyAgentState();
   drawerTab = "overview";
   syncing = new Set<string>();
   pendingImport: { next: LibraryState; stats: ImportStats } | null = null;
@@ -129,7 +131,10 @@ export class App {
     });
     // Agents write while the window sits in the background; show their work on return.
     if (this.env.real) window.addEventListener("focus", () => void refreshSources(this).then(() => this.refresh()));
-    if (this.env.desktop) watchSources(this);
+    if (this.env.desktop) {
+      watchSources(this);
+      watchAgent(this);
+    }
     this.render();
     if (this.warning) this.toast(this.warning, true);
   }
@@ -249,12 +254,13 @@ export class App {
       datasets: () => renderDatasets(this),
       tasks: () => renderTasks(this),
       sources: () => renderSources(this),
+      agent: () => renderAgent(this),
       schema: () => renderSchema(),
       settings: () => renderSettings(this),
     };
     content.innerHTML = renderers[this.page]();
     const actions = $(".heading-actions");
-    if (actions) actions.hidden = this.page === "settings";
+    if (actions) actions.hidden = this.page === "settings" || this.page === "agent";
     const [title, subtitle] = PAGES[this.page];
     for (const [selector, value] of [["#page-title", title], ["#page-subtitle", subtitle]] as const) {
       const el = $(selector);
@@ -598,6 +604,7 @@ export class App {
       this.toast("已忽略这条建议。");
     },
     ...settingsActions(this),
+    ...agentActions(this),
     ...fileActions(this),
     ...reviewActions(this),
   };
@@ -629,7 +636,7 @@ export class App {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
-      "paper-form": savePaper, "source-config-form": saveSourceConfig, "settings-form": saveSettings,
+      "paper-form": savePaper, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
@@ -658,6 +665,10 @@ export class App {
     }
     if (target instanceof HTMLSelectElement && target.matches('#source-config-form [name="provider"]')) {
       applyProviderDefault(target);
+      return;
+    }
+    if (target.id === "settings-ai-protocol" && target instanceof HTMLSelectElement) {
+      updateAIPlaceholders(target);
       return;
     }
     if (target.id === "automation-enabled" || target.id === "automation-interval") {
@@ -752,6 +763,11 @@ export class App {
 
   private onKeydown(e: KeyboardEvent): void {
     const target = e.target instanceof HTMLElement ? e.target : null;
+    if (target?.id === "agent-input" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      target.closest("form")?.requestSubmit();
+      return;
+    }
     if ($("#paper-context-menu")) {
       if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); this.closeContextMenu(); }
       if (e.key !== "Enter" && e.key !== " ") e.preventDefault();

@@ -1,10 +1,10 @@
 // Settings page: demo switch, storage folder, MCP token and font size.
 import type { App } from "./app.ts";
-import { Library, type Config } from "./mygo.ts";
+import { Library, type AgentConfig, type Config } from "./mygo.ts";
 import { esc } from "./model.ts";
 import { applyFontSize } from "./shell.ts";
 import { enqueue } from "./store.ts";
-import { $, I, badge, errorMessage, text } from "./ui.ts";
+import { $, I, badge, errorMessage, option, text } from "./ui.ts";
 
 export function renderSettings(app: App): string {
   const { env } = app;
@@ -30,11 +30,46 @@ export function renderSettings(app: App): string {
     + `<div class="settings-mcp-meta"><div><span>Streamable HTTP 地址</span><code>${esc(mcp.enabled ? mcp.endpoint : "启动桌面应用后监听 127.0.0.1:37841")}</code></div><p><strong>工具</strong>${esc(mcp.tools.join(" · "))}</p><p><strong>Schema 资源</strong>${esc(mcp.resources.join(" · "))}</p></div>`
     + `<div class="settings-field"><label for="settings-mcp-token">Bearer Token</label><div class="settings-token-row"><input class="settings-path-input" id="settings-mcp-token" name="mcpToken" type="password" value="${esc(preferences.mcpToken)}" minlength="32" maxlength="256" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-mcp-token" ${disabled}>显示</button><button class="btn btn-secondary" type="button" data-action="copy-mcp-token" ${disabled}>复制</button><button class="btn btn-secondary" type="button" data-action="regenerate-mcp-token" ${disabled}>重新生成</button></div><p class="form-hint">32–256 个可见 ASCII 字符，不能包含空格。重新生成后，旧 Token 将在重启时失效。</p></div>`
     + `<div class="settings-inline-note">${I("info", 16)}<span>无认证连接只读；写入使用 Authorization: Bearer &lt;TOKEN&gt;。Token 修改在重启后生效，且不会通过 MCP 返回。服务仅监听本机回环地址，不要转发到局域网或公网。</span></div></section>`
+    + aiSection(preferences.ai, disabled)
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("book", 21)}</span><div><h2>阅读样式</h2><p>只调整文字大小，不改变面板宽度与整体布局。</p></div></div>`
     + `<div class="settings-field"><div class="settings-label-row"><label for="settings-font-size">界面字号</label><output id="settings-font-size-value" for="settings-font-size">${esc(preferences.fontSize)} px</output></div><div class="settings-font-control"><span>小</span><input id="settings-font-size" name="fontSize" type="range" min="12" max="20" step="1" value="${esc(preferences.fontSize)}" ${disabled}><span>大</span><button class="text-link" type="button" data-action="reset-font-size" ${disabled}>恢复 15 px</button></div></div>`
     + '<div class="settings-font-preview"><span>阅读预览</span><p>从一片叶、一个细胞，到一篇可追溯的研究。</p><small>Plant single-cell research · 文献、数据与笔记</small></div></section>'
     + `<footer class="settings-footer"><p id="settings-save-status" role="status">${saveStatus}</p><button class="btn btn-primary" type="submit" ${disabled}>${I("check", 16)} 保存设置</button></footer></form>`
     + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>安静、清晰，<br>适合自己的阅读节奏。</h2><p>字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。</p><div class="settings-aside-rule"></div><dl><div><dt>当前模式</dt><dd>${env.real ? "真实数据库" : "Demo"}</dd></div><div><dt>正式数据</dt><dd>本地 SQLite</dd></div><div><dt>配置方式</dt><dd>自动持久化</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p><strong>切换存放文件夹会自动重启</strong><br>MCP Token 在下次启动时生效；字体大小无需重启，保存前即可预览。</p></div></aside></div>`;
+}
+
+const AI_DEFAULTS: Record<string, { baseUrl: string; model: string; hint: string }> = {
+  anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-opus-5-5", hint: "Anthropic Messages 协议：POST {地址}/v1/messages，x-api-key 认证。兼容网关填它的根地址。" },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "例如 gpt-5、deepseek-chat、qwen3", hint: "OpenAI Chat Completions 协议：POST {地址}/chat/completions，Bearer 认证。DeepSeek、通义、Ollama、vLLM 等都走这个。" },
+};
+
+const aiBadge = (ai: AgentConfig, protocol: string): [string, string] => {
+  const hasModel = Boolean(ai.model) || protocol === "anthropic";
+  return !hasModel ? ["未配置", "gray"] : ai.apiKey ? ["已配置", "green"] : ["未填 Key", "amber"];
+};
+
+function aiSection(ai: AgentConfig, disabled: string): string {
+  const protocol = ai.protocol || "anthropic";
+  const defaults = AI_DEFAULTS[protocol] ?? AI_DEFAULTS.anthropic!;
+  return `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("sparkle", 21)}</span><div><h2>AI 模型</h2><p>内置助手用这个模型服务，通过 MCP 工具操作正式数据库。</p></div>${badge(...aiBadge(ai, protocol))}</div>`
+    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-protocol">接口协议</label><select class="input" id="settings-ai-protocol" name="aiProtocol" ${disabled}>${option("anthropic", "Anthropic Messages", protocol)}${option("openai", "OpenAI Chat Completions（兼容）", protocol)}</select></div>`
+    + `<div class="settings-field"><label for="settings-ai-model">模型名称</label><input class="input" id="settings-ai-model" name="aiModel" type="text" value="${esc(ai.model)}" placeholder="${esc(defaults.model)}" autocomplete="off" spellcheck="false" maxlength="200" ${disabled}></div></div>`
+    + `<div class="settings-field"><label for="settings-ai-base-url">服务地址</label><input class="settings-path-input" id="settings-ai-base-url" name="aiBaseUrl" type="url" value="${esc(ai.baseUrl)}" placeholder="${esc(defaults.baseUrl)}" autocomplete="off" spellcheck="false" maxlength="500" ${disabled}><p class="form-hint" id="settings-ai-hint">${esc(defaults.hint)}</p></div>`
+    + `<div class="settings-field"><label for="settings-ai-api-key">API Key</label><div class="settings-path-row"><input class="settings-path-input" id="settings-ai-api-key" name="aiApiKey" type="password" value="${esc(ai.apiKey)}" placeholder="本地模型服务可留空" autocomplete="off" spellcheck="false" maxlength="1000" ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-ai-key" ${disabled}>显示</button></div></div>`
+    + `<div class="settings-grid"><div class="settings-field"><label for="settings-ai-max-steps">单次运行步数上限</label><input class="input" id="settings-ai-max-steps" name="aiMaxSteps" type="number" min="1" max="200" value="${ai.maxSteps || ""}" placeholder="20" ${disabled}></div>`
+    + `<div class="settings-field"><label for="settings-ai-max-tokens">单次回复 token 上限</label><input class="input" id="settings-ai-max-tokens" name="aiMaxTokens" type="number" min="0" max="1000000" value="${ai.maxTokens || ""}" placeholder="默认" ${disabled}></div></div>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>Key 和地址只保存在本机 settings.json，不随存放文件夹迁移，也不会通过 MCP 返回。修改后下一次对话生效，无需重启。</span></div></section>`;
+}
+
+/** updateAIPlaceholders follows the protocol switch so the blanks read right. */
+export function updateAIPlaceholders(select: HTMLSelectElement): void {
+  const defaults = AI_DEFAULTS[select.value] ?? AI_DEFAULTS.anthropic!;
+  const url = $<HTMLInputElement>("#settings-ai-base-url");
+  const model = $<HTMLInputElement>("#settings-ai-model");
+  const hint = $("#settings-ai-hint");
+  if (url) url.placeholder = defaults.baseUrl;
+  if (model) model.placeholder = defaults.model;
+  if (hint) hint.textContent = defaults.hint;
 }
 
 const setStatus = (message: string): void => {
@@ -46,7 +81,15 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   if (!app.env.desktop) return;
   const data = new FormData(form);
   const button = $<HTMLButtonElement>("button[type=submit]", form);
-  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken") };
+  const ai: AgentConfig = {
+    protocol: text(data, "aiProtocol"), baseUrl: text(data, "aiBaseUrl"), apiKey: text(data, "aiApiKey"), model: text(data, "aiModel"),
+    maxSteps: Number(data.get("aiMaxSteps")) || 0, maxTokens: Number(data.get("aiMaxTokens")) || 0,
+  };
+  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken"), ai };
+  if (ai.protocol === "openai" && !ai.model) {
+    setStatus("OpenAI 兼容协议需要填写模型名称。");
+    return;
+  }
   if (!next.storagePath) {
     setStatus("请填写存放文件夹的绝对路径。");
     return;
@@ -101,6 +144,13 @@ export const settingsActions = (app: App): Record<string, (el: HTMLElement) => v
     if (!input) return;
     input.value = "15";
     input.dispatchEvent(new Event("input", { bubbles: true }));
+  },
+  "toggle-ai-key": (el) => {
+    const input = $<HTMLInputElement>("#settings-ai-api-key");
+    if (!input) return;
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    el.textContent = show ? "隐藏" : "显示";
   },
   "toggle-mcp-token": (el) => {
     const input = $<HTMLInputElement>("#settings-mcp-token");
