@@ -1,4 +1,4 @@
--- BiblioCell · schema v8
+-- BiblioCell · schema v9
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -416,6 +416,17 @@ CREATE TABLE IF NOT EXISTS field_evidence (
 CREATE INDEX IF NOT EXISTS idx_evidence_paper ON field_evidence(target_paper_id, field_name);
 CREATE INDEX IF NOT EXISTS idx_evidence_dataset ON field_evidence(target_dataset_id, field_name);
 
+-- 内置助手的对话记录：整段对话以 JSON 保存，随存放文件夹迁移。
+CREATE TABLE IF NOT EXISTS agent_conversations (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    messages TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(messages) AND json_type(messages) = 'array'),
+    message_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_conversations_updated ON agent_conversations(updated_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_papers_date ON papers(online_date DESC);
 CREATE INDEX IF NOT EXISTS idx_papers_first_seen ON papers(first_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_papers_title_key ON papers(title_key);
@@ -489,7 +500,8 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (4, '数据集多值研究范围、物种回填与人工整理备注'),
        (5, '公开来源配置、手动同步与外部记录快照'),
        (6, '区分人工决定与 agent 提议，记录真实核查时间'),
-       (7, 'agent 导入批次与数据集人工核实时间');
+       (7, 'agent 导入批次与数据集人工核实时间'),
+       (9, '内置助手对话记录');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;
 COMMIT;

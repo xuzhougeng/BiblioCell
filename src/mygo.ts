@@ -14,6 +14,16 @@ export interface AgentConfig {
   effort: string;
 }
 
+/** AgentConversation is a saved exchange with the built-in assistant. */
+export interface AgentConversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Config {
   storagePath: string;
   fontSize: number;
@@ -21,6 +31,14 @@ export interface Config {
   ncbiApiKey: string;
   contactEmail: string;
   ai: AgentConfig;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Dataset {
@@ -309,6 +327,10 @@ export const Library = {
   chooseStoragePath(): Promise<string> {
     return call("Library.ChooseStoragePath");
   },
+  /** DeleteAgentConversation removes a saved conversation. */
+  deleteAgentConversation(id: string): Promise<void> {
+    return call("Library.DeleteAgentConversation", id);
+  },
   /** DeletePaper removes a paper and its stored attachments, preserving datasets. */
   deletePaper(id: string): Promise<void> {
     return call("Library.DeletePaper", id);
@@ -317,6 +339,10 @@ export const Library = {
   fetchFulltext(paperID: string): Promise<FulltextResult> {
     return call("Library.FetchFulltext", paperID);
   },
+  /** GetAgentConversation returns a saved conversation with its transcript. */
+  getAgentConversation(id: string): Promise<AgentConversation> {
+    return call("Library.GetAgentConversation", id);
+  },
   /** GetSettings returns persisted desktop preferences. */
   getSettings(): Promise<Config> {
     return call("Library.GetSettings");
@@ -324,6 +350,10 @@ export const Library = {
   /** ImportPaperFiles asks for files and copies them into the storage folder. */
   importPaperFiles(paperID: string, resourceType: string): Promise<PaperFile[]> {
     return call("Library.ImportPaperFiles", paperID, resourceType);
+  },
+  /** ListAgentConversations lists saved conversations, newest first. */
+  listAgentConversations(): Promise<ConversationSummary[]> {
+    return call("Library.ListAgentConversations");
   },
   /** ListDatasets returns real datasets with repository and paper associations. */
   listDatasets(): Promise<Dataset[]> {
@@ -367,6 +397,10 @@ export const Library = {
   /** ReviewEvidence records a person's verdict on a claim. */
   reviewEvidence(id: string, status: string): Promise<void> {
     return call("Library.ReviewEvidence", id, status);
+  },
+  /** SaveAgentConversation stores the transcript; an empty id creates a new one. */
+  saveAgentConversation(id: string, title: string, messages: Message[]): Promise<AgentConversation> {
+    return call("Library.SaveAgentConversation", id, title, messages);
   },
   /**
    * SaveDatasetEdits stores what a person changed and returns the titles of

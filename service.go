@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -338,6 +339,70 @@ func (l *Library) agentTools() []agent.ToolDef {
 		return nil
 	}
 	return defs
+}
+
+// AgentConversation is a saved exchange with the built-in assistant.
+type AgentConversation struct {
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Messages     []agent.Message `json:"messages"`
+	MessageCount int             `json:"messageCount"`
+	CreatedAt    string          `json:"createdAt"`
+	UpdatedAt    string          `json:"updatedAt"`
+}
+
+func toAgentConversation(c library.Conversation) (AgentConversation, error) {
+	out := AgentConversation{ID: c.ID, Title: c.Title, MessageCount: c.MessageCount, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Messages: []agent.Message{}}
+	if len(c.Messages) > 0 {
+		if err := json.Unmarshal(c.Messages, &out.Messages); err != nil {
+			return AgentConversation{}, fmt.Errorf("decode conversation %s: %w", c.ID, err)
+		}
+	}
+	return out, nil
+}
+
+// ListAgentConversations lists saved conversations, newest first.
+func (l *Library) ListAgentConversations() ([]library.ConversationSummary, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	return l.store.ListConversations(context.Background())
+}
+
+// GetAgentConversation returns a saved conversation with its transcript.
+func (l *Library) GetAgentConversation(id string) (AgentConversation, error) {
+	if l.store == nil {
+		return AgentConversation{}, errors.New("library database is not ready")
+	}
+	c, err := l.store.GetConversation(context.Background(), id)
+	if err != nil {
+		return AgentConversation{}, err
+	}
+	return toAgentConversation(c)
+}
+
+// SaveAgentConversation stores the transcript; an empty id creates a new one.
+func (l *Library) SaveAgentConversation(id, title string, messages []agent.Message) (AgentConversation, error) {
+	if l.store == nil {
+		return AgentConversation{}, errors.New("library database is not ready")
+	}
+	data, err := json.Marshal(messages)
+	if err != nil {
+		return AgentConversation{}, err
+	}
+	c, err := l.store.SaveConversation(context.Background(), id, title, data)
+	if err != nil {
+		return AgentConversation{}, err
+	}
+	return toAgentConversation(c)
+}
+
+// DeleteAgentConversation removes a saved conversation.
+func (l *Library) DeleteAgentConversation(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.DeleteConversation(context.Background(), id)
 }
 
 // agentProgress shows the window each step of a run while it happens.

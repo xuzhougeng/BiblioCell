@@ -1165,3 +1165,14 @@ select.input { appearance: auto }
   .agent-entry { flex-wrap: wrap }
   .agent-entry > .btn { width: 100% }
 }
+
+/* History of assistant conversations (modal) */
+.agent-history { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto }
+.agent-history-item { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #e6dec6 }
+.agent-history-item:last-child { border: 0 }
+.agent-history-item.current .agent-history-open strong { color: var(--primary) }
+.agent-history-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 11px 8px; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; border-radius: 6px }
+.agent-history-open:hover { background: var(--surface-deep) }
+.agent-history-open strong { font-size: calc(14px * var(--font-scale, 1)); color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.agent-history-open .muted { font-size: calc(12px * var(--font-scale, 1)) }
+.agent-history-item .btn-icon { flex: 0 0 auto }
