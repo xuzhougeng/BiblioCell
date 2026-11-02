@@ -259,6 +259,10 @@ export class App {
       settings: () => renderSettings(this),
     };
     content.innerHTML = renderers[this.page]();
+    if (this.page === "agent") {
+      const transcript = $("#agent-transcript");
+      if (transcript) transcript.scrollTop = transcript.scrollHeight; // Open on the newest message, like a chat window.
+    }
     const actions = $(".heading-actions");
     if (actions) actions.hidden = this.page === "settings" || this.page === "agent";
     const [title, subtitle] = PAGES[this.page];
