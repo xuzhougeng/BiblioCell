@@ -259,6 +259,11 @@ export class App {
       settings: () => renderSettings(this),
     };
     content.innerHTML = renderers[this.page]();
+    document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
+    if (this.page === "agent") {
+      const transcript = $("#agent-transcript");
+      if (transcript) transcript.scrollTop = transcript.scrollHeight; // Open on the newest message, like a chat window.
+    }
     const actions = $(".heading-actions");
     if (actions) actions.hidden = this.page === "settings" || this.page === "agent";
     const [title, subtitle] = PAGES[this.page];

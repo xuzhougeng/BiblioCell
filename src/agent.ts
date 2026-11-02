@@ -34,18 +34,21 @@ const paragraphs = (text: string): string =>
 function toolBlock(name: string, args: string, result: AgentMessage | undefined, pending: boolean): string {
   const state = pending ? badge("运行中", "amber") : result?.isError ? badge("失败", "amber") : badge("完成", "green");
   const output = result ? `<pre>${esc(clip(result.content))}</pre>` : "";
-  return `<details class="agent-tool"><summary>${I("code", 14)}<span>${esc(name)}</span>${state}</summary><pre>${esc(clip(args))}</pre>${output}</details>`;
+  return `<div class="agent-row block"><details class="agent-tool"><summary>${I("code", 14)}<span>${esc(name)}</span>${state}</summary><pre>${esc(clip(args))}</pre>${output}</details></div>`;
 }
+
+const userRow = (html: string): string => `<div class="agent-row user"><span class="agent-avatar user" aria-hidden="true">我</span><div class="agent-turn user">${html}</div></div>`;
+const assistantRow = (html: string): string => `<div class="agent-row assistant"><span class="agent-avatar assistant" aria-hidden="true">${I("sparkle", 18)}</span><div class="agent-turn assistant">${html}</div></div>`;
 
 function transcript(state: AgentState): string {
   const results = new Map<string, AgentMessage>();
   for (const m of state.messages) if (m.role === "tool" && m.toolCallId) results.set(m.toolCallId, m);
   const parts: string[] = [];
   for (const m of state.messages) {
-    if (m.role === "user") parts.push(`<div class="agent-turn user">${paragraphs(m.content)}</div>`);
+    if (m.role === "user") parts.push(userRow(paragraphs(m.content)));
     else if (m.role === "assistant") {
-      if (m.thinking?.trim()) parts.push(`<details class="agent-thought"><summary>${I("info", 14)}<span>思考摘要</span></summary><div>${renderMarkdown(m.thinking)}</div></details>`);
-      if (m.content.trim()) parts.push(`<div class="agent-turn assistant">${renderMarkdown(m.content)}</div>`);
+      if (m.thinking?.trim()) parts.push(`<div class="agent-row block"><details class="agent-thought"><summary>${I("info", 14)}<span>思考摘要</span></summary><div>${renderMarkdown(m.thinking)}</div></details></div>`);
+      if (m.content.trim()) parts.push(assistantRow(renderMarkdown(m.content)));
       for (const call of m.toolCalls ?? []) parts.push(toolBlock(call.name, call.arguments, results.get(call.id), false));
     }
   }
@@ -58,7 +61,7 @@ function queueHTML(state: AgentState): string {
   const items = state.queue.map((prompt, i) =>
     `<li><textarea class="agent-queue-edit" data-queue-index="${i}" rows="2" maxlength="20000" aria-label="编辑第 ${i + 1} 条排队消息">${esc(prompt)}</textarea>${state.busy ? "" : `<button type="button" class="text-link" data-action="agent-send-queued" data-index="${i}">发送</button>`}<button type="button" class="btn-icon" data-action="agent-unqueue" data-index="${i}" aria-label="移出队列">${I("x", 14)}</button></li>`,
   ).join("");
-  return `<div class="agent-queue"><span class="agent-queue-label">${I("clock", 14)} 排队中 ${state.queue.length} · 发送前可以继续修改</span><ol>${items}</ol></div>`;
+  return `<div class="agent-row block"><div class="agent-queue"><span class="agent-queue-label">${I("clock", 14)} 排队中 ${state.queue.length} · 发送前可以继续修改</span><ol>${items}</ol></div></div>`;
 }
 
 /** liveHTML shows the run in flight: each tool call as it starts and finishes, then the queue. */
@@ -73,7 +76,7 @@ function liveHTML(state: AgentState): string {
     return toolBlock(call.name, call.arguments, result ? { role: "tool", content: result.output ?? "", isError: result.isError } : undefined, !result);
   });
   const step = state.live.reduce((n, e) => Math.max(n, e.step), 0);
-  return blocks.join("") + `<div class="agent-thinking">${I("clock", 15)}<span>模型正在思考${step ? `（第 ${step} 步）` : ""}…</span></div>` + queueHTML(state);
+  return blocks.join("") + `<div class="agent-row block"><div class="agent-thinking">${I("clock", 15)}<span>模型正在思考${step ? `（第 ${step} 步）` : ""}…</span></div></div>` + queueHTML(state);
 }
 
 export function renderAgent(app: App): string {
@@ -91,12 +94,20 @@ export function renderAgent(app: App): string {
     ? `<p class="agent-notice" role="alert">${I("alert", 15)}<span>还没有配置模型。请到<a href="#settings" data-page="settings">设置 · AI 模型</a>填写协议、地址、API Key 和模型名。</span></p>`
     : !ai.apiKey ? `<p class="agent-notice">${I("info", 15)}<span>未填写 API Key；本地模型服务通常不需要，云服务会拒绝请求。</span></p>` : "";
   const demoNote = env.real ? "" : `<p class="agent-notice">${I("info", 15)}<span>当前是 Demo 模式。助手只操作正式数据库，这里的虚构示例它看不到；要查看它的改动，请在设置中关闭 Demo。</span></p>`;
-  return `<div class="agent-layout"><section class="panel agent-panel">${notice}${demoNote}`
+  const endpoint = ai.baseUrl || (protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1");
+  const header = `<header class="agent-chat-header"><span class="agent-avatar assistant" aria-hidden="true">${I("sparkle", 18)}</span><div class="agent-chat-title"><strong>AI 助手 · ${esc(model || "未配置模型")}</strong><span class="muted">${protocol === "anthropic" ? "Anthropic Messages" : "OpenAI Chat Completions"} · ${esc(endpoint)}${ai.effort ? ` · 思考 ${esc(ai.effort)}` : ""}</span></div>`
+    + `<span class="agent-chat-meta" title="${esc(env.mcp.tools.join("\n"))}">${I("code", 14)} ${env.mcp.tools.length} 个工具</span><a class="text-link" href="#settings" data-page="settings">${I("settings", 14)} 设置</a><button type="button" class="btn btn-secondary" data-action="agent-clear" ${state.busy || !state.messages.length ? "disabled" : ""}>新对话</button></header>`;
+  // One chat window: a title bar, a scrolling conversation, and the composer pinned at the bottom.
+  return `<section class="panel agent-chat">${header}${notice}${demoNote}`
     + `<div class="agent-transcript" id="agent-transcript">${body}<div id="agent-live">${liveHTML(state)}</div></div>`
     + `<form class="agent-composer" id="agent-form"><textarea class="textarea" id="agent-input" name="prompt" rows="3" placeholder="${state.busy ? "运行中也可以继续输入，发送后排队" : "描述要做的事，例如：把待判断的文献按物种分组列出来"}" maxlength="20000"></textarea>`
-    + `<div class="agent-composer-row"><span class="muted">⌘/Ctrl + Enter 发送 · 运行中发送的消息会排队 · 工具调用会直接写入正式数据库</span><div class="agent-composer-actions"><button type="button" class="btn btn-secondary" data-action="agent-clear" ${state.busy || !state.messages.length ? "disabled" : ""}>新对话</button><button type="submit" class="btn btn-primary" ${!configured ? "disabled" : ""}>${I("arrow-right", 15)} ${state.busy ? "排队" : "发送"}</button></div></div></form></section>`
-    + `<aside class="agent-aside"><section class="panel settings-aside-card"><span class="eyebrow">MODEL</span><h2>${esc(model || "未配置")}</h2><p>${protocol === "anthropic" ? "Anthropic Messages 协议" : "OpenAI Chat Completions 协议"}<br>${esc(ai.baseUrl || (protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1"))}</p><div class="settings-aside-rule"></div><dl><div><dt>工具</dt><dd>${env.mcp.tools.length} 个 MCP 工具</dd></div><div><dt>单次上限</dt><dd>${ai.maxSteps || 20} 步</dd></div><div><dt>API Key</dt><dd>${ai.apiKey ? "已填写" : "未填写"}</dd></div></dl></section>`
-    + `<div class="settings-restart-note">${I("code", 17)}<p><strong>和外部 AI 用同一套工具</strong><br>${esc(env.mcp.tools.join(" · "))}</p></div></aside></div>`;
+    + `<div class="agent-composer-row"><span class="muted">⌘/Ctrl + Enter 发送 · 运行中发送的消息会排队 · 工具调用会直接写入正式数据库</span><button type="submit" class="btn btn-primary" ${!configured ? "disabled" : ""}>${I("arrow-right", 15)} ${state.busy ? "排队" : "发送"}</button></div></form></section>`;
+}
+
+/** scrollToEnd keeps the newest message in view, the way a chat window does. */
+function scrollToEnd(): void {
+  const transcript = $("#agent-transcript");
+  if (transcript) transcript.scrollTop = transcript.scrollHeight;
 }
 
 /** refreshLive repaints only the in-flight block, so the prompt box keeps its text and a queued message being edited keeps its cursor. */
@@ -115,7 +126,7 @@ function refreshLive(app: App): void {
       again.setSelectionRange(editing.start, editing.end);
     }
   } else {
-    live.scrollIntoView({ block: "end" });
+    scrollToEnd();
   }
 }
 
@@ -155,7 +166,7 @@ function runAgent(app: App, prompt: string): void {
   state.busy = true;
   state.live = [];
   rerender(app, "", true); // Sending keeps the cursor in the box for the next message.
-  $("#agent-live")?.scrollIntoView({ block: "end" });
+  scrollToEnd();
   Library.agentChat(sent).then((result) => {
     state.messages = result.messages;
     if (result.stopReason === "max_tokens") app.toast("回复在输出上限处被截断，可以让它继续。", true);
@@ -175,7 +186,7 @@ function runAgent(app: App, prompt: string): void {
     state.live = [];
     if (app.env.real) await app.reload(); // Tool calls wrote to the database; reload renders too.
     rerender(app);
-    $("#agent-live")?.scrollIntoView({ block: "end" });
+    scrollToEnd();
     // Blank edits are dropped rather than sent.
     let next = state.queue.shift();
     while (next !== undefined && !next.trim()) next = state.queue.shift();
