@@ -63,6 +63,11 @@ export function screeningConcern(p: Paper): "excluded" | "uncertain" | null {
   return (proposal === "excluded" || proposal === "uncertain") && proposal !== p.screening ? proposal : null;
 }
 
+/** reviewConcern says why a paper waits for review: an agent's negative proposal first, then a source update adding it. */
+export function reviewConcern(p: Paper): "excluded" | "uncertain" | "source" | null {
+  return screeningConcern(p) ?? (p.awaitingReview ? "source" : null);
+}
+
 export const SCREEN: Record<string, string> = { included: "已纳入", pending: "待判断", uncertain: "证据不足", excluded: "相关 / 排除" };
 export const READING: Record<string, string> = { unread: "未读", skimmed: "已浏览", read: "已精读" };
 export const FULL: Record<string, string> = { missing: "待补入口", linked: "已有入口", stored: "已保存文件" };
@@ -141,6 +146,7 @@ export function decideScreening(p: Paper, status: string, reason = p.screeningRe
   p.proposedScreening = "";
   p.proposedReason = "";
   p.reviewedAt = status === "pending" ? "" : nowISO();
+  p.awaitingReview = false;
   p.updatedAt = nowISO();
 }
 
@@ -245,7 +251,7 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
         && (!filters.platform || listValues.platform(p).includes(filters.platform))
         && (!filters.fulltext || p.fulltext === filters.fulltext)
         && (!filters.screening || p.screening === filters.screening)
-        && (!filters.review || screeningConcern(p) !== null)
+        && (!filters.review || reviewConcern(p) !== null)
         && (!filters.source || p.source === filters.source)
         && (!filters.preprint || (filters.preprint === "yes" ? p.publicationStatus === "preprint" : p.publicationStatus !== "preprint"))
         && (!filters.starred || p.starred);
@@ -288,11 +294,15 @@ export function pageList(page: number, count: number): (number | "gap")[] {
 export const paperDatasets = (datasets: Dataset[], paperId: string): Dataset[] =>
   datasets.filter((d) => arr(d.paperLinks).some((link) => link.paperId === paperId));
 
-/** filterDatasets matches the dataset search box: a dataset's own fields plus its linked paper titles. */
-export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (id: string) => string): Dataset[] {
+/**
+ * filterDatasets matches the dataset search box: a dataset's own fields plus its linked paper titles.
+ * reviewOnly keeps the datasets a source update added that no person has checked yet.
+ */
+export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (id: string) => string, reviewOnly = false): Dataset[] {
   const q = query.trim().toLocaleLowerCase();
-  if (!q) return datasets;
-  return datasets.filter((d) => [
+  const pool = reviewOnly ? datasets.filter((d) => d.awaitingReview) : datasets;
+  if (!q) return pool;
+  return pool.filter((d) => [
     d.title, d.id, speciesNames(d).join(" "), speciesDisplay(d), joinList(d.organs, " "), joinList(d.modalities, " "), joinList(d.platforms, " "),
     arr(d.repositories).map((r) => `${r.repository || ""} ${r.accession || ""}`).join(" "),
     arr(d.paperLinks).map((l) => paperTitle(l.paperId)).join(" "),
@@ -418,7 +428,7 @@ export function normalizeDataset(input: object): Dataset {
     availability: str(raw.availability) || "unknown", matrixAvailability: str(raw.matrixAvailability) || "unknown",
     annotationAvailability: str(raw.annotationAvailability) || "unknown",
     cellsReported: cells, cellCountUnit: str(raw.cellCountUnit), cellCountScope: str(raw.cellCountScope),
-    paperLinks, reviewedAt: str(raw.reviewedAt), batchId: str(raw.batchId),
+    paperLinks, reviewedAt: str(raw.reviewedAt), awaitingReview: raw.awaitingReview === true, batchId: str(raw.batchId),
     addedAt: str(raw.addedAt), updatedAt: str(raw.updatedAt), isDemo: raw.isDemo === true,
   };
 }
@@ -541,7 +551,7 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
       screening: enumValue(row.screening, SCREENINGS, "pending"), reading: enumValue(row.reading, READINGS, "unread"),
       fulltext: enumValue(row.fulltext, FULLTEXTS, "missing"), fulltextUrl: "", publicationStatus: enumValue(row.publicationStatus, PUBLICATION_STATUSES, "unknown"),
       starred: row.starred === true, isDemo: row.isDemo === true, source: textValue(row.source, 300) || "JSON 导入",
-      screeningReason: textValue(row.screeningReason, 3000), reviewedAt: "", proposedScreening: "", proposedReason: "", batchId: "",
+      screeningReason: textValue(row.screeningReason, 3000), reviewedAt: "", proposedScreening: "", proposedReason: "", awaitingReview: false, batchId: "",
       addedAt: isoDate(row.addedAt), updatedAt: nowISO(),
     };
     idMap.set(oldId, id);

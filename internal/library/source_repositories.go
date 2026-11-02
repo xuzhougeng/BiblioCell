@@ -12,6 +12,36 @@ import (
 
 const enaSearchURL = "https://www.ebi.ac.uk/ena/portal/api/search"
 
+// repositoryDataset describes a repository record as the pending dataset a
+// person reviews: its accession and page, title, and the species it names.
+func repositoryDataset(repository, kind, accession, link, title, description string, species []string) *Dataset {
+	if strings.TrimSpace(title) == "" {
+		title = accession
+	}
+	entries := []SpeciesEntry{}
+	for _, name := range species {
+		entries = append(entries, SpeciesEntry{Name: name})
+	}
+	return &Dataset{
+		Title: title, Description: description, Species: entries,
+		Repositories: []DatasetRepository{{Repository: repository, Accession: accession, RecordKind: kind, URL: link}},
+	}
+}
+
+// geoRecordKind maps a GEO entry type onto repository_records.record_kind.
+func geoRecordKind(entryType string) string {
+	switch strings.ToUpper(entryType) {
+	case "GSE":
+		return "study"
+	case "GSM":
+		return "sample"
+	case "GDS":
+		return "collection"
+	default:
+		return "other"
+	}
+}
+
 func (h *remoteHarvester) harvestRepository(ctx context.Context, config SourceConfig) ([]harvestRecord, error) {
 	switch config.Provider {
 	case "geo":
@@ -58,10 +88,11 @@ func (h *remoteHarvester) harvestGEO(ctx context.Context, config SourceConfig) (
 		if item.Accession == "" {
 			continue
 		}
+		link := "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=" + url.QueryEscape(item.Accession)
 		records = append(records, harvestRecord{
-			ExternalID: item.Accession, Title: item.Title,
-			URL:     "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=" + url.QueryEscape(item.Accession),
-			Payload: raw,
+			ExternalID: item.Accession, Title: item.Title, URL: link, Payload: raw,
+			Dataset: repositoryDataset("geo", geoRecordKind(item.EntryType), item.Accession, link,
+				item.Title, item.Summary, strings.Split(item.Taxon, ";")),
 		})
 	}
 	return records, nil
@@ -121,9 +152,9 @@ func (h *remoteHarvester) harvestSRA(ctx context.Context, config SourceConfig) (
 		if err := xml.Unmarshal([]byte("<Runs>"+item.Runs+"</Runs>"), &runs); err != nil {
 			return nil, fmt.Errorf("decode SRA runs %s: %w", id, err)
 		}
-		externalID := detail.Experiment.Accession
+		externalID, kind := detail.Experiment.Accession, "experiment"
 		if externalID == "" {
-			externalID = detail.Study.Accession
+			externalID, kind = detail.Study.Accession, "study"
 		}
 		if externalID == "" {
 			continue
@@ -142,9 +173,10 @@ func (h *remoteHarvester) harvestSRA(ctx context.Context, config SourceConfig) (
 			"title": title, "experiment": externalID, "study": detail.Study.Accession,
 			"organism": detail.Organism.Name, "bioproject": detail.BioProject, "runs": runAccessions,
 		}
+		link := "https://www.ncbi.nlm.nih.gov/sra/" + url.PathEscape(externalID)
 		records = append(records, harvestRecord{
-			ExternalID: externalID, Title: title,
-			URL: "https://www.ncbi.nlm.nih.gov/sra/" + url.PathEscape(externalID), Payload: payload,
+			ExternalID: externalID, Title: title, URL: link, Payload: payload,
+			Dataset: repositoryDataset("sra", kind, externalID, link, title, "", []string{detail.Organism.Name}),
 		})
 	}
 	return records, nil
@@ -175,9 +207,10 @@ func (h *remoteHarvester) harvestENA(ctx context.Context, config SourceConfig) (
 			continue
 		}
 		seen[item.Accession] = true
+		link := "https://www.ebi.ac.uk/ena/browser/view/" + url.PathEscape(item.Accession)
 		records = append(records, harvestRecord{
-			ExternalID: item.Accession, Title: item.Title,
-			URL: "https://www.ebi.ac.uk/ena/browser/view/" + url.PathEscape(item.Accession), Payload: item,
+			ExternalID: item.Accession, Title: item.Title, URL: link, Payload: item,
+			Dataset: repositoryDataset("ena", "study", item.Accession, link, item.Title, "", []string{item.Species}),
 		})
 		if len(records) >= config.MaxResults {
 			break

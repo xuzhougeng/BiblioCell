@@ -199,6 +199,22 @@ func (l *Library) VerifyDatasetRepository(datasetID, recordID string, verified b
 	return l.store.VerifyDatasetRepository(context.Background(), datasetID, recordID, verified)
 }
 
+// MarkPaperReviewed takes a paper a source update added out of review.
+func (l *Library) MarkPaperReviewed(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.MarkPaperReviewed(context.Background(), id)
+}
+
+// MarkDatasetReviewed takes a dataset a source update added out of review.
+func (l *Library) MarkDatasetReviewed(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.MarkDatasetReviewed(context.Background(), id)
+}
+
 // ListSources returns saved connector configurations and their latest runs.
 func (l *Library) ListSources() ([]library.SourceStatus, error) {
 	if l.store == nil {

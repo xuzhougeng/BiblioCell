@@ -51,6 +51,8 @@ export class App {
   filters: Filters = emptyFilters();
   taskFilter: TaskType | "all" = "all";
   datasetSearch = "";
+  /** Datasets page: only those a source update added that no person has checked. */
+  datasetReview = false;
   /** Papers-table pagination; the stored page is clamped against the filtered total at render time. */
   paperPage = 1;
   paperColumns = loadPaperColumns();
@@ -359,7 +361,7 @@ export class App {
       id = list[list.findIndex((p) => p.id === this.drawer!.id) + delta]?.id ?? "";
     } else {
       const list = this.page === "datasets" && this.datasetView === "table"
-        ? filterDatasets(this.state.datasets, this.datasetSearch, (pid) => this.paperById(pid)?.title ?? "")
+        ? filterDatasets(this.state.datasets, this.datasetSearch, (pid) => this.paperById(pid)?.title ?? "", this.datasetReview)
         : this.state.datasets;
       id = list[list.findIndex((d) => d.id === this.drawer!.id) + delta]?.id ?? "";
     }
@@ -557,6 +559,16 @@ export class App {
       this.paperPage = 1;
       const search = $<HTMLInputElement>("#global-search");
       if (search) search.value = "";
+      this.render();
+    },
+    "all-datasets": () => {
+      this.datasetReview = false;
+      this.datasetPage = 1;
+      this.render();
+    },
+    "review-datasets": () => {
+      this.datasetReview = true;
+      this.datasetPage = 1;
       this.render();
     },
     "task-filter": (el) => {
@@ -851,7 +863,7 @@ export class App {
     const cursor = datasets ? this.datasetCursor : this.paperCursor;
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       const items = datasets
-        ? filterDatasets(this.state.datasets, this.datasetSearch, (id) => this.paperById(id)?.title ?? "")
+        ? filterDatasets(this.state.datasets, this.datasetSearch, (id) => this.paperById(id)?.title ?? "", this.datasetReview)
         : filterPapers(this.state.papers, this.filters);
       const size = datasets ? this.datasetPageSize : this.paperPageSize;
       const count = Math.max(1, Math.ceil(items.length / size));

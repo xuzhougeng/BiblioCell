@@ -39,7 +39,8 @@ type DatasetPaperLink struct {
 // Dataset is the document-shaped representation used by the desktop frontend.
 // CurationLevel retains the detailed database state when Status is only a
 // three-state display value. Repositories and PaperLinks retain metadata that
-// the current UI does not edit so saves do not erase it.
+// the current UI does not edit so saves do not erase it. AwaitingReview marks a
+// dataset a source update added that no person has checked.
 type Dataset struct {
 	ID                     string              `json:"id"`
 	Title                  string              `json:"title"`
@@ -62,6 +63,7 @@ type Dataset struct {
 	CellCountScope         string              `json:"cellCountScope"`
 	PaperLinks             []DatasetPaperLink  `json:"paperLinks"`
 	ReviewedAt             string              `json:"reviewedAt"`
+	AwaitingReview         bool                `json:"awaitingReview"`
 	BatchID                string              `json:"batchId"`
 	AddedAt                string              `json:"addedAt"`
 	UpdatedAt              string              `json:"updatedAt"`
@@ -103,7 +105,7 @@ func readDatasets(ctx context.Context, reader queryer, id string) ([]Dataset, er
 		       modalities_json, platforms_json, curation_level, raw_availability,
 		       matrix_availability, annotation_availability, n_cells_reported,
 		       coalesce(cell_count_unit, ''), coalesce(cell_count_scope, ''),
-		       coalesce(reviewed_at, ''), coalesce(import_batch_id, ''),
+		       coalesce(reviewed_at, ''), awaiting_review, coalesce(import_batch_id, ''),
 		       first_seen_at, updated_at
 		FROM datasets`+where+` ORDER BY first_seen_at DESC, id`, args...)
 	if err != nil {
@@ -115,15 +117,17 @@ func readDatasets(ctx context.Context, reader queryer, id string) ([]Dataset, er
 		var d Dataset
 		var species, organs, modalities, platforms string
 		var cells sql.NullInt64
+		var awaiting int
 		if err := rows.Scan(
 			&d.ID, &d.Title, &d.Description, &d.Notes, &species, &organs,
 			&modalities, &platforms, &d.CurationLevel, &d.Availability,
 			&d.MatrixAvailability, &d.AnnotationAvailability, &cells,
-			&d.CellCountUnit, &d.CellCountScope, &d.ReviewedAt, &d.BatchID, &d.AddedAt, &d.UpdatedAt,
+			&d.CellCountUnit, &d.CellCountScope, &d.ReviewedAt, &awaiting, &d.BatchID, &d.AddedAt, &d.UpdatedAt,
 		); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("read dataset: %w", err)
 		}
+		d.AwaitingReview = awaiting == 1
 		d.Species = speciesEntries(species)
 		d.Organs = jsonStrings(organs)
 		d.Modalities = jsonStrings(modalities)
@@ -233,7 +237,7 @@ type DatasetEdit struct {
 
 // serverDatasetFields are never taken from a desktop edit: the database owns them.
 var serverDatasetFields = map[string]bool{
-	"id": true, "addedAt": true, "updatedAt": true, "reviewedAt": true, "batchId": true, "isDemo": true,
+	"id": true, "addedAt": true, "updatedAt": true, "reviewedAt": true, "awaitingReview": true, "batchId": true, "isDemo": true,
 }
 
 // SaveDatasetEdits stores a person's edits the way SavePaperEdits does: only the
@@ -294,9 +298,11 @@ func (s *Store) SaveDatasetEdits(ctx context.Context, edits []DatasetEdit) ([]st
 	return conflicts, nil
 }
 
-// recordDatasetReview stamps a changed status as a person's decision.
+// recordDatasetReview stamps a changed status as a person's decision, which
+// takes the dataset out of review.
 func recordDatasetReview(d *Dataset) {
 	d.ReviewedAt = ""
+	d.AwaitingReview = false
 	if d.Status == "verified" {
 		d.ReviewedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
@@ -321,8 +327,8 @@ func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 			id, title, description, notes, species_json, organs_json, modalities_json,
 			platforms_json, n_cells_reported,
 			cell_count_unit, cell_count_scope, raw_availability, matrix_availability,
-			annotation_availability, curation_level, reviewed_at, import_batch_id, first_seen_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			annotation_availability, curation_level, reviewed_at, awaiting_review, import_batch_id, first_seen_at, updated_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title, description = excluded.description, notes = excluded.notes,
 			species_json = excluded.species_json, organs_json = excluded.organs_json,
@@ -333,12 +339,12 @@ func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 			matrix_availability = excluded.matrix_availability,
 			annotation_availability = excluded.annotation_availability,
 			curation_level = excluded.curation_level, reviewed_at = excluded.reviewed_at,
-			updated_at = excluded.updated_at`,
+			awaiting_review = excluded.awaiting_review, updated_at = excluded.updated_at`,
 		d.ID, d.Title, nullableString(d.Description), d.Notes, speciesJSONArray(d.Species),
 		jsonArray(d.Organs), jsonArray(d.Modalities), jsonArray(d.Platforms), cells,
 		nullableString(d.CellCountUnit), nullableString(d.CellCountScope),
 		d.Availability, d.MatrixAvailability, d.AnnotationAvailability,
-		d.CurationLevel, nullableString(d.ReviewedAt), nullableString(d.BatchID), d.AddedAt, d.UpdatedAt)
+		d.CurationLevel, nullableString(d.ReviewedAt), boolInt(d.AwaitingReview), nullableString(d.BatchID), d.AddedAt, d.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save dataset %s: %w", d.ID, err)
 	}

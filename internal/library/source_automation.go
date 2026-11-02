@@ -104,10 +104,7 @@ func (s *Store) SourceAutomation(ctx context.Context) (SourceAutomation, error) 
 		}
 		automation.Running = automation.Running || run.Status == "running"
 		automation.LastRunAt = max(automation.LastRunAt, run.FinishedAt)
-		automation.Added += run.PapersAdded
-		if source.Kind == "repository" {
-			automation.Added += run.RecordsNew
-		}
+		automation.Added += run.PapersAdded + run.DatasetsAdded
 		automation.Skipped += run.Duplicates
 		if run.Status == "failed" {
 			automation.Failures = append(automation.Failures, SourceFailure{Source: source.Name, Message: run.ErrorMessage})

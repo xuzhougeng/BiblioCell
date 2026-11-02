@@ -1,4 +1,4 @@
--- BiblioCell · schema v9
+-- BiblioCell · schema v10
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -98,6 +98,8 @@ CREATE TABLE IF NOT EXISTS paper_curation (
     proposed_screening TEXT NOT NULL DEFAULT ''
         CHECK (proposed_screening IN ('','included','excluded','uncertain')),
     proposed_reason TEXT NOT NULL DEFAULT '',
+    -- 来源更新新增的文献进入待核查，人做出收录判断或标记核查完成后移出。
+    awaiting_review INTEGER NOT NULL DEFAULT 0 CHECK (awaiting_review IN (0,1)),
     reading_status TEXT NOT NULL DEFAULT 'unread'
         CHECK (reading_status IN ('unread','skimmed','read')),
     priority TEXT NOT NULL DEFAULT 'normal'
@@ -166,6 +168,8 @@ CREATE TABLE IF NOT EXISTS datasets (
         CHECK (curation_level IN ('indexed','samples_checked','files_verified','matrix_standardized','reprocessed')),
     -- 人工核实的时间；agent 不能把数据集标为已核实。
     reviewed_at TEXT,
+    -- 来源更新新增的数据集进入待核查，人改动整理状态或标记核查完成后移出。
+    awaiting_review INTEGER NOT NULL DEFAULT 0 CHECK (awaiting_review IN (0,1)),
     import_batch_id TEXT,
     first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -323,7 +327,7 @@ CREATE TABLE IF NOT EXISTS source_automation (
 );
 INSERT OR IGNORE INTO source_automation(id) VALUES (1);
 
--- papers_added 是本次新建的文献数，duplicates 是因已存在而跳过的记录数。
+-- papers_added / datasets_added 是本次新建的文献与数据集数，duplicates 是因已存在而跳过的记录数。
 CREATE TABLE IF NOT EXISTS harvest_runs (
     id TEXT PRIMARY KEY NOT NULL,
     source_id TEXT NOT NULL REFERENCES source_states(source_id),
@@ -341,6 +345,7 @@ CREATE TABLE IF NOT EXISTS harvest_runs (
     records_new INTEGER NOT NULL DEFAULT 0 CHECK (records_new >= 0),
     records_updated INTEGER NOT NULL DEFAULT 0 CHECK (records_updated >= 0),
     papers_added INTEGER NOT NULL DEFAULT 0 CHECK (papers_added >= 0),
+    datasets_added INTEGER NOT NULL DEFAULT 0 CHECK (datasets_added >= 0),
     duplicates INTEGER NOT NULL DEFAULT 0 CHECK (duplicates >= 0),
     error_message TEXT,
     UNIQUE (id, source_id),
@@ -438,7 +443,7 @@ CREATE INDEX IF NOT EXISTS idx_datasets_modality ON datasets(modality, curation_
 -- fulltext_url 带出 linked 状态对应的入口链接；ensurePaperView 负责升级旧库的视图。
 CREATE VIEW IF NOT EXISTS v_paper_overview AS
 SELECT p.*, c.screening_status, c.screening_reason, c.screening_method,
-       c.screening_reviewed_at, c.proposed_screening, c.proposed_reason,
+       c.screening_reviewed_at, c.proposed_screening, c.proposed_reason, c.awaiting_review,
        c.reading_status, c.priority, c.starred, c.tags_json, c.notes,
        coalesce(c.organs_override_json, p.organs_json) AS effective_organs_json,
        coalesce(c.modalities_override_json, p.modalities_json) AS effective_modalities_json,
@@ -501,7 +506,8 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (5, '公开来源配置、手动同步与外部记录快照'),
        (6, '区分人工决定与 agent 提议，记录真实核查时间'),
        (7, 'agent 导入批次与数据集人工核实时间'),
-       (9, '内置助手对话记录');
+       (9, '内置助手对话记录'),
+       (10, '来源更新新增的文献与数据集进入待核查');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 9;
+PRAGMA user_version = 10;
 COMMIT;

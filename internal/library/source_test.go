@@ -335,6 +335,138 @@ func TestRepositoryRecordsCountAsSkippedWhenSeenAgain(t *testing.T) {
 	}
 }
 
+func TestSourceAdditionsAwaitReview(t *testing.T) {
+	store := openTestLibrary(t)
+	ctx := context.Background()
+	result := syncRecords(t, store, "pubmed",
+		harvested("1", Paper{Title: "Decided later", PMID: "1"}),
+		harvested("2", Paper{Title: "Checked without deciding", PMID: "2"}))
+	if len(result.Papers) != 2 {
+		t.Fatalf("papers = %+v", result.Papers)
+	}
+	for _, paper := range result.Papers {
+		if !paper.AwaitingReview || paper.Screening != "pending" {
+			t.Errorf("harvested paper = %+v", paper)
+		}
+	}
+	decided, checked := result.Papers[0], result.Papers[1]
+	if decided.Title != "Decided later" {
+		decided, checked = checked, decided
+	}
+
+	// An agent's edit leaves the paper in review; a person's decision ends it.
+	if _, err := store.UpdatePaper(ctx, decided.ID, PaperPatch{Notes: stringPointer("agent note")}); err != nil {
+		t.Fatal(err)
+	}
+	if paper, err := store.GetPaper(ctx, decided.ID); err != nil || !paper.AwaitingReview {
+		t.Fatalf("after agent edit = %+v, %v", paper, err)
+	}
+	before, err := store.GetPaper(ctx, decided.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := before
+	after.Screening = "included"
+	after.AwaitingReview = true // The window never sets this; the database owns it.
+	if conflicts, err := store.SavePaperEdits(ctx, []PaperEdit{{Before: &before, After: after}}); err != nil || len(conflicts) != 0 {
+		t.Fatalf("save decision = %v, %v", conflicts, err)
+	}
+	if paper, err := store.GetPaper(ctx, decided.ID); err != nil || paper.AwaitingReview || paper.ReviewedAt == "" {
+		t.Errorf("after decision = %+v, %v", paper, err)
+	}
+
+	if err := store.MarkPaperReviewed(ctx, checked.ID); err != nil {
+		t.Fatal(err)
+	}
+	if paper, err := store.GetPaper(ctx, checked.ID); err != nil || paper.AwaitingReview || paper.Screening != "pending" {
+		t.Errorf("after marking reviewed = %+v, %v", paper, err)
+	}
+	if err := store.MarkPaperReviewed(ctx, "missing"); err == nil {
+		t.Error("marking a missing paper succeeded")
+	}
+
+	// A person's own paper never enters review.
+	if _, err := store.SavePaperEdits(ctx, []PaperEdit{{After: Paper{ID: "P-own", Title: "Added by hand", AwaitingReview: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	if paper, err := store.GetPaper(ctx, "P-own"); err != nil || paper.AwaitingReview {
+		t.Errorf("hand-added paper = %+v, %v", paper, err)
+	}
+}
+
+func TestRepositoryRecordsBecomeDatasetsAwaitingReview(t *testing.T) {
+	store := openTestLibrary(t)
+	ctx := context.Background()
+	series := harvestRecord{
+		ExternalID: "GSE1", Title: "Root atlas", Payload: map[string]string{"title": "Root atlas"},
+		Dataset: repositoryDataset("geo", "study", "GSE1", "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE1",
+			"Root atlas", "Single-cell RNA-seq of roots", []string{"Arabidopsis thaliana", " "}),
+	}
+	untitled := harvestRecord{
+		ExternalID: "SRX2", Payload: map[string]string{},
+		Dataset: repositoryDataset("sra", "experiment", "SRX2", "", "", "", []string{""}),
+	}
+	first := syncRecords(t, store, "sequence-repositories", series, untitled)
+	if first.DatasetsAdded != 2 || first.Duplicates != 0 || first.Status.LastRun.DatasetsAdded != 2 {
+		t.Fatalf("first run = %+v", first)
+	}
+	datasets, err := store.ListDatasets(ctx)
+	if err != nil || len(datasets) != 2 {
+		t.Fatalf("datasets = %+v, %v", datasets, err)
+	}
+	var atlas Dataset
+	for _, dataset := range datasets {
+		if !dataset.AwaitingReview || dataset.Status != "pending" || len(dataset.PaperLinks) != 0 {
+			t.Errorf("harvested dataset = %+v", dataset)
+		}
+		if dataset.Accession == "GSE1" {
+			atlas = dataset
+		} else if dataset.Title != "SRX2" || len(dataset.Species) != 0 {
+			t.Errorf("untitled dataset = %+v", dataset)
+		}
+	}
+	if atlas.Title != "Root atlas" || atlas.Repository != "geo" || len(atlas.Species) != 1 ||
+		atlas.Repositories[0].RecordKind != "study" || atlas.Repositories[0].URL == "" {
+		t.Errorf("GEO dataset = %+v", atlas)
+	}
+
+	// Seen again, or already held under the accession, a record adds nothing.
+	again := syncRecords(t, store, "sequence-repositories", series)
+	if again.DatasetsAdded != 0 || again.Duplicates != 1 {
+		t.Errorf("second run = %+v", again)
+	}
+	if _, err := store.AddDataset(ctx, DatasetInput{Title: "Leaf", Repositories: []RepositoryInput{{Repository: "ena", Accession: "PRJEB3"}}}); err != nil {
+		t.Fatal(err)
+	}
+	known := harvestRecord{ExternalID: "PRJEB3", Payload: map[string]string{},
+		Dataset: repositoryDataset("ena", "study", "PRJEB3", "", "Leaf study", "", nil)}
+	if run := syncRecords(t, store, "sequence-repositories", known); run.DatasetsAdded != 0 || run.Duplicates != 1 {
+		t.Errorf("known accession run = %+v", run)
+	}
+	if automation, err := store.SourceAutomation(ctx); err != nil || automation.Added != 0 {
+		t.Errorf("automation = %+v, %v", automation, err)
+	}
+
+	if err := store.MarkDatasetReviewed(ctx, atlas.ID); err != nil {
+		t.Fatal(err)
+	}
+	if dataset, err := store.GetDataset(ctx, atlas.ID); err != nil || dataset.AwaitingReview {
+		t.Errorf("after marking reviewed = %+v, %v", dataset, err)
+	}
+	other := datasets[0]
+	if other.ID == atlas.ID {
+		other = datasets[1]
+	}
+	after := other
+	after.Status = "identified"
+	if _, err := store.SaveDatasetEdits(ctx, []DatasetEdit{{Before: &other, After: after}}); err != nil {
+		t.Fatal(err)
+	}
+	if dataset, err := store.GetDataset(ctx, other.ID); err != nil || dataset.AwaitingReview || dataset.Status != "identified" {
+		t.Errorf("after status change = %+v, %v", dataset, err)
+	}
+}
+
 func TestOnlyOneUpdateRunsAtATime(t *testing.T) {
 	store := openTestLibrary(t)
 	ctx := context.Background()
@@ -393,7 +525,8 @@ func TestSourceAutomationRunsWhatIsDue(t *testing.T) {
 			return nil, errors.New("remote unavailable")
 		}
 		if config.ID == "sequence-repositories" {
-			return []harvestRecord{{ExternalID: "GSE1", Title: "A series", Payload: map[string]string{"title": "A series"}}}, nil
+			return []harvestRecord{{ExternalID: "GSE1", Title: "A series", Payload: map[string]string{"title": "A series"},
+				Dataset: repositoryDataset("geo", "study", "GSE1", "", "A series", "", nil)}}, nil
 		}
 		return []harvestRecord{harvested(config.ID, Paper{Title: "Paper from " + config.ID, Source: config.ID})}, nil
 	})

@@ -1,6 +1,7 @@
-// What only a person can do: judge agent evidence and verify dataset links.
-// Each action writes straight to SQLite, so a concurrent agent edit of the same
-// dataset never turns a verdict into a save conflict.
+// What only a person can do: judge agent evidence, verify dataset links, and
+// finish reviewing what a source update added. Each action writes straight to
+// SQLite, so a concurrent agent edit of the same record never turns a verdict
+// into a save conflict.
 import type { App } from "./app.ts";
 import { Library } from "./mygo.ts";
 import { errorMessage } from "./ui.ts";
@@ -25,6 +26,21 @@ export const reviewActions = (app: App): Record<string, (el: HTMLElement, id: st
     const { paper = "", dataset = "", role = "" } = el.dataset;
     const verified = el.dataset.verified === "true";
     void record(app, Library.verifyDatasetLink(paper, dataset, role, verified), verified ? "关联已核实。" : "已撤销核实。");
+  },
+  "finish-review": (el, id) => {
+    const dataset = el.dataset.kind === "dataset";
+    const done = "已核查，移出需核对。";
+    if (!app.env.real) {
+      const item = dataset ? app.state.datasets.find((d) => d.id === id) : app.paperById(id);
+      if (!item) return;
+      item.awaitingReview = false;
+      app.persist();
+      app.render();
+      app.renderDrawer();
+      app.toast(done);
+      return;
+    }
+    void record(app, dataset ? Library.markDatasetReviewed(id) : Library.markPaperReviewed(id), done);
   },
   "verify-repository": (el, id) => {
     const verified = el.dataset.verified === "true";
