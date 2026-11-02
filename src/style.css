@@ -1121,7 +1121,7 @@ details[open] > summary .agent-tools-chevron { transform: rotate(90deg) }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px }
 .settings-section .settings-field + .settings-field, .settings-section .settings-grid + .settings-field, .settings-section .settings-field + .settings-grid, .settings-section .settings-grid + .settings-grid { margin-top: 18px }
 .settings-field > .settings-path-input { width: 100% }
-.settings-grid .settings-field { margin: 0 }
+.settings-section .settings-grid .settings-field { margin: 0 }
 select.input { appearance: auto }
 @media (max-width: 1100px) {
   .settings-grid { grid-template-columns: 1fr }
