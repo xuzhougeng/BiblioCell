@@ -1060,8 +1060,13 @@ a.link-chip:hover svg { color: var(--primary) }
 .column-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
 .paper-table .journal-cell { min-width: 150px; max-width: 260px; overflow-wrap: anywhere; }
 
-/* AI assistant: one chat window — title bar, scrolling conversation, composer pinned at the bottom */
-.agent-chat { display: flex; flex-direction: column; height: calc(100vh - 238px); min-height: 460px; overflow: hidden }
+/* AI assistant: the page is the chat window — no page heading, no outer scrolling; only the conversation scrolls */
+body.page-agent { overflow: hidden }
+body.page-agent .app-main { height: 100vh; min-height: 0; display: flex; flex-direction: column }
+body.page-agent .workspace-main { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; padding-top: 18px; padding-bottom: 18px }
+body.page-agent .prototype-note, body.page-agent .page-heading, body.page-agent .workspace-footer { display: none }
+body.page-agent #app-content { flex: 1; min-height: 0; display: flex; flex-direction: column }
+.agent-chat { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden }
 .agent-chat-header { display: flex; align-items: center; gap: 12px; padding: 11px 18px; border-bottom: 1px solid var(--line); background: var(--surface) }
 .agent-chat-title { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px }
 .agent-chat-title strong { font-size: calc(15px * var(--font-scale, 1)); color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
@@ -1110,8 +1115,7 @@ select.input { appearance: auto }
   .settings-grid { grid-template-columns: 1fr }
 }
 @media (max-width: 760px) {
-  .agent-chat { height: auto; min-height: 70vh }
-  .agent-transcript { max-height: 60vh }
+  body.page-agent .workspace-main { padding-top: 10px; padding-bottom: 10px }
   .agent-turn { max-width: 88% }
   .agent-row.block { padding-left: 0 }
   .agent-chat-meta, .agent-chat-header .text-link { display: none }

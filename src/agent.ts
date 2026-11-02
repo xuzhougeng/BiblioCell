@@ -95,7 +95,7 @@ export function renderAgent(app: App): string {
     : !ai.apiKey ? `<p class="agent-notice">${I("info", 15)}<span>未填写 API Key；本地模型服务通常不需要，云服务会拒绝请求。</span></p>` : "";
   const demoNote = env.real ? "" : `<p class="agent-notice">${I("info", 15)}<span>当前是 Demo 模式。助手只操作正式数据库，这里的虚构示例它看不到；要查看它的改动，请在设置中关闭 Demo。</span></p>`;
   const endpoint = ai.baseUrl || (protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1");
-  const header = `<header class="agent-chat-header"><span class="agent-avatar assistant" aria-hidden="true">${I("sparkle", 18)}</span><div class="agent-chat-title"><strong>${esc(model || "未配置模型")}</strong><span class="muted">${protocol === "anthropic" ? "Anthropic Messages" : "OpenAI Chat Completions"} · ${esc(endpoint)}${ai.effort ? ` · 思考 ${esc(ai.effort)}` : ""}</span></div>`
+  const header = `<header class="agent-chat-header"><span class="agent-avatar assistant" aria-hidden="true">${I("sparkle", 18)}</span><div class="agent-chat-title"><strong>AI 助手 · ${esc(model || "未配置模型")}</strong><span class="muted">${protocol === "anthropic" ? "Anthropic Messages" : "OpenAI Chat Completions"} · ${esc(endpoint)}${ai.effort ? ` · 思考 ${esc(ai.effort)}` : ""}</span></div>`
     + `<span class="agent-chat-meta" title="${esc(env.mcp.tools.join("\n"))}">${I("code", 14)} ${env.mcp.tools.length} 个工具</span><a class="text-link" href="#settings" data-page="settings">${I("settings", 14)} 设置</a><button type="button" class="btn btn-secondary" data-action="agent-clear" ${state.busy || !state.messages.length ? "disabled" : ""}>新对话</button></header>`;
   // One chat window: a title bar, a scrolling conversation, and the composer pinned at the bottom.
   return `<section class="panel agent-chat">${header}${notice}${demoNote}`
