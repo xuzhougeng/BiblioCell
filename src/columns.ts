@@ -1,8 +1,9 @@
 // Stable IDs keep saved column choices independent of labels and table positions.
+import { t } from "./i18n.ts";
 export const PAPER_COLUMNS = [
-  ["star", "收藏"], ["title", "文献"], ["journal", "期刊"], ["year", "发表时间"],
-  ["species", "研究对象"], ["datasets", "关联数据集"], ["modality", "技术"],
-  ["fulltext", "全文"], ["screening", "收录状态"],
+  ["star", t("收藏")], ["title", t("文献")], ["journal", t("期刊")], ["year", t("发表时间")],
+  ["species", t("研究对象")], ["datasets", t("关联数据集")], ["modality", t("技术")],
+  ["fulltext", t("全文")], ["screening", t("收录状态")],
 ] as const;
 export type PaperColumn = typeof PAPER_COLUMNS[number][0];
 export const COLUMN_STORAGE_KEY = "bibliocell-paper-columns-v1";

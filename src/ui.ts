@@ -3,19 +3,20 @@
 import type { Dataset, SpeciesEntry } from "./mygo.ts";
 import { icon } from "./icons.ts";
 import { FULL, SCREEN, arr, esc, splitList, type Filters } from "./model.ts";
+import { t, tv } from "./i18n.ts";
 
 export const I = icon;
 export const $ = <T extends Element = HTMLElement>(selector: string, root: ParentNode = document): T | null => root.querySelector<T>(selector);
 export const $$ = <T extends Element = HTMLElement>(selector: string, root: ParentNode = document): T[] => Array.from(root.querySelectorAll<T>(selector));
 
 export const badge = (label: string, color = "gray"): string => `<span class="badge ${color}">${esc(label)}</span>`;
-export const demoBadge = (item: { isDemo: boolean }): string => (item.isDemo ? '<span class="demo-label">示例</span>' : "");
+export const demoBadge = (item: { isDemo: boolean }): string => (item.isDemo ? `<span class="demo-label">${t("示例")}</span>` : "");
 export const screenBadge = (status: string): string =>
-  badge(SCREEN[status] ?? "待判断", status === "included" ? "green" : status === "pending" || status === "uncertain" ? "amber" : "gray");
+  badge(SCREEN[status] ?? t("待判断"), status === "included" ? "green" : status === "pending" || status === "uncertain" ? "amber" : "gray");
 export const fullBadge = (status: string): string =>
-  `<span class="status-dot ${status === "missing" ? "amber" : "green"}"></span><span>${esc(FULL[status] ?? "待补入口")}</span>`;
+  `<span class="status-dot ${status === "missing" ? "amber" : "green"}"></span><span>${esc(FULL[status] ?? t("待补入口"))}</span>`;
 export const datasetStatusBadge = (d: Dataset): string =>
-  badge(d.status === "verified" ? "已核实" : d.status === "identified" ? "线索已记录" : "待整理", d.status === "verified" ? "green" : "gray");
+  badge(d.status === "verified" ? t("已核实") : d.status === "identified" ? t("线索已记录") : t("待整理"), d.status === "verified" ? "green" : "gray");
 
 export const empty = (title: string, text: string, action = ""): string =>
   `<div class="empty-state"><div class="empty-icon">${I("search", 28)}</div><h3>${esc(title)}</h3><p>${esc(text)}</p>${action}</div>`;
@@ -35,9 +36,9 @@ export function selectFilter(filters: Filters, name: keyof Filters, label: strin
 
 export function modalityBadges(item: { modalities: string[] | null | undefined }): string {
   const list = arr(item.modalities);
-  if (!list.length) return badge("待补");
+  if (!list.length) return badge(t("待补"));
   const color = (m: string) => (m === "snRNA-seq" || m === "snATAC-seq" ? "purple" : m === "scATAC-seq" ? "amber" : "blue");
-  return `<div class="tech-badges">${list.map((m) => badge(m, color(m))).join("")}</div>`;
+  return `<div class="tech-badges">${list.map((m) => badge(tv(m), color(m))).join("")}</div>`;
 }
 
 export function progressRow(label: string, value: number, total: number, color = ""): string {
@@ -52,14 +53,14 @@ export function field(label: string, name: string, value = "", placeholder = "",
 export function checkboxGroup(name: string, values: string[], selected: string[] | null | undefined, extraCustom = ""): string {
   const chosen = arr(selected);
   const items = [...new Set([...values, ...chosen])];
-  return `<div class="checkbox-group" role="group">${items.map((v) => `<label class="checkbox-choice"><input type="checkbox" name="${name}" value="${esc(v)}"${chosen.includes(v) ? " checked" : ""}><span>${esc(v)}</span></label>`).join("")}</div>${extraCustom}`;
+  return `<div class="checkbox-group" role="group">${items.map((v) => `<label class="checkbox-choice"><input type="checkbox" name="${name}" value="${esc(v)}"${chosen.includes(v) ? " checked" : ""}><span>${esc(tv(v))}</span></label>`).join("")}</div>${extraCustom}`;
 }
 
 export const customField = (name: string, placeholder: string): string =>
-  `<input class="input checkbox-custom" type="text" name="${name}" placeholder="${esc(placeholder)}" maxlength="500" aria-label="自定义补充">`;
+  `<input class="input checkbox-custom" type="text" name="${name}" placeholder="${esc(placeholder)}" maxlength="500" aria-label="${t("自定义补充")}">`;
 
 export const speciesRow = (entry: Partial<SpeciesEntry> = {}): string =>
-  `<div class="species-row"><input class="input" name="speciesName" type="text" value="${esc(entry.name ?? "")}" placeholder="例如 Arabidopsis thaliana" maxlength="500" aria-label="物种学名"><input class="input" name="speciesLabel" type="text" value="${esc(entry.label ?? "")}" placeholder="例如 拟南芥" maxlength="500" aria-label="物种中文名"><button type="button" class="btn-icon" data-action="remove-species-row" aria-label="移除该物种">${I("x", 16)}</button></div>`;
+  `<div class="species-row"><input class="input" name="speciesName" type="text" value="${esc(entry.name ?? "")}" placeholder="${t("例如 Arabidopsis thaliana")}" maxlength="500" aria-label="${t("物种学名")}"><input class="input" name="speciesLabel" type="text" value="${esc(entry.label ?? "")}" placeholder="${t("例如 拟南芥")}" maxlength="500" aria-label="${t("物种中文名")}"><button type="button" class="btn-icon" data-action="remove-species-row" aria-label="${t("移除该物种")}">${I("x", 16)}</button></div>`;
 
 /** readSpeciesRows collects the dynamic species rows of a form, dropping rows without a scientific name. */
 export function readSpeciesRows(form: HTMLFormElement): SpeciesEntry[] {

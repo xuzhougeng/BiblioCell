@@ -4,6 +4,7 @@
 import type { ToolCall } from "./mygo.ts";
 import { esc } from "./model.ts";
 import { I } from "./ui.ts";
+import { t } from "./i18n.ts";
 
 export interface ToolRun {
   call: ToolCall;
@@ -22,7 +23,7 @@ export interface ToolCardOptions {
 const DISPLAY_LIMIT = 4000;
 const HINT_LIMIT = 90;
 
-export const clip = (text: string): string => (text.length > DISPLAY_LIMIT ? text.slice(0, DISPLAY_LIMIT) + "\n…（已省略）" : text);
+export const clip = (text: string): string => (text.length > DISPLAY_LIMIT ? text.slice(0, DISPLAY_LIMIT) + t("\n…（已省略）") : text);
 
 /** argsHint compresses a call's JSON arguments into one line: `status: "pending", limit: 50`. */
 export function argsHint(args: string): string {
@@ -40,7 +41,7 @@ export function argsHint(args: string): string {
 
 function compact(value: unknown): string {
   if (typeof value === "string") return JSON.stringify(value.length > 40 ? value.slice(0, 39) + "…" : value);
-  if (Array.isArray(value)) return `[${value.length} 项]`;
+  if (Array.isArray(value)) return t("[{n} 项]", { n: value.length });
   if (value && typeof value === "object") return "{…}";
   return String(value);
 }
@@ -60,14 +61,14 @@ export const formatElapsed = (ms: number): string => {
 const chevron = `<span class="agent-tools-chevron" aria-hidden="true">${I("chevron-right", 14)}</span>`;
 
 function rowState(run: ToolRun): string {
-  if (!run.result) return '<span class="agent-tool-state running">运行中…</span>';
-  if (run.result.isError) return '<span class="agent-tool-state failed">失败</span>';
+  if (!run.result) return `<span class="agent-tool-state running">${t("运行中…")}</span>`;
+  if (run.result.isError) return `<span class="agent-tool-state failed">${t("失败")}</span>`;
   return "";
 }
 
 function body(run: ToolRun): string {
-  const output = run.result ? `<span class="agent-tool-caption">结果</span><pre>${esc(clip(run.result.content))}</pre>` : "";
-  return `<div class="agent-tool-body"><span class="agent-tool-caption">参数</span><pre>${esc(clip(run.call.arguments))}</pre>${output}</div>`;
+  const output = run.result ? `<span class="agent-tool-caption">${t("结果")}</span><pre>${esc(clip(run.result.content))}</pre>` : "";
+  return `<div class="agent-tool-body"><span class="agent-tool-caption">${t("参数")}</span><pre>${esc(clip(run.call.arguments))}</pre>${output}</div>`;
 }
 
 function row(run: ToolRun): string {
@@ -85,7 +86,7 @@ export function toolCardHTML(runs: ToolRun[], options: ToolCardOptions = {}): st
   const elapsed = options.startedAt
     ? `<span class="agent-tools-elapsed" data-started="${options.startedAt}">${formatElapsed(Date.now() - options.startedAt)}</span>`
     : "";
-  const meta = [options.running && options.step ? `第 ${options.step} 步` : "", elapsed].filter(Boolean).join(" · ");
+  const meta = [options.running && options.step ? t("第 {n} 步", { n: options.step }) : "", elapsed].filter(Boolean).join(" · ");
   const metaHTML = meta ? `<span class="agent-tools-meta">${meta}</span>` : "";
 
   let icon: string;
@@ -94,15 +95,16 @@ export function toolCardHTML(runs: ToolRun[], options: ToolCardOptions = {}): st
   if (running) {
     const now = pending[pending.length - 1]!.call;
     icon = `<span class="agent-tools-icon running">${I("clock", 15)}</span>`;
-    label = `正在调用 <code>${esc(now.name)}</code>`;
-    sub = runs.length > 1 ? `已发起 ${runs.length} 次 · ${esc(breakdown(runs))}` : esc(argsHint(now.arguments));
+    label = t("正在调用 {name}", { name: `<code>${esc(now.name)}</code>` });
+    sub = runs.length > 1 ? t("已发起 {n} 次 · {breakdown}", { n: runs.length, breakdown: esc(breakdown(runs)) }) : esc(argsHint(now.arguments));
   } else if (runs.length === 1) {
     icon = failed ? `<span class="agent-tools-icon failed">${I("alert", 15)}</span>` : `<span class="agent-tools-icon done">${I("check-circle", 15)}</span>`;
-    label = `调用了 <code>${esc(first.call.name)}</code>${failed ? "，失败" : ""}`;
+    const name = `<code>${esc(first.call.name)}</code>`;
+    label = failed ? t("调用了 {name}，失败", { name }) : t("调用了 {name}", { name });
     sub = esc(argsHint(first.call.arguments));
   } else {
     icon = failed ? `<span class="agent-tools-icon failed">${I("alert", 15)}</span>` : `<span class="agent-tools-icon done">${I("check-circle", 15)}</span>`;
-    label = `调用了 ${runs.length} 次工具${failed ? `，${failed} 次失败` : ""}`;
+    label = failed ? t("调用了 {n} 次工具，{failed} 次失败", { n: runs.length, failed }) : t("调用了 {n} 次工具", { n: runs.length });
     sub = esc(breakdown(runs));
   }
 
