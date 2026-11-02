@@ -19,11 +19,12 @@ export function paperModal(app: App, id = ""): void {
   const p: Partial<Paper> = existing ?? {};
   const species = arr(p.species).length ? arr(p.species) : [{}];
   const form = `<form id="paper-form"><input type="hidden" name="id" value="${esc(id)}"><div class="notice-box compact">${I("info", 16)}<span>${existing ? t("补充文献信息，已有笔记、标签、阅读进度和数据关联会保留。") : t("先填写题目即可收录，其余信息之后再补。新条目不会标记为演示数据。")}</span></div><div class="form-grid">`
+    + `<div class="form-field full-width"><span>DOI</span><div class="doi-input-row"><input class="input" name="doi" type="text" value="${esc(p.doi ?? "")}" placeholder="${t("10.xxxx/… 或 DOI 链接")}" maxlength="500" aria-describedby="doi-status"><button type="button" class="btn btn-secondary" id="doi-lookup" data-action="lookup-doi">${I("download", 16)} ${t("获取信息")}</button></div><p id="doi-status" class="doi-status muted small" role="status">${t("填好 DOI 后点击获取，自动补全题目、作者、期刊和摘要；获取不到时可直接手动填写。")}</p></div>`
     + field(t("文献题目"), "title", p.title ?? "", t("输入论文题目"), true, "text", true)
-    + field("DOI", "doi", p.doi ?? "", t("10.xxxx/… 或 DOI 链接"), false, "text", true)
     + field(t("作者"), "authors", p.authors ?? "", t("作者或研究团队"))
     + field(t("发表年份"), "year", p.year ? String(p.year) : "", t("例如 2026"), false, "number")
     + field(t("期刊 / 出版来源"), "journal", p.journal ?? "", t("暂时没有可以留空"))
+    + field("PMID", "pmid", p.pmid ?? "", t("可选，例如 39012345"))
     + `<label class="form-field"><span>${t("发表状态")}</span><select class="input" name="publicationStatus">${options(PUBLICATION_STATUSES, p.publicationStatus || "unknown")}</select></label>`
     + `<label class="form-field"><span>${t("文献类型（可多选）")}</span>${checkboxGroup("articleTypes", ARTICLE_TYPES, arr(p.articleTypes).filter((v) => ARTICLE_TYPES.includes(v)))}</label>`
     + `<div class="form-field full-width"><span>${t("研究物种（一篇文献可涉及多个）")}</span><div class="species-rows" id="species-rows">${species.map((s) => speciesRow(s)).join("")}</div><button type="button" class="text-link" data-action="add-species-row">${I("plus", 15)} ${t("添加物种")}</button></div>`
@@ -42,6 +43,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   const existing = id ? app.paperById(id) : undefined;
   const title = text(f, "title");
   const doi = normalizeDOI(f.get("doi"));
+  const pmid = text(f, "pmid").replace(/^pmid:?\s*/i, "");
   const yearRaw = text(f, "year");
   const year = yearRaw ? Number(yearRaw) : null;
   const reason = text(f, "screeningReason");
@@ -51,6 +53,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   else if (!title) error = t("请填写文献题目。");
   else if (!validDOI(doi)) error = t("DOI 格式不正确，请填写 10.xxxx/… 或完整 DOI 链接。");
   else if (doi && app.state.papers.some((p) => p.id !== id && normalizeDOI(p.doi) === doi)) error = t("这个 DOI 已在文献库中，请直接整理已有条目。");
+  else if (pmid && !/^\d{1,10}$/.test(pmid)) error = t("PMID 应为纯数字。");
   else if (year !== null && (!Number.isInteger(year) || year < 1800 || year > 2100)) error = t("请填写 1800–2100 之间的年份，或留空。");
   else if (!Object.hasOwn(PUBLICATION_STATUSES, publicationStatus)) error = t("请选择有效的发表状态。");
   else if (existing && existing.screening === "excluded" && !reason) error = t("相关 / 排除条目需要保留判断理由。");
@@ -60,7 +63,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   }
   const now = nowISO();
   const values = {
-    title, doi, authors: text(f, "authors"), year, journal: text(f, "journal"), publicationStatus,
+    title, doi, pmid, authors: text(f, "authors"), year, journal: text(f, "journal"), publicationStatus,
     species: readSpeciesRows(form), organs: splitList(f.get("organs")).slice(0, 50),
     modalities: mergeChecked(f, "modalities", "modalitiesCustom"), platforms: mergeChecked(f, "platforms", "platformsCustom"),
     articleTypes: f.getAll("articleTypes").map(String), abstract: text(f, "abstract"), screeningReason: reason, updatedAt: now,
@@ -69,7 +72,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   if (existing) {
     p = Object.assign(existing, values);
   } else {
-    p = { ...values, id: uid("P"), pmid: "", screening: "pending", reviewedAt: "", proposedScreening: "", proposedReason: "", awaitingReview: false, batchId: "", fulltext: "missing", fulltextUrl: "", reading: "unread", starred: false, tags: [], notes: "", source: "手动添加", addedAt: now, isDemo: false }; // i18n-ignore
+    p = { ...values, id: uid("P"), screening: "pending", reviewedAt: "", proposedScreening: "", proposedReason: "", awaitingReview: false, batchId: "", fulltext: "missing", fulltextUrl: "", reading: "unread", starred: false, tags: [], notes: "", source: "手动添加", addedAt: now, isDemo: false }; // i18n-ignore
     app.state.papers.unshift(p);
   }
   app.logActivity(existing ? t("更新文献信息：{title}", { title: p.title }) : t("添加文献：{title}", { title: p.title }), existing ? "edit" : "add");

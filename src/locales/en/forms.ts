@@ -17,6 +17,20 @@ export const forms: Record<string, string> = {
   "文件已移除。": "File removed.",
   "移除失败：{error}": "Couldn't remove the file: {error}",
 
+  // doi.ts
+  "没有找到这个 DOI 的书目信息": "No bibliographic record found for this DOI",
+  "请先填写 DOI，例如 10.1038/s41586-…": "Enter a DOI first, e.g. 10.1038/s41586-…",
+  "正在从 Crossref / Europe PMC 获取…": "Fetching from Crossref / Europe PMC…",
+  "已获取，更新了 {n} 项（高亮显示），保存前请核对。": "Fetched. Updated {n} field(s), highlighted; check them before saving.",
+  "已获取，现有信息与来源一致。": "Fetched. The existing details already match the source.",
+  "未能自动获取：{reason}。可直接在下方手动补充。": "Couldn't fetch automatically: {reason}. You can fill in the fields below by hand.",
+  "请检查网络后重试": "check your connection and try again",
+  "获取信息": "Fetch details",
+  "填写 DOI 获取信息": "Add DOI to fetch details",
+  "填好 DOI 后点击获取，自动补全题目、作者、期刊和摘要；获取不到时可直接手动填写。": "Enter a DOI and click Fetch to fill in the title, authors, journal and abstract. If nothing is found, fill them in by hand.",
+  "可选，例如 39012345": "Optional, e.g. 39012345",
+  "PMID 应为纯数字。": "A PMID should contain digits only.",
+
   // forms.ts: shared
   "取消": "Cancel",
   "尚未确认": "Not yet confirmed",

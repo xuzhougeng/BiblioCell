@@ -394,6 +394,10 @@ export const Library = {
   listSources(): Promise<SourceStatus[]> {
     return call("Library.ListSources");
   },
+  /** LookupDOI fetches bibliographic metadata for a DOI without saving it. */
+  lookupDOI(doi: string): Promise<Paper> {
+    return call("Library.LookupDOI", doi);
+  },
   /** MCPInfo returns the loopback endpoint external AI clients can use. */
   mcpInfo(): Promise<MCPInfo> {
     return call("Library.MCPInfo");

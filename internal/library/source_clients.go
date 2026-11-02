@@ -291,24 +291,7 @@ func (h *remoteHarvester) harvestEuropePMC(ctx context.Context, config SourceCon
 	}
 	var response struct {
 		Results struct {
-			Items []struct {
-				ID           string `json:"id"`
-				Source       string `json:"source"`
-				PMID         string `json:"pmid"`
-				DOI          string `json:"doi"`
-				Title        string `json:"title"`
-				AuthorString string `json:"authorString"`
-				Abstract     string `json:"abstractText"`
-				PubYear      string `json:"pubYear"`
-				PubTypes     struct {
-					Values []string `json:"pubType"`
-				} `json:"pubTypeList"`
-				JournalInfo struct {
-					Journal struct {
-						Title string `json:"title"`
-					} `json:"journal"`
-				} `json:"journalInfo"`
-			} `json:"result"`
+			Items []europePMCResult `json:"result"`
 		} `json:"resultList"`
 	}
 	if err := h.getJSON(ctx, europePMCURL+"?"+params.Encode(), &response); err != nil {
@@ -319,17 +302,7 @@ func (h *remoteHarvester) harvestEuropePMC(ctx context.Context, config SourceCon
 		if strings.TrimSpace(item.Title) == "" || strings.TrimSpace(item.ID) == "" {
 			continue
 		}
-		status := "published"
-		if item.Source == "PPR" {
-			status = "preprint"
-		}
-		paper := Paper{
-			Title: stripMarkup(item.Title), DOI: item.DOI, PMID: item.PMID,
-			Authors: strings.ReplaceAll(item.AuthorString, ", ", "; "), Year: yearFromString(item.PubYear),
-			Journal: item.JournalInfo.Journal.Title, PublicationStatus: status,
-			ArticleTypes: literatureArticleTypes(item.PubTypes.Values), Abstract: stripMarkup(item.Abstract),
-			Source: "Europe PMC",
-		}
+		paper := item.paper()
 		externalID := item.Source + ":" + item.ID
 		link := "https://europepmc.org/article/" + url.PathEscape(item.Source) + "/" + url.PathEscape(item.ID)
 		records = append(records, harvestRecord{
@@ -349,21 +322,7 @@ func (h *remoteHarvester) harvestCrossref(ctx context.Context, config SourceConf
 	}
 	var response struct {
 		Message struct {
-			Items []struct {
-				DOI       string   `json:"DOI"`
-				Title     []string `json:"title"`
-				Container []string `json:"container-title"`
-				Abstract  string   `json:"abstract"`
-				Type      string   `json:"type"`
-				URL       string   `json:"URL"`
-				Published struct {
-					DateParts [][]int `json:"date-parts"`
-				} `json:"published"`
-				Authors []struct {
-					Given  string `json:"given"`
-					Family string `json:"family"`
-				} `json:"author"`
-			} `json:"items"`
+			Items []crossrefWork `json:"items"`
 		} `json:"message"`
 	}
 	if err := h.getJSON(ctx, crossrefURL+"?"+params.Encode(), &response); err != nil {
@@ -374,33 +333,7 @@ func (h *remoteHarvester) harvestCrossref(ctx context.Context, config SourceConf
 		if item.DOI == "" || len(item.Title) == 0 || stripMarkup(item.Title[0]) == "" {
 			continue
 		}
-		authors := make([]string, 0, len(item.Authors))
-		for _, author := range item.Authors {
-			if name := strings.TrimSpace(author.Given + " " + author.Family); name != "" {
-				authors = append(authors, name)
-			}
-		}
-		var year *int
-		if len(item.Published.DateParts) > 0 && len(item.Published.DateParts[0]) > 0 {
-			value := item.Published.DateParts[0][0]
-			year = &value
-		}
-		journal := ""
-		if len(item.Container) > 0 {
-			journal = item.Container[0]
-		}
-		articleTypes := []string{}
-		if item.Type == "review-article" {
-			articleTypes = append(articleTypes, "综述")
-		}
-		paper := Paper{
-			Title: stripMarkup(item.Title[0]), DOI: item.DOI, Authors: strings.Join(authors, "; "),
-			Year: year, Journal: journal, PublicationStatus: "published", ArticleTypes: articleTypes,
-			Abstract: stripMarkup(item.Abstract), Source: "Crossref",
-		}
-		if item.Type == "posted-content" {
-			paper.PublicationStatus = "preprint"
-		}
+		paper := item.paper()
 		link := item.URL
 		if link == "" {
 			link = "https://doi.org/" + normalizeDOI(item.DOI)
@@ -410,6 +343,92 @@ func (h *remoteHarvester) harvestCrossref(ctx context.Context, config SourceConf
 		})
 	}
 	return records, nil
+}
+
+// europePMCResult is one search hit from Europe PMC's core result type.
+type europePMCResult struct {
+	ID           string `json:"id"`
+	Source       string `json:"source"`
+	PMID         string `json:"pmid"`
+	DOI          string `json:"doi"`
+	Title        string `json:"title"`
+	AuthorString string `json:"authorString"`
+	Abstract     string `json:"abstractText"`
+	PubYear      string `json:"pubYear"`
+	PubTypes     struct {
+		Values []string `json:"pubType"`
+	} `json:"pubTypeList"`
+	JournalInfo struct {
+		Journal struct {
+			Title string `json:"title"`
+		} `json:"journal"`
+	} `json:"journalInfo"`
+}
+
+func (item europePMCResult) paper() Paper {
+	status := "published"
+	if item.Source == "PPR" {
+		status = "preprint"
+	}
+	return Paper{
+		Title: stripMarkup(item.Title), DOI: item.DOI, PMID: item.PMID,
+		Authors: strings.ReplaceAll(item.AuthorString, ", ", "; "), Year: yearFromString(item.PubYear),
+		Journal: item.JournalInfo.Journal.Title, PublicationStatus: status,
+		ArticleTypes: literatureArticleTypes(item.PubTypes.Values), Abstract: stripMarkup(item.Abstract),
+		Source: "Europe PMC",
+	}
+}
+
+// crossrefWork is one work record from the Crossref REST API.
+type crossrefWork struct {
+	DOI       string   `json:"DOI"`
+	Title     []string `json:"title"`
+	Container []string `json:"container-title"`
+	Abstract  string   `json:"abstract"`
+	Type      string   `json:"type"`
+	URL       string   `json:"URL"`
+	Published struct {
+		DateParts [][]int `json:"date-parts"`
+	} `json:"published"`
+	Authors []struct {
+		Given  string `json:"given"`
+		Family string `json:"family"`
+	} `json:"author"`
+}
+
+func (item crossrefWork) paper() Paper {
+	authors := make([]string, 0, len(item.Authors))
+	for _, author := range item.Authors {
+		if name := strings.TrimSpace(author.Given + " " + author.Family); name != "" {
+			authors = append(authors, name)
+		}
+	}
+	var year *int
+	if len(item.Published.DateParts) > 0 && len(item.Published.DateParts[0]) > 0 {
+		value := item.Published.DateParts[0][0]
+		year = &value
+	}
+	journal := ""
+	if len(item.Container) > 0 {
+		journal = item.Container[0]
+	}
+	articleTypes := []string{}
+	if item.Type == "review-article" {
+		articleTypes = append(articleTypes, "综述")
+	}
+	title := ""
+	if len(item.Title) > 0 {
+		title = stripMarkup(item.Title[0])
+	}
+	paper := Paper{
+		Title: title, DOI: item.DOI, Authors: strings.Join(authors, "; "),
+		Year: year, Journal: journal, PublicationStatus: "published", ArticleTypes: articleTypes,
+		Abstract: stripMarkup(item.Abstract), Source: "Crossref",
+	}
+	if item.Type == "posted-content" {
+		paper.PublicationStatus = "preprint"
+	}
+	return paper
 }
 
 func (h *remoteHarvester) harvestBioRxiv(ctx context.Context, config SourceConfig) ([]harvestRecord, error) {

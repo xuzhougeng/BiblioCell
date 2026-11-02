@@ -933,6 +933,15 @@ a.link-chip:hover svg { color: var(--primary) }
 .modal-open, .drawer-open { overflow: hidden }
 .drawer-eyebrow { display: flex; align-items: center; justify-content: space-between; color: #78725e; font-family: var(--mono); font-size: calc(12px * var(--font-scale, 1)) }
 .drawer-status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px }
+.doi-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 14px; padding: 10px 12px; border: 1px solid #e8e1c9; border-radius: 4px; background: #fbf8ee; font-size: calc(14px * var(--font-scale, 1)) }
+.doi-bar .text-link { overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px }
+.doi-bar.is-empty .muted { flex: 1 1 auto }
+.doi-bar-label { font-size: calc(12.5px * var(--font-scale, 1)); font-weight: 650; color: #77725f; letter-spacing: 0.04em }
+.btn.btn-compact { min-height: 32px; padding: 5px 11px; font-size: calc(13px * var(--font-scale, 1)) }
+.doi-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px }
+.doi-status { margin: 2px 0 0; line-height: 1.6; font-size: calc(12.5px * var(--font-scale, 1)) }
+.doi-status.is-error { color: #8c3a2b }
+.form-field.is-fetched .input, .form-field.is-fetched .textarea, .form-field.is-fetched select { border-color: #c9a227; background: #fdf6dc }
 .detail-item small { display: block; font-size: calc(12.5px * var(--font-scale, 1)); color: #78725e }
 .detail-section { margin-bottom: 28px }
 .detail-section h3 { margin-top: 0; margin-bottom: 13px }

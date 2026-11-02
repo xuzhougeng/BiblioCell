@@ -4,6 +4,7 @@ import type { Config, MCPInfo, Paper, SourceAutomation, SourceStatus, Status } f
 import { demoState } from "./demo-data.ts";
 import { renderDrawer } from "./drawer.ts";
 import type { Evidence } from "./mygo.ts";
+import { doiActions } from "./doi.ts";
 import { fileActions } from "./files.ts";
 import {
   datasetModal, exclusionReasonModal, importSummaryModal, linkDatasetModal, paperModal, resetDemoModal, resourceModal,
@@ -624,6 +625,7 @@ export class App {
     ...settingsActions(this),
     ...agentActions(this),
     ...fileActions(this),
+    ...doiActions(this),
     ...reviewActions(this),
   };
 

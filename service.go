@@ -116,6 +116,11 @@ func (l *Library) FetchFulltext(paperID string) (library.FulltextResult, error) 
 	return l.store.FetchFulltext(context.Background(), paperID, sourceCredentials(l.settings))
 }
 
+// LookupDOI fetches bibliographic metadata for a DOI without saving it.
+func (l *Library) LookupDOI(doi string) (library.Paper, error) {
+	return library.LookupDOI(context.Background(), doi, sourceCredentials(l.settings))
+}
+
 // OpenPaperFile opens a stored file with its default application.
 func (l *Library) OpenPaperFile(id string) error {
 	if l.store == nil {
