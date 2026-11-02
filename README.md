@@ -42,6 +42,7 @@
 - **数据存放位置**：选择一个文件夹，SQLite 数据库（`bibliocell.sqlite`）和文献文件（`papers/`）都保存在里面。通过原生目录对话框选定后立即切换；也可输入绝对路径，点“保存设置”后切换。切换前先试打开新文件夹，打不开就报错，设置和当前数据库都不变；打得开就自动重启过去。应用不会移动或覆盖旧数据，所选文件夹没有数据库时会创建空库。
 - **界面字号**：12–20px，拖动时实时预览，保存后跨重启保留。缩放覆盖导航、表格、详情抽屉和笔记等固定字号，不改变面板宽度。
 - **外部 AI · MCP**：集中显示连接地址、工具和 Schema 资源，可查看、复制、自定义或重新生成 Bearer Token。Token 修改在重启后生效。
+- **AI 模型**：内置助手使用的模型服务，见下文“内置 AI 助手”。
 - 桌面左侧边栏可折叠为图标栏，折叠状态保存在本机；移动端使用抽屉式导航。
 
 设置保存在 mygo 用户数据目录的 `settings.json`。Windows 默认配置文件为 `%APPDATA%\BiblioCell\settings.json`，默认存放文件夹为同一目录。页面分别显示配置的文件夹和本次运行实际使用的文件夹。
@@ -51,6 +52,29 @@
 旧版设置中的 `databasePath` 会在启动时自动转换为存放文件夹。如果数据库用了其他文件名，会在原文件夹内改名为 `bibliocell.sqlite`；同名文件已存在时不覆盖，保留旧设置并改用默认文件夹，需要手动处理。
 
 从旧版 PlantCell Library 升级时，应用会在首次启动时自动把 `%APPDATA%\PlantCell Library` 中的 `settings.json`、`mcp-token` 和 `plantcell.sqlite` 一次性迁入 `%APPDATA%\BiblioCell`，默认数据库同时更名为 `bibliocell.sqlite`。自定义位置的数据库留在原文件夹，不会被移走。
+
+## 内置 AI 助手
+
+左侧 **AI 助手** 页面内置一个极简的 agent loop：把你的话发给配置好的模型，模型要调用工具就在本地执行，把结果交回去，直到它用文字作答或达到步数上限。工具就是上面的 MCP 工具集，在进程内直接连接（不经过网络和 Token），所以外部 AI 和内置助手看到的是同一套能力和同一条规则：收录判断与核实仍由人在详情页决定。
+
+模型服务在 **设置 · AI 模型** 配置，按接口协议而不是厂商区分：
+
+- **Anthropic Messages**：`POST {地址}/v1/messages`，`x-api-key` 认证。默认地址 `https://api.anthropic.com`，默认模型 `claude-opus-5-5`。
+- **OpenAI Chat Completions（兼容）**：`POST {地址}/chat/completions`，Bearer 认证。默认地址 `https://api.openai.com/v1`；DeepSeek、通义千问、Ollama（`http://localhost:11434/v1`）、vLLM 等填各自地址和模型名即可。
+
+还可以设置单次运行的步数上限（默认 20）和单次回复的 token 上限。Key 和地址只保存在本机 `settings.json`，修改后下一次对话生效，无需重启。对话记录只保留在窗口里；助手的每次工具调用都显示在对话中，可展开查看参数和返回。
+
+命令行同样可用：
+
+```bash
+BiblioCell settings set -ai-protocol openai -ai-base-url http://localhost:11434/v1 -ai-model qwen3
+```
+
+```bash
+BiblioCell agent "库里有多少篇还没判断收录的文献？"
+```
+
+`agent` 命令把工具调用打印到 stderr，最终结果（完整对话、回复、步数、token 用量）以 JSON 打印到 stdout。
 
 ## 更新与来源
 

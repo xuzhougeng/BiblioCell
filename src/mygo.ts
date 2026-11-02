@@ -4,12 +4,22 @@ import { call, event } from "mygo-runtime";
 
 // ---- Types ----
 
+export interface AgentConfig {
+  protocol: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  maxTokens: number;
+  maxSteps: number;
+}
+
 export interface Config {
   storagePath: string;
   fontSize: number;
   mcpToken: string;
   ncbiApiKey: string;
   contactEmail: string;
+  ai: AgentConfig;
 }
 
 export interface Dataset {
@@ -66,6 +76,14 @@ export interface DatasetRepository {
   verified: boolean;
 }
 
+export interface Event {
+  type: string;
+  step: number;
+  toolCall?: ToolCall;
+  output?: string;
+  isError?: boolean;
+}
+
 export interface Evidence {
   id: string;
   paperId: string;
@@ -108,6 +126,17 @@ export interface MCPInfo {
   token: string;
   tools: string[];
   resources: string[];
+}
+
+export interface Message {
+  role: string;
+  content: string;
+  toolCalls?: ToolCall[];
+  toolCallId?: string;
+  toolName?: string;
+  isError?: boolean;
+  raw?: string;
+  rawProtocol?: string;
 }
 
 export interface Paper {
@@ -156,6 +185,14 @@ export interface PaperFile {
   localPath: string;
   sizeBytes: number;
   addedAt: string;
+}
+
+export interface Result {
+  messages: Message[];
+  text: string;
+  steps: number;
+  stopReason: string;
+  usage: Usage;
 }
 
 /** SettingsSaveResult tells the frontend which configuration changes need a restart. */
@@ -242,10 +279,30 @@ export interface SyncResult {
   papers: Paper[];
 }
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 // ---- Services ----
 
 /** Library exposes local library operations to the frontend. */
 export const Library = {
+  /**
+   * AgentChat runs the built-in agent over the conversation and returns it grown
+   * by the model's turns and tool calls. The window keeps the transcript, so
+   * the next call sends it back whole. Tools run in-process against the real
+   * database with write access, as the person asked for the work.
+   */
+  agentChat(messages: Message[]): Promise<Result> {
+    return call("Library.AgentChat", messages);
+  },
   /** ChooseStoragePath opens a native directory picker for the storage folder. */
   chooseStoragePath(): Promise<string> {
     return call("Library.ChooseStoragePath");
@@ -367,4 +424,6 @@ export const Library = {
 export const events = {
   /** sourcesChanged tells the window a background update started or finished. */
   sourcesChanged: event<SourceAutomation>("sourcesChanged"),
+  /** agentProgress shows the window each step of a run while it happens. */
+  agentProgress: event<Event>("agentProgress"),
 } as const;

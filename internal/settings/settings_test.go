@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"bibliocell/internal/agent"
 )
 
 var testToken = strings.Repeat("t", 64)
@@ -54,6 +56,31 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	}
 	if got := reopenedAgain.Get(); got != want {
 		t.Errorf("replacement settings = %+v, want %+v", got, want)
+	}
+}
+
+func TestStoreKeepsAIConfig(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "settings.json")
+	store, err := Open(path, directory, testToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := store.Get()
+	config.AI = agent.Config{Protocol: "openai", BaseURL: "http://localhost:11434/v1/", APIKey: " key ", Model: "qwen3"}
+	if err := store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path, directory, testToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Get().AI; got.BaseURL != "http://localhost:11434/v1" || got.APIKey != "key" || got.Model != "qwen3" {
+		t.Fatalf("AI config = %+v", got)
+	}
+	config.AI = agent.Config{Protocol: "openai"} // a model is required once the section is used
+	if err := store.Save(config); err == nil {
+		t.Fatal("incomplete AI config accepted")
 	}
 }
 

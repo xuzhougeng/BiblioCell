@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"bibliocell/internal/agent"
 )
 
 const (
@@ -30,6 +32,9 @@ type Config struct {
 	// in the database, so they stay on this machine when the folder moves.
 	NCBIAPIKey   string `json:"ncbiApiKey"`
 	ContactEmail string `json:"contactEmail"`
+	// AI configures the built-in agent's model service. The key stays on this
+	// machine like the other credentials.
+	AI agent.Config `json:"ai"`
 }
 
 // DatabasePath returns the SQLite file inside the storage folder.
@@ -94,6 +99,7 @@ func (s *Store) Save(config Config) error {
 	config.MCPToken = strings.TrimSpace(config.MCPToken)
 	config.NCBIAPIKey = strings.TrimSpace(config.NCBIAPIKey)
 	config.ContactEmail = strings.TrimSpace(config.ContactEmail)
+	config.AI = agent.Trim(config.AI)
 	if err := Validate(config); err != nil {
 		return err
 	}
@@ -164,6 +170,12 @@ func Validate(config Config) error {
 	if config.ContactEmail != "" {
 		if address, err := mail.ParseAddress(config.ContactEmail); err != nil || address.Address != config.ContactEmail {
 			return errors.New("contact email must be a plain email address")
+		}
+	}
+	// A blank AI section is fine: the agent reports the missing model when used.
+	if config.AI != (agent.Config{}) {
+		if err := agent.Validate(config.AI); err != nil {
+			return err
 		}
 	}
 	return nil

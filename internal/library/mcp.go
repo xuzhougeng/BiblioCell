@@ -203,19 +203,10 @@ func addWriteTool[In, Out any](server *mcp.Server, name, description string, han
 	})
 }
 
-// StartMCP starts a local Streamable HTTP MCP server for the real database. It
-// serves loopback addresses only: the bearer token travels unencrypted.
-func StartMCP(store *Store, address, token string, credentials func() SourceCredentials) (*MCPServer, error) {
-	if len(token) < 32 {
-		return nil, errors.New("a secure MCP write token is required")
-	}
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, err
-	}
-	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return nil, errors.New("the MCP server listens on loopback addresses only")
-	}
+// NewMCPServer builds the MCP server over the real database. It is the single
+// tool surface for every AI client: external ones reach it through StartMCP,
+// the built-in agent connects in-process through ConnectLocalMCP.
+func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Server, error) {
 	paperSchema, err := jsonschema.For[paperInput](nil)
 	if err != nil {
 		return nil, err
@@ -459,6 +450,26 @@ func StartMCP(store *Store, address, token string, credentials func() SourceCred
 		return nil, output, nil
 	})
 
+	return server, nil
+}
+
+// StartMCP starts a local Streamable HTTP MCP server for the real database. It
+// serves loopback addresses only: the bearer token travels unencrypted.
+func StartMCP(store *Store, address, token string, credentials func() SourceCredentials) (*MCPServer, error) {
+	if len(token) < 32 {
+		return nil, errors.New("a secure MCP write token is required")
+	}
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return nil, errors.New("the MCP server listens on loopback addresses only")
+	}
+	server, err := NewMCPServer(store, credentials)
+	if err != nil {
+		return nil, err
+	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, err
@@ -471,6 +482,46 @@ func StartMCP(store *Store, address, token string, credentials func() SourceCred
 	httpServer := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = httpServer.Serve(listener) }()
 	return &MCPServer{Endpoint: "http://" + listener.Addr().String() + "/mcp", server: httpServer}, nil
+}
+
+// LocalMCP is an in-process, read-write MCP session over the real database,
+// used by the built-in agent. Nothing crosses the network.
+type LocalMCP struct {
+	Session *mcp.ClientSession
+	cancel  context.CancelFunc
+}
+
+// ConnectLocalMCP connects a client to the MCP server through memory. The
+// session has write access: the agent runs inside the app on the person's
+// behalf, so the bearer token has nothing to protect.
+func ConnectLocalMCP(ctx context.Context, store *Store, credentials func() SourceCredentials) (*LocalMCP, error) {
+	server, err := NewMCPServer(store, credentials)
+	if err != nil {
+		return nil, err
+	}
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverCtx, cancel := context.WithCancel(context.WithValue(ctx, mcpAccessKey{}, true))
+	if _, err := server.Connect(serverCtx, serverTransport, nil); err != nil {
+		cancel()
+		return nil, err
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "bibliocell-agent", Version: "0.1.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return &LocalMCP{Session: session, cancel: cancel}, nil
+}
+
+// Close ends the in-process session.
+func (l *LocalMCP) Close() error {
+	if l == nil {
+		return nil
+	}
+	err := l.Session.Close()
+	l.cancel()
+	return err
 }
 
 // Close stops accepting MCP requests.

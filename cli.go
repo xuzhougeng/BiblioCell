@@ -16,6 +16,7 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"bibliocell/internal/agent"
 	"bibliocell/internal/library"
 	"bibliocell/internal/settings"
 )
@@ -56,9 +57,13 @@ Commands:
                                       show or set the schedule the desktop app runs
   settings get                        current settings.json
   settings set [-storage DIR] [-font-size N] [-mcp-token TOKEN] [-ncbi-api-key KEY] [-contact-email EMAIL]
+               [-ai-protocol anthropic|openai] [-ai-base-url URL] [-ai-api-key KEY] [-ai-model NAME] [-ai-max-steps N]
   mcp                                 MCP endpoint and bearer token
   serve [-addr HOST:PORT]             run the MCP server without a window, until interrupted
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
+  agent [-max-steps N] [-system TEXT] PROMPT
+                                      run the built-in agent once with the configured model;
+                                      tool calls go to stderr, the result to stdout
 
 Data directory: -data-dir, else $BIBLIOCELL_DATA_DIR, else the app's user data directory.
 Output is JSON. Settings changes take effect on the next app start.
@@ -66,7 +71,7 @@ Output is JSON. Settings changes take effect on the next app start.
 
 var cliCommands = map[string]bool{
 	"status": true, "papers": true, "datasets": true, "sources": true,
-	"settings": true, "mcp": true, "sql": true, "help": true, "evidence": true, "serve": true,
+	"settings": true, "mcp": true, "sql": true, "help": true, "evidence": true, "serve": true, "agent": true,
 }
 
 // isCLICommand tells a command line invocation from a desktop launch, whose
@@ -149,6 +154,8 @@ func (c *cli) run(command string, args []string) error {
 		return c.evidence(ctx, args)
 	case "serve":
 		return c.serve(args)
+	case "agent":
+		return c.agent(ctx, args)
 	case "sources":
 		return c.sources(ctx, args)
 	case "settings":
@@ -390,6 +397,53 @@ func (c *cli) serve(args []string) error {
 	return server.Close(shutdown)
 }
 
+// agent runs one conversation turn against the configured model, with the
+// MCP tools connected in-process.
+func (c *cli) agent(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
+	maxSteps := flags.Int("max-steps", 0, "completions per run, 0 for the configured value")
+	system := flags.String("system", "", "system prompt replacing the built-in one")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	prompt := strings.TrimSpace(strings.Join(flags.Args(), " "))
+	if prompt == "" {
+		return errors.New("usage: agent [-max-steps N] [-system TEXT] PROMPT")
+	}
+	config := agent.Normalize(c.settings.Get().AI)
+	provider, err := agent.NewProvider(config)
+	if err != nil {
+		return fmt.Errorf("AI settings: %w (run settings set -ai-model ...)", err)
+	}
+	local, err := library.ConnectLocalMCP(ctx, c.store, sourceCredentials(c.settings))
+	if err != nil {
+		return err
+	}
+	defer local.Close()
+	if *maxSteps <= 0 {
+		*maxSteps = config.MaxSteps
+	}
+	result, err := agent.Run(ctx, provider, agent.MCPTools{Session: local.Session}, []agent.Message{{Role: "user", Content: prompt}}, agent.Options{
+		System: *system, MaxSteps: *maxSteps,
+		OnEvent: func(event agent.Event) {
+			switch event.Type {
+			case "tool_call":
+				fmt.Fprintf(c.stderr, "[%d] %s %s\n", event.Step, event.ToolCall.Name, event.ToolCall.Arguments)
+			case "tool_result":
+				status := "ok"
+				if event.IsError {
+					status = "error"
+				}
+				fmt.Fprintf(c.stderr, "[%d] %s -> %s, %d bytes\n", event.Step, event.ToolCall.Name, status, len(event.Output))
+			}
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return c.print(result, nil)
+}
+
 func (c *cli) sources(ctx context.Context, args []string) error {
 	sub, rest := split(args)
 	switch sub {
@@ -450,6 +504,12 @@ func (c *cli) configure(args []string) error {
 		flags.StringVar(&config.MCPToken, "mcp-token", config.MCPToken, "MCP bearer token, used on next start")
 		flags.StringVar(&config.NCBIAPIKey, "ncbi-api-key", config.NCBIAPIKey, "NCBI API key for PubMed, GEO and SRA")
 		flags.StringVar(&config.ContactEmail, "contact-email", config.ContactEmail, "contact email for Crossref's polite pool")
+		flags.StringVar(&config.AI.Protocol, "ai-protocol", config.AI.Protocol, "anthropic (Messages API) or openai (Chat Completions)")
+		flags.StringVar(&config.AI.BaseURL, "ai-base-url", config.AI.BaseURL, "model service root, empty for the protocol's public endpoint")
+		flags.StringVar(&config.AI.APIKey, "ai-api-key", config.AI.APIKey, "model service API key")
+		flags.StringVar(&config.AI.Model, "ai-model", config.AI.Model, "model name")
+		flags.IntVar(&config.AI.MaxTokens, "ai-max-tokens", config.AI.MaxTokens, "output tokens per completion, 0 for the default")
+		flags.IntVar(&config.AI.MaxSteps, "ai-max-steps", config.AI.MaxSteps, "completions per run, 0 for 20")
 		if err := flags.Parse(rest); err != nil {
 			return err
 		}

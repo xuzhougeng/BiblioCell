@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"bibliocell/internal/agent"
 	"bibliocell/internal/library"
 	"bibliocell/internal/settings"
 )
@@ -248,5 +251,58 @@ func TestCLIDeletePaper(t *testing.T) {
 	var stderr bytes.Buffer
 	if code := runCLI([]string{"-data-dir", dataDir, "papers", "delete", paper.ID}, strings.NewReader(""), &bytes.Buffer{}, &stderr); code == 0 || !strings.Contains(stderr.String(), "paper not found") {
 		t.Fatalf("missing paper: %d %s", code, stderr.String())
+	}
+}
+
+// TestCLIAgentRunsConfiguredModel drives the built-in loop end to end: the
+// configured Chat Completions service asks for a tool, the CLI runs it against
+// the real database, and the final answer comes back.
+func TestCLIAgentRunsConfiguredModel(t *testing.T) {
+	dataDir := t.TempDir()
+	run(t, dataDir, `{"title":"Agent sees me"}`, nil, "papers", "add")
+
+	var calls int
+	var toolOutput string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+			Tools []struct {
+				Function struct{ Name string } `json:"function"`
+			} `json:"tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model != "test-model" || len(body.Tools) < 10 {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if calls == 1 {
+			w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"list_papers","arguments":"{\"query\":\"agent\"}"}}]},"finish_reason":"tool_calls"}]}`))
+			return
+		}
+		toolOutput = body.Messages[len(body.Messages)-1].Content
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"库里有 1 篇。"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	var saved settings.Config
+	run(t, dataDir, "", &saved, "settings", "set", "-ai-protocol", "openai", "-ai-base-url", server.URL, "-ai-model", "test-model", "-ai-api-key", "k")
+	if saved.AI.Model != "test-model" || saved.AI.Protocol != agent.ProtocolOpenAI {
+		t.Fatalf("saved AI = %+v", saved.AI)
+	}
+	var result agent.Result
+	run(t, dataDir, "", &result, "agent", "how", "many", "papers?")
+	if result.Text != "库里有 1 篇。" || result.Steps != 2 || result.StopReason != "end_turn" || len(result.Messages) != 4 {
+		t.Fatalf("result = %+v", result)
+	}
+	if !strings.Contains(toolOutput, "Agent sees me") || !strings.Contains(toolOutput, `"total":1`) {
+		t.Fatalf("tool output sent to the model = %q", toolOutput)
+	}
+	if code := runCLI([]string{"-data-dir", t.TempDir(), "agent", "hello"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
+		t.Error("agent ran without an AI configuration")
 	}
 }
