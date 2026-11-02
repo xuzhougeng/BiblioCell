@@ -82,7 +82,6 @@ export const PAGES = {
   tasks: ["待补事项", "从整理状态生成，按需要逐步完成。"],
   sources: ["更新与来源", "记录发现入口和整理活动。"],
   agent: ["AI 助手", "用自己的模型，通过 MCP 工具整理文献库。"],
-  schema: ["数据库结构", "三个核心对象，连接文献、数据与资料。"],
   settings: ["设置", "让研究库按照你的方式保存、阅读与工作。"],
 } as const;
 export type Page = keyof typeof PAGES;
