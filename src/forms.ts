@@ -109,6 +109,7 @@ export function saveExclusionReason(app: App, form: HTMLFormElement): void {
   app.render();
   app.renderDrawer();
   app.toast(t("判断与理由已保存。"));
+  app.screeningDecided();
 }
 
 export function datasetModal(app: App, id = "", paperId = ""): void {

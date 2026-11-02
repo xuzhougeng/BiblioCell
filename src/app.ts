@@ -16,6 +16,7 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
+import { DECISIONS, applyDecision, renderScreening, screenActions, screenPapers, type ScreenState } from "./screen.ts";
 import { previewFontSize, renderSettings, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
@@ -67,6 +68,8 @@ export class App {
   datasetPage = 1;
   datasetPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-datasets-page-size"))) ? Number(localStorage.getItem("bibliocell-datasets-page-size")) : PAGE_SIZES[0]!;
   drawer: Drawer | null = null;
+  /** Papers page: screening mode shows one paper at a time instead of the table. */
+  screen: ScreenState | null = null;
   agent: AgentState = emptyAgentState();
   drawerTab = "overview";
   syncing = new Set<string>();
@@ -254,13 +257,14 @@ export class App {
     if (!content) return;
     const renderers: Record<Page, () => string> = {
       overview: () => renderOverview(this),
-      papers: () => renderPapers(this),
+      papers: () => (this.screen ? renderScreening(this) : renderPapers(this)),
       datasets: () => renderDatasets(this),
       tasks: () => renderTasks(this),
       sources: () => renderSources(this),
       agent: () => renderAgent(this),
       settings: () => renderSettings(this),
     };
+    if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
     content.innerHTML = renderers[this.page]();
     document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
     if (this.page === "agent") {
@@ -369,6 +373,57 @@ export class App {
     if (!id) return;
     this.drawer = { type: this.drawer.type, id };
     this.renderDrawer(true);
+  }
+
+  // ---- screening mode ----
+  /** startScreening snapshots the filtered list and opens it one paper at a time, from the row cursor if any. */
+  startScreening(): void {
+    const ids = filterPapers(this.state.papers, this.filters).map((p) => p.id);
+    const index = this.paperCursor == null ? 0 : (this.paperPage - 1) * this.paperPageSize + this.paperCursor;
+    this.screen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)) };
+    this.closeDrawer();
+    this.render();
+    window.scrollTo({ top: 0 });
+    $("#app-content")?.focus({ preventScroll: true });
+  }
+  exitScreening(): void {
+    if (!this.screen) return;
+    const id = screenPapers(this)[this.screen.index]?.id;
+    this.screen = null;
+    this.closeDrawer();
+    if (id) {
+      // Land the table on the paper that was open, so the list picks up where screening left off.
+      const index = filterPapers(this.state.papers, this.filters).findIndex((p) => p.id === id);
+      if (index >= 0) {
+        this.paperPage = Math.floor(index / this.paperPageSize) + 1;
+        this.paperCursor = index % this.paperPageSize;
+      }
+    }
+    this.render();
+    if (this.paperCursor != null) this.focusTableRow(false, this.paperCursor);
+  }
+  moveScreening(delta: number): void {
+    if (!this.screen) return;
+    const papers = screenPapers(this);
+    const next = this.screen.index + delta;
+    if (next < 0 || next >= papers.length) return;
+    this.screen.index = next;
+    this.render();
+    window.scrollTo({ top: 0 });
+  }
+  /** decideInScreening records the decision and moves on; an exclusion without a reason asks for one first. */
+  decideInScreening(id: string, status: string): void {
+    const p = this.paperById(id);
+    if (!p || !this.screen) return;
+    if (!applyDecision(this, p, status, (paper) => exclusionReasonModal(this, paper))) return;
+    this.toast(t("已记为：{label}", { label: SCREEN[status] ?? status }));
+    this.screeningDecided();
+  }
+  /** screeningDecided moves to the next paper after a decision, or re-renders on the last one. */
+  screeningDecided(): void {
+    if (!this.screen) return;
+    if (this.screen.index < screenPapers(this).length - 1) this.moveScreening(1);
+    else this.render();
   }
 
   // ---- modal ----
@@ -627,6 +682,7 @@ export class App {
     ...fileActions(this),
     ...doiActions(this),
     ...reviewActions(this),
+    ...screenActions(this),
   };
 
   private onClick(e: MouseEvent): void {
@@ -801,7 +857,12 @@ export class App {
       e.preventDefault(); // Otherwise the web view passes the key on and macOS beeps.
       if ($("#modal-root .modal")) this.closeModal();
       else if (this.drawer) this.closeDrawer();
+      else if (this.screen) this.exitScreening();
       else document.body.classList.remove("nav-open");
+      return;
+    }
+    if (this.screen && this.page === "papers" && !this.drawer && !$("#modal-root .modal") && !target?.matches("input,textarea,select") && !e.altKey && !e.ctrlKey && !e.metaKey && this.screenKey(e)) {
+      e.preventDefault();
       return;
     }
     if (e.key === "Enter" && target instanceof HTMLInputElement && target.id === "global-search") {
@@ -850,6 +911,31 @@ export class App {
         first.focus();
       }
     }
+  }
+
+  /** screenKey handles the single-key shortcuts of screening mode; true when the key was one of them. */
+  private screenKey(e: KeyboardEvent): boolean {
+    const current = screenPapers(this)[this.screen!.index];
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      this.moveScreening(e.key === "ArrowRight" ? 1 : -1);
+      return true;
+    }
+    if (!current) return false;
+    const key = e.key.toLowerCase();
+    const decision = DECISIONS.find(([k]) => k === key);
+    if (decision) {
+      this.decideInScreening(current.id, decision[1]);
+      return true;
+    }
+    if (key === "s") {
+      this.actions["toggle-star"]!(document.body, current.id);
+      return true;
+    }
+    if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLAnchorElement)) {
+      this.openPaper(current.id);
+      return true;
+    }
+    return false;
   }
 
   // ---- arrow-key table navigation ----
