@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -33,6 +34,9 @@ type SourceCredentials struct {
 type remoteHarvester struct {
 	client      *http.Client
 	credentials func() SourceCredentials
+	// lastNCBI paces E-utilities requests: NCBI allows 3 a second, 10 with a key.
+	ncbiMu   sync.Mutex
+	lastNCBI time.Time
 }
 
 // newRemoteHarvester reads credentials at each request, so an edit applies to
@@ -77,7 +81,34 @@ func plainRequestError(err error) error {
 	return err
 }
 
+// waitNCBI spaces E-utilities requests so a search, its fetch, and a count do
+// not exceed NCBI's rate limit.
+func (h *remoteHarvester) waitNCBI(ctx context.Context) error {
+	h.ncbiMu.Lock()
+	defer h.ncbiMu.Unlock()
+	gap := 350 * time.Millisecond
+	if h.credentials().NCBIAPIKey != "" {
+		gap = 110 * time.Millisecond
+	}
+	if wait := time.Until(h.lastNCBI.Add(gap)); wait > 0 {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	h.lastNCBI = time.Now()
+	return nil
+}
+
 func (h *remoteHarvester) get(ctx context.Context, endpoint string) ([]byte, error) {
+	if strings.HasPrefix(endpoint, ncbiEUtilsURL) {
+		if err := h.waitNCBI(ctx); err != nil {
+			return nil, err
+		}
+	}
 	req, err := h.newRequest(ctx, endpoint)
 	if err != nil {
 		return nil, err

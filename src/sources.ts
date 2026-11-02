@@ -1,13 +1,13 @@
 // "更新与来源" page: automatic updates, connector cards, configuration, records and manual sync.
 import type { App } from "./app.ts";
-import { Library, events, type SourceConfig, type SourceStatus } from "./mygo.ts";
+import { Library, events, type QueryChange, type SourceConfig, type SourceStatus } from "./mygo.ts";
 import { locale, t, tv } from "./i18n.ts";
 import { arr, dateText, esc, nextRunText, safeURL, shortTime } from "./model.ts";
 import { enqueue } from "./store.ts";
 import { $, I, badge, empty, errorMessage, option, setFormError, text } from "./ui.ts";
 
 const fallbackSource = (partial: Partial<SourceStatus> & Pick<SourceStatus, "id" | "name" | "kind" | "description" | "homeUrl">): SourceStatus => ({
-  supported: true, enabled: true, query: "", maxResults: 20, provider: "", recordCount: 0, lastSuccessAt: "", lastRun: null, recentRecords: [], ...partial,
+  supported: true, enabled: true, query: "", maxResults: 20, provider: "", recordCount: 0, queryVersion: "1", queryChange: null, lastSuccessAt: "", lastRun: null, recentRecords: [], ...partial,
 });
 
 /** FALLBACK_SOURCES is shown in browser preview, where no Go backend lists connectors. */
@@ -77,7 +77,7 @@ export function renderSources(app: App): string {
       ? `<button class="btn btn-secondary" data-action="configure-source" data-id="${esc(source.id)}"${!realMode || running ? " disabled" : ""}>${t("配置")}</button><button class="btn btn-primary" data-action="sync-source" data-id="${esc(source.id)}"${!realMode || !source.enabled || running || app.env.automation.running ? " disabled" : ""}>${I(running ? "clock" : "refresh", 15)}${running ? ` ${t("正在同步")}` : ` ${t("同步")}`}</button>`
       : "";
     return `<section class="source-card"><div class="source-heading"><span class="source-letter">${esc(tv(source.name).slice(0, 1))}</span><div><h3>${esc(tv(source.name))}</h3><p class="muted">${source.kind === "repository" ? t("数据仓库") : t("文献元数据")}</p></div>${badge(stateLabel, stateColor)}</div><p class="source-description">${esc(tv(source.description))}</p>`
-      + (source.supported ? `<div class="source-query" title="${esc(query)}"><code>${esc(query || t("查询待配置"))}</code></div>` : "")
+      + (source.supported ? `<div class="source-query" title="${esc(query)}"><code>${esc(query || t("查询待配置"))}</code></div>${queryChangeLine(source)}` : "")
       + (failed ? `<p class="source-error" role="alert">${esc(source.lastRun?.errorMessage || t("同步失败，请检查配置和网络。"))}</p>` : "")
       + `<div class="source-footer"><span class="muted">${esc(last)}</span><a href="${esc(safeURL(source.homeUrl))}" target="_blank" rel="noopener noreferrer" class="text-link">${t("官方入口")} ${I("arrow-up-right", 14)}</a></div>`
       + `<div class="source-actions"><button class="text-link" data-action="source-records" data-id="${esc(source.id)}">${t("记录 {n}", { n: Number(source.recordCount || 0) })}</button>${actions}</div></section>`;
@@ -87,6 +87,32 @@ export function renderSources(app: App): string {
     ? `<div class="activity-list">${activities.slice(0, 20).map((a) => `<div class="activity-item"><span class="activity-dot"></span><div><p>${esc(a.message)}</p><span class="muted">${dateText(a.at)} · ${new Date(a.at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</span></div></div>`).join("")}</div>`
     : empty(t("暂无整理活动"), t("添加文献、保存笔记、导入数据或同步来源后，可以在这里查看记录。"));
   return `<div class="notice-box">${I("info", 18)}<span>${notice}</span></div>${renderAutomation(app)}<div class="source-grid">${cards}</div><section class="panel activity-panel"><div class="panel-header"><div><h2>${t("整理活动")}</h2><p class="muted">${t("记录当前会话中的整理与同步操作")}</p></div><button class="text-link" data-action="export-json">${I("download", 15)} ${t("导出备份")}</button></div>${activityList}</section>`;
+}
+
+const changedByLabel = (change: QueryChange): string => (change.changedBy === "agent" ? t("AI 助手") : t("手动"));
+
+/** queryChangeLine names who last changed a source's query, so an assistant's edit is never silent. */
+function queryChangeLine(source: SourceStatus): string {
+  const change = source.queryChange;
+  if (!change) return "";
+  const agent = change.changedBy === "agent";
+  return `<p class="source-query-change${agent ? " by-agent" : ""}"${change.reason ? ` title="${esc(change.reason)}"` : ""}>${agent ? t("检索式 v{version} · {by}修改于 {time}，可在配置中查看理由或恢复", { version: esc(change.version), by: changedByLabel(change), time: esc(shortTime(change.changedAt)) }) : t("检索式 v{version} · {by}修改于 {time}", { version: esc(change.version), by: changedByLabel(change), time: esc(shortTime(change.changedAt)) })}</p>`;
+}
+
+/** renderQueryHistory lists every saved version; "填入" puts one back in the form for the person to save. */
+export function renderQueryHistory(changes: QueryChange[], current: string): string {
+  const oldest = changes.at(-1);
+  if (!oldest) return "";
+  const versions = [
+    ...changes.map((change) => ({ version: change.version, query: change.query, meta: `${changedByLabel(change)} · ${shortTime(change.changedAt)}`, reason: change.reason })),
+    { version: String(Math.max(Number(oldest.version) - 1, 1)), query: oldest.previousQuery, meta: t("修改前"), reason: "" },
+  ].filter((item) => item.query);
+  const items = versions.map((item) => {
+    const using = item.query === current;
+    const action = using ? `<span class="muted">${t("当前")}</span>` : `<button type="button" class="text-link" data-action="use-source-query" data-query="${esc(item.query)}">${t("填入")}</button>`;
+    return `<li><div class="query-history-meta"><strong>v${esc(item.version)}</strong><span>${esc(item.meta)}</span>${action}</div><code>${esc(item.query)}</code>${item.reason ? `<p>${esc(item.reason)}</p>` : ""}</li>`;
+  }).join("");
+  return `<span>${t("检索式修改记录")}</span><ol class="query-history">${items}</ol><small class="form-hint">${t("“填入”只改上面的输入框，点“保存配置”才生效，并记为手动修改。")}</small>`;
 }
 
 export function sourceConfigModal(app: App, id: string): void {
@@ -99,8 +125,23 @@ export function sourceConfigModal(app: App, id: string): void {
   const credentialField = credential
     ? `<label class="form-field full-width"><span>${esc(credential.label)}</span><input class="input" name="${credential.name}" type="${credential.type}" value="${esc(app.env.settings[credential.name])}" maxlength="256" autocomplete="off" spellcheck="false"><small class="form-hint">${esc(credential.hint)}${t("只保存在本机，不写入数据库。")}</small></label>`
     : "";
-  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">${t("启用此来源")}</label><p>${t("启用后可手动同步；开启自动更新时也会按频率访问。")}</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>${t("检索式 / 关键词")} <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>${t("单次最多保存")}</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label>${credentialField}</div><p id="form-error" class="form-error" role="alert"></p></form>`;
+  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">${t("启用此来源")}</label><p>${t("启用后可手动同步；开启自动更新时也会按频率访问。")}</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>${t("检索式 / 关键词")} <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>${t("单次最多保存")}</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label>${credentialField}<div class="form-field full-width" id="source-query-history"></div></div><p id="form-error" class="form-error" role="alert"></p></form>`;
   app.showModal(t("配置 {name}", { name: tv(source.name) }), body, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-primary" type="submit" form="source-config-form">${I("check", 16)} ${t("保存配置")}</button>`, true);
+  if (!source.queryChange) return;
+  Library.sourceQueryHistory(id).then((changes) => {
+    const holder = $("#source-query-history");
+    if (holder) holder.innerHTML = renderQueryHistory(changes, source.query);
+  }).catch(() => {
+    // The form works without the history.
+  });
+}
+
+/** useSourceQuery fills the query field with an earlier version. */
+export function useSourceQuery(button: HTMLElement): void {
+  const query = button.closest("form")?.elements.namedItem("query");
+  if (!(query instanceof HTMLTextAreaElement)) return;
+  query.value = button.dataset.query ?? query.value;
+  query.focus();
 }
 
 /** applyProviderDefault swaps in the provider's default query while the user has not edited the field. */

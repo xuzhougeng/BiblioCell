@@ -1,4 +1,4 @@
-// Page renderers for overview, papers, datasets, tasks and schema.
+// Page renderers for overview, papers, datasets and tasks.
 import { AGENT_EXAMPLES } from "./agent.ts";
 import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
@@ -257,19 +257,4 @@ export function renderTasks(app: App): string {
     `<button class="view-tab ${app.taskFilter === key ? "active" : ""}" data-action="task-filter" data-filter-value="${key}">${label} <span>${key === "all" ? all.length : all.filter((t) => t.type === key).length}</span></button>`,
   ).join("");
   return `<div class="notice-box">${I("info", 18)}<span>${t("待补事项根据文献与数据状态自动生成。完成对应整理后，事项会自动移出列表。")}</span></div><div class="section-toolbar"><div class="view-tabs">${tabButtons}</div></div><section class="panel"><div class="task-list full-task-list">${items.length ? taskRows(items) : empty(t("这部分已整理完成"), t("新的文献或数据线索进入后，需要补充的事项会出现在这里。"))}</div></section>`;
-}
-
-export function renderSchema(): string {
-  const entities: [string, string, string, string, string][] = [
-    ["01", t("文献"), "papers", t("题目、摘要、发表信息、收录与阅读状态。全文缺失也可以先收录。"), "book"],
-    ["02", t("数据集"), "datasets", t("独立内部 ID，关联多个仓库编号，并记录数据可用性。"), "database"],
-    ["03", t("资料与附件"), "resources", t("正文、补充材料、数据入口、矩阵和代码，保存来源与获取状态。"), "folder"],
-  ];
-  const cards = entities.map((e) =>
-    `<section class="schema-card"><span class="schema-number">${e[0]}</span><span class="icon-wrap green">${I(e[4], 22)}</span><h2>${e[1]}</h2><code>${e[2]}</code><p>${e[3]}</p></section>`,
-  ).join("");
-  return `<div class="section-toolbar"><p class="muted">${t("面向个人使用，逐步补齐信息")}</p><div class="page-actions"><a class="btn btn-secondary" href="./downloads/plantcell-library-v0.1.zip" download>${t("下载完整文件包")}</a><a class="btn btn-secondary" href="./downloads/README.md" download>${I("file", 16)} ${t("设计说明")}</a><a class="btn btn-primary" href="./downloads/schema.sql" download>${I("download", 16)} ${t("下载建表 SQL")}</a></div></div>`
-    + `<div class="schema-grid">${cards}</div>`
-    + `<section class="panel"><div class="panel-header"><div><h2>${t("关系如何连接")}</h2><p class="muted">${t("关系单独保存，避免重复统计")}</p></div>${I("link", 20)}</div><div class="panel-body relation-list"><div class="relation-note"><strong>${t("文献 ↔ 数据集")}</strong><span>${t("多对多，标记新生成、复用或重新处理；一篇文献可以关联多组数据。")}</span><code>paper_datasets</code></div><div class="relation-note"><strong>${t("文献 / 数据集 ↔ 资料")}</strong><span>${t("同一份补充材料可以服务多个对象，链接与实际获取文件分别记录。")}</span><code>${t("resources + 关联表")}</code></div><div class="relation-note"><strong>${t("内部对象 ↔ 外部标识")}</strong><span>${t("DOI、PMID 和仓库 accession 用于识别与关联；保留原始来源信息。")}</span><code>identifiers / accession</code></div></div></section>`
-    + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><h2>${t("状态分别记录")}</h2></div><div class="panel-body status-definitions"><p><strong>${t("收录：")}</strong>${t("待判断 · 证据不足 · 已纳入 · 相关 / 排除")}</p><p><strong>${t("全文：")}</strong>${t("待补入口 · 已有入口 · 已保存文件")}</p><p><strong>${t("数据：")}</strong>${t("待整理 · 线索已记录 · 已核实")}</p><p><strong>${t("阅读：")}</strong>${t("未读 · 已浏览 · 已精读")}</p></div></section><section class="panel"><div class="panel-header"><h2>${t("下一步可逐步扩展")}</h2></div><div class="panel-body"><p class="muted">${t("在相同数据集下补充生物样本、文库、测序 Run、参考基因组与细胞注释。每日采集使用独立日志与断点，人工笔记保留。")}</p><p class="muted">${t("SQL 文件是后端数据库结构；当前网页原型在本浏览器保存操作，可通过 JSON 备份迁移。")}</p></div></section></div>`;
 }

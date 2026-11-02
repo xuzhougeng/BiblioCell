@@ -172,6 +172,24 @@ type fetchFulltextInput struct {
 	PaperID string `json:"paperId" jsonschema:"Paper that should receive the PDF"`
 }
 
+type sourceIDInput struct {
+	SourceID string `json:"sourceId" jsonschema:"Source ID from list_sources"`
+}
+
+// agentSource is a source as an agent needs it to write a query.
+type agentSource struct {
+	SourceStatus
+	QuerySyntax string `json:"querySyntax,omitempty"`
+}
+
+type listSourcesOutput struct {
+	Sources []agentSource `json:"sources"`
+}
+
+type queryHistoryOutput struct {
+	Changes []QueryChange `json:"changes"`
+}
+
 type listFilesOutput struct {
 	Files []PaperFile `json:"files"`
 }
@@ -218,7 +236,7 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name: "bibliocell-library", Title: "BiblioCell", Version: "0.1.0",
-	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, update_paper, and delete_paper require the local Bearer token. Screening and verification are a person's decisions: agents propose through proposedScreening, record claims with add_evidence, and a person confirms in the desktop app. Reuse one batchId across a run so undo_import can remove it. Demo data is never exposed."})
+	}, &mcp.ServerOptions{Instructions: "Use describe_library to discover schema, your access role, and import rules. Unauthenticated clients are read-only. add_paper, import_papers, update_paper, and delete_paper require the local Bearer token. Screening and verification are a person's decisions: agents propose through proposedScreening, record claims with add_evidence, and a person confirms in the desktop app. Reuse one batchId across a run so undo_import can remove it. To improve how a source searches, compare queries with try_source_query before update_source_query. Demo data is never exposed."})
 
 	server.AddResource(&mcp.Resource{
 		URI: paperSchemaURI, Name: "paper-import.schema.json", Title: "Paper import JSON Schema",
@@ -282,11 +300,14 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 				"Once reviewedAt is set, update_paper accepts only proposedScreening and proposedReason",
 				"At most 1000 papers can be imported in one call",
 				"Only real SQLite data is accessible; Demo records are never included",
+				"To improve a source query: list_sources, study included and excluded papers with list_papers, try_source_query the saved query as a baseline and each candidate, then update_source_query only with a candidate that beats the baseline, giving the comparison as reason",
+				"try_source_query writes nothing; a query is judged by how many fetched records match included versus excluded papers, how relevant the new records' titles and abstracts are, and whether hitCount is a workable size",
 			},
 			AvailableTools: []string{
 				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "delete_paper", "undo_import",
 				"list_datasets", "get_dataset", "add_dataset", "update_dataset", "link_dataset",
 				"add_evidence", "list_evidence", "attach_file", "fetch_fulltext", "list_files",
+				"list_sources", "try_source_query", "update_source_query", "source_query_history",
 			},
 			InboxPath:        store.inboxPath(),
 			DemoDataIncluded: false,
@@ -448,6 +469,37 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 			}
 		}
 		return nil, output, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_sources", Description: "List the remote sources the library updates from, with each one's saved query, query syntax, latest run, and latest query change; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, listSourcesOutput, error) {
+		statuses, err := store.ListSources(ctx)
+		if err != nil {
+			return nil, listSourcesOutput{}, err
+		}
+		output := listSourcesOutput{Sources: make([]agentSource, 0, len(statuses))}
+		for _, status := range statuses {
+			output.Sources = append(output.Sources, agentSource{SourceStatus: status, QuerySyntax: querySyntax[status.ID]})
+		}
+		return nil, output, nil
+	})
+
+	addWriteTool(server, "try_source_query", "Run a query against a remote source without saving anything and evaluate it: total hits, and for each fetched record its title, abstract, and whether it matches a library paper or dataset a person included, excluded, or has not decided. Omit query for the saved one as a baseline. Requires Bearer token write access because it contacts the source with the library's credentials",
+		func(ctx context.Context, input QueryTrialInput) (QueryTrial, error) {
+			return store.TrySourceQuery(ctx, input, credentials)
+		})
+
+	addWriteTool(server, "update_source_query", "Replace a source's saved query after try_source_query showed the new one is better; the next update uses it. The change and its reason are recorded, and a person can restore the previous query. Requires Bearer token write access",
+		func(ctx context.Context, input QueryUpdate) (SourceStatus, error) {
+			return store.UpdateSourceQuery(ctx, input)
+		})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "source_query_history", Description: "List a source's query changes, newest first, with who made each, why, and the query it replaced; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input sourceIDInput) (*mcp.CallToolResult, queryHistoryOutput, error) {
+		changes, err := store.SourceQueryHistory(ctx, input.SourceID)
+		return nil, queryHistoryOutput{Changes: changes}, err
 	})
 
 	return server, nil

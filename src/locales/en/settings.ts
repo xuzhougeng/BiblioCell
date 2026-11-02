@@ -188,4 +188,13 @@ export const settings: Record<string, string> = {
   "自动更新已开启。": "Automatic updates turned on.",
   "自动更新已关闭。": "Automatic updates turned off.",
   "请重试。": "Please try again.",
+  // Query history (sources.ts)
+  "手动": "Manual",
+  "检索式 v{version} · {by}修改于 {time}，可在配置中查看理由或恢复": "Query v{version} · {by} edit, {time}. See the reason or restore it in Configure.",
+  "检索式 v{version} · {by}修改于 {time}": "Query v{version} · {by} edit, {time}",
+  "修改前": "Before changes",
+  "当前": "Current",
+  "填入": "Use",
+  "检索式修改记录": "Query history",
+  "“填入”只改上面的输入框，点“保存配置”才生效，并记为手动修改。": "“Use” only fills the box above. It takes effect when you click “Save configuration” and is recorded as a manual edit.",
 };

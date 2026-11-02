@@ -48,8 +48,8 @@ func TestOpenInitializesAndPreservesDatabase(t *testing.T) {
 	if status.SchemaVersion != SchemaVersion {
 		t.Errorf("SchemaVersion = %d, want %d", status.SchemaVersion, SchemaVersion)
 	}
-	if status.TableCount != 22 {
-		t.Errorf("TableCount = %d, want 22", status.TableCount)
+	if status.TableCount != 23 {
+		t.Errorf("TableCount = %d, want 23", status.TableCount)
 	}
 	if status.PaperCount != 0 || status.DatasetCount != 0 {
 		t.Errorf("new database contains records: %+v", status)

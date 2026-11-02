@@ -231,6 +231,15 @@ func (l *Library) SaveSourceConfig(config library.SourceConfig) (library.SourceS
 	return l.store.SaveSourceConfig(context.Background(), config)
 }
 
+// SourceQueryHistory lists a source's query changes, newest first, so a person
+// can see an assistant's edits and restore an earlier query.
+func (l *Library) SourceQueryHistory(id string) ([]library.QueryChange, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	return l.store.SourceQueryHistory(context.Background(), id)
+}
+
 // SyncSource fetches one enabled public source and returns the refreshed papers.
 func (l *Library) SyncSource(id string) (library.SyncResult, error) {
 	if l.store == nil {
