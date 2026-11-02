@@ -242,14 +242,25 @@ function Invoke-Sign([string]$FilePath) {
     # CodeSignTool 在自己的目录里运行，相对路径到那里就找不到了。
     $FilePath = (Resolve-Path -LiteralPath $FilePath).ProviderPath
     $ext = [IO.Path]::GetExtension($FilePath).ToLowerInvariant()
-    if ($ext -notin @('.exe', '.dll', '.msi')) { throw "Refusing to sign unsupported file type: $FilePath" }
+    # NSIS 的 UninstFinalize 把卸载程序存成 .tmp 交给签名命令，而 CodeSignTool 按扩展名识别
+    # 文件类型，所以先确认是 PE 文件（MZ 头），再用 .exe 副本签名，成功后写回原路径。
+    $work = $FilePath
+    if ($ext -notin @('.exe', '.dll', '.msi')) {
+        $head = New-Object byte[] 2
+        $stream = [IO.File]::OpenRead($FilePath)
+        try { [void]$stream.Read($head, 0, 2) } finally { $stream.Dispose() }
+        if (-not ($head[0] -eq 0x4D -and $head[1] -eq 0x5A)) { throw "Refusing to sign unsupported file type: $FilePath" }
+        $work = Join-Path ([IO.Path]::GetTempPath()) ('esigner-' + [guid]::NewGuid().ToString('n') + '.exe')
+        Copy-Item -LiteralPath $FilePath -Destination $work -Force
+        Write-Host "Signing $([IO.Path]::GetFileName($FilePath)) as $([IO.Path]::GetFileName($work))"
+    }
 
     Assert-SecretsPresent
     if ([string]::IsNullOrWhiteSpace($env:ESIGNER_CODESIGNTOOL_HOME) -or [string]::IsNullOrWhiteSpace($env:ESIGNER_JAVA)) {
         throw 'CodeSignTool is not installed. Run sign-windows-esigner.ps1 -Install first.'
     }
     $tool = Resolve-CodeSignTool $env:ESIGNER_CODESIGNTOOL_HOME
-    $leaf = [IO.Path]::GetFileName($FilePath)
+    $leaf = [IO.Path]::GetFileName($work)
     $succeeded = $false
     try {
         for ($attempt = 1; $attempt -le $script:OtpAttemptLimit; $attempt++) {
@@ -265,7 +276,7 @@ function Invoke-Sign([string]$FilePath) {
                     ('-password=' + $env:ESIGNER_PASSWORD),
                     ('-credential_id=' + $env:ESIGNER_CREDENTIAL_ID),
                     ('-totp_secret=' + $env:ESIGNER_TOTP_SECRET),
-                    ('-input_file_path=' + $FilePath),
+                    ('-input_file_path=' + $work),
                     ('-output_dir_path=' + $outputDir),
                     ('-program_name=' + $script:ProgramName),
                     '-malware_block=false'
@@ -279,7 +290,7 @@ function Invoke-Sign([string]$FilePath) {
                 $disposition = Get-Disposition -ExitCode ([int]$captured.ExitCode) -Output ($stdout + "`n" + $stderr) -SignedFilePresent $signedPresent
                 if ($captured.TimedOut) { $disposition = 'fail' }
                 if ($disposition -eq 'success') {
-                    Move-Item -LiteralPath $signed[0].FullName -Destination $FilePath -Force
+                    Move-Item -LiteralPath $signed[0].FullName -Destination $work -Force
                     $succeeded = $true
                     break
                 }
@@ -298,13 +309,15 @@ function Invoke-Sign([string]$FilePath) {
         }
         if (-not $succeeded) { throw "CodeSignTool failed to sign $leaf." }
 
-        $signature = Get-AuthenticodeSignature -LiteralPath $FilePath
+        $signature = Get-AuthenticodeSignature -LiteralPath $work
         if ("$($signature.Status)" -ne 'Valid') { throw "$leaf Authenticode status $($signature.Status): $($signature.StatusMessage)" }
         if (-not $signature.TimeStamperCertificate) { throw "$leaf has no RFC3161 timestamp" }
+        if ($work -ne $FilePath) { Move-Item -LiteralPath $work -Destination $FilePath -Force }
         Add-SignLog $FilePath $signature.SignerCertificate.Thumbprint
-        Write-Host "Signed ${leaf}: $($signature.Status), $($signature.SignerCertificate.Subject), timestamped by $($signature.TimeStamperCertificate.Subject)"
+        Write-Host "Signed $([IO.Path]::GetFileName($FilePath)): $($signature.Status), $($signature.SignerCertificate.Subject), timestamped by $($signature.TimeStamperCertificate.Subject)"
     } finally {
         Clear-CodeSignLog $tool.Home
+        if ($work -ne $FilePath -and (Test-Path -LiteralPath $work)) { Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue }
     }
 }
 
