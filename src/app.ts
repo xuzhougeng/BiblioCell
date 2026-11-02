@@ -16,7 +16,7 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, renderScreening, screenActions, screenPapers, type ScreenState } from "./screen.ts";
+import { DECISIONS, aiConfigured, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenPapers, type ScreenState } from "./screen.ts";
 import { previewFontSize, renderSettings, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
@@ -266,6 +266,10 @@ export class App {
     };
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
     content.innerHTML = renderers[this.page]();
+    if (this.screen?.ai) {
+      const current = screenPapers(this)[this.screen.index];
+      if (current) this.requestJudgement(current.id);
+    }
     document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
     if (this.page === "agent") {
       const transcript = $("#agent-transcript");
@@ -380,11 +384,54 @@ export class App {
   startScreening(): void {
     const ids = filterPapers(this.state.papers, this.filters).map((p) => p.id);
     const index = this.paperCursor == null ? 0 : (this.paperPage - 1) * this.paperPageSize + this.paperCursor;
-    this.screen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)) };
+    this.screen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)), ai: null };
     this.closeDrawer();
     this.render();
     window.scrollTo({ top: 0 });
     $("#app-content")?.focus({ preventScroll: true });
+    // Offer suggestions once per entry, only where a model service can be reached; a standing choice turns the question off.
+    if (ids.length && this.canScreenWithAI() && !askAIDisabled()) screenAIModal(this);
+  }
+  /** canScreenWithAI: the desktop app on a real library, with a model service filled in. */
+  canScreenWithAI(): boolean {
+    return this.env.desktop && this.env.real && aiConfigured(this.env.settings.ai);
+  }
+  enableScreeningAI(requirement: string): void {
+    if (!this.screen) return;
+    this.screen.ai = { requirement, results: new Map() };
+    this.render();
+  }
+  disableScreeningAI(): void {
+    if (!this.screen) return;
+    this.screen.ai = null;
+    this.render();
+  }
+  /** requestJudgement asks the model about one paper, once; only the paper on screen is ever asked for. */
+  requestJudgement(id: string, retry = false): void {
+    const ai = this.screen?.ai;
+    const p = this.paperById(id);
+    if (!ai || !p) return;
+    if (ai.results.has(id) && !retry) return;
+    ai.results.set(id, { state: "loading" });
+    if (retry) this.render();
+    Library.screenPaper(id, ai.requirement).then((judgement) => {
+      ai.results.set(id, { state: "done", judgement });
+    }, (error: unknown) => {
+      ai.results.set(id, { state: "error", message: errorMessage(error, t("AI 判断失败，请重试。")) });
+    }).then(() => {
+      // Show the answer only if this run is still on and that paper is still on screen.
+      if (this.screen?.ai === ai && screenPapers(this)[this.screen.index]?.id === id) this.render();
+    });
+  }
+  /** adoptJudgement records the model's verdict as the person's decision, with the model's reason as the basis. */
+  adoptJudgement(id: string): void {
+    const result = this.screen?.ai?.results.get(id);
+    const p = this.paperById(id);
+    if (!p || !result || result.state !== "done" || result.judgement.skipped) return;
+    const { verdict, reason } = result.judgement;
+    if (!applyDecision(this, p, verdict, (paper) => exclusionReasonModal(this, paper), reason || p.screeningReason)) return;
+    this.toast(t("已采纳 AI 建议：{label}", { label: SCREEN[verdict] ?? verdict }));
+    this.screeningDecided();
   }
   exitScreening(): void {
     if (!this.screen) return;
@@ -713,7 +760,7 @@ export class App {
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
       "paper-form": savePaper, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
-      "exclusion-reason-form": saveExclusionReason, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
+      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
     const handler = handlers[form.getAttribute("id") ?? ""];
@@ -929,6 +976,10 @@ export class App {
     }
     if (key === "s") {
       this.actions["toggle-star"]!(document.body, current.id);
+      return true;
+    }
+    if (key === "a" && this.screen!.ai) {
+      this.adoptJudgement(current.id);
       return true;
     }
     if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLAnchorElement)) {

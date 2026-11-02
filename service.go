@@ -318,6 +318,59 @@ func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, erro
 	}, nil
 }
 
+// ScreenPaper asks the configured model whether one paper meets a requirement,
+// reading its stored full text when there is one and its abstract otherwise.
+// The answer is a suggestion for the person; nothing is written.
+func (l *Library) ScreenPaper(paperID, requirement string) (agent.Judgement, error) {
+	if l.store == nil || l.settings == nil {
+		return agent.Judgement{}, errors.New("library database is not ready")
+	}
+	config := l.settings.Get().AI
+	if config.Model == "" && agent.Normalize(config).Model == "" {
+		return agent.Judgement{}, errors.New("请先在设置中填写 AI 模型服务")
+	}
+	provider, err := agent.NewProvider(config)
+	if err != nil {
+		return agent.Judgement{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	paper, err := l.store.GetPaper(ctx, paperID)
+	if err != nil {
+		return agent.Judgement{}, err
+	}
+	fulltext, err := l.store.PaperFulltextText(ctx, paperID)
+	if err != nil {
+		// The abstract still tells something; the reason says the full text was not read.
+		log.Printf("screen %s: %v", paperID, err)
+		fulltext = ""
+	}
+	species := make([]string, 0, len(paper.Species))
+	for _, entry := range paper.Species {
+		if entry.Label != "" && entry.Label != entry.Name {
+			species = append(species, entry.Name+"（"+entry.Label+"）")
+		} else {
+			species = append(species, entry.Name)
+		}
+	}
+	year := ""
+	if paper.Year != nil {
+		year = fmt.Sprint(*paper.Year)
+	}
+	return agent.Screen(ctx, provider, agent.ScreenInput{
+		Requirement: requirement,
+		Title:       paper.Title,
+		Authors:     paper.Authors,
+		Year:        year,
+		Journal:     paper.Journal,
+		Species:     strings.Join(species, "、"),
+		Organs:      strings.Join(paper.Organs, "、"),
+		Modalities:  strings.Join(paper.Modalities, "、"),
+		Abstract:    paper.Abstract,
+		Fulltext:    fulltext,
+	})
+}
+
 // Restart relaunches the app, which then opens the saved storage folder.
 func (l *Library) Restart() {
 	mygo.App.Relaunch()
