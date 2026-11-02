@@ -317,4 +317,8 @@ export const views: Record<string, string> = {
   "整理备注": "Curation notes",
   "尚未填写。": "Not filled in.",
   "独立记录数据，保留复用关系": "Datasets are recorded on their own, keeping reuse links",
+  "编辑物种、组织、测序类型、平台和文献类型": "Edit species, tissue, technology, platform and article type",
+  "编辑": "Edit",
+  "保存后仍留在这篇文献；其余信息请用“完整详情”里的编辑。": "Saving keeps you on this paper; edit the other fields from “Full details”.",
+  "文献信息已更新。": "Paper details updated.",
 };

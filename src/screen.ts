@@ -5,8 +5,8 @@
 import type { App } from "./app.ts";
 import type { Judgement, Paper } from "./mygo.ts";
 import { configured, modelFor } from "./models.ts";
-import { READING, SCREEN, arr, dateText, decideScreening, esc, joinList, speciesDisplay, speciesNames } from "./model.ts";
-import { $, I, badge, demoBadge, screenBadge } from "./ui.ts";
+import { ARTICLE_TYPES, MODALITY_CHOICES, PLATFORM_CHOICES, READING, SCREEN, arr, dateText, decideScreening, esc, joinList, nowISO, speciesDisplay, speciesNames, splitList } from "./model.ts";
+import { $, I, badge, checkboxGroup, customField, demoBadge, mergeChecked, readSpeciesRows, screenBadge, speciesRow } from "./ui.ts";
 import { listSeparator, t, tv } from "./i18n.ts";
 
 export interface ScreenState {
@@ -15,6 +15,8 @@ export interface ScreenState {
   index: number;
   /** AI suggestions for this run: the requirement the model judges against, and its answers so far. */
   ai: ScreenAI | null;
+  /** The metadata block (species, tissue, modality, platform, article type) is open for editing in place. */
+  editing?: boolean;
 }
 
 export interface ScreenAI {
@@ -146,6 +148,44 @@ const detail = (label: string, value: string): string => `<div class="detail-ite
 
 const kbd = (key: string): string => `<kbd class="screen-key">${esc(key)}</kbd>`;
 
+/** metaGrid is the read-only metadata block, with a way to open it for editing in place. */
+function metaGrid(app: App, p: Paper): string {
+  const ds = app.paperDatasets(p.id);
+  return `<div class="screen-meta"><button class="text-link screen-meta-edit" data-action="screen-meta-edit" title="${t("编辑物种、组织、测序类型、平台和文献类型")}">${I("edit", 14)} ${t("编辑")}</button>`
+    + `<div class="detail-grid screen-grid">${detail(t("研究物种"), esc(speciesDisplay(p) || t("待补")) + (speciesNames(p).length ? `<small class="muted"> ${esc(joinList(speciesNames(p), listSeparator))}</small>` : ""))}${detail(t("组织 / 部位"), esc(displayList(p.organs) || t("待补")))}${detail(t("测序类型"), esc(displayList(p.modalities) || t("待补")))}${detail(t("测序平台"), esc(displayList(p.platforms) || t("待补")))}${detail(t("文献类型"), esc(displayList(p.articleTypes) || t("待判断")))}${detail(t("关联数据集"), ds.length ? esc(ds.map((d) => d.accession || d.title).join(listSeparator)) : `<span class="muted">${t("未关联")}</span>`)}${detail(t("发现来源"), esc(tv(p.source || "手动添加")))}${detail(t("加入时间"), dateText(p.addedAt))}</div></div>`;
+}
+
+/** metaForm replaces the metadata block with the same fields as the paper form, saved without leaving the page. */
+function metaForm(p: Paper): string {
+  const species = arr(p.species).length ? arr(p.species) : [{}];
+  return `<form id="screen-meta-form" class="screen-meta-form" aria-label="${t("编辑文献信息")}">`
+    + `<div class="form-field full-width"><span>${t("研究物种（一篇文献可涉及多个）")}</span><div class="species-rows" id="species-rows">${species.map((s) => speciesRow(s)).join("")}</div><button type="button" class="text-link" data-action="add-species-row">${I("plus", 15)} ${t("添加物种")}</button></div>`
+    + `<label class="form-field full-width"><span>${t("组织 / 部位（逗号分隔）")}</span><input class="input" name="organs" type="text" value="${esc(joinList(p.organs, ", "))}" placeholder="${t("例如 根, 叶")}" maxlength="2000"></label>`
+    + `<div class="form-field full-width"><span>${t("测序类型（可多选）")}</span>${checkboxGroup("modalities", MODALITY_CHOICES, p.modalities, customField("modalitiesCustom", t("其他类型，逗号分隔")))}</div>`
+    + `<div class="form-field full-width"><span>${t("测序平台（可多选）")}</span>${checkboxGroup("platforms", PLATFORM_CHOICES, p.platforms, customField("platformsCustom", t("其他平台，逗号分隔")))}</div>`
+    + `<div class="form-field full-width"><span>${t("文献类型（可多选）")}</span>${checkboxGroup("articleTypes", ARTICLE_TYPES, arr(p.articleTypes).filter((v) => ARTICLE_TYPES.includes(v)))}</div>`
+    + `<div class="screen-meta-actions"><button class="btn btn-secondary" type="button" data-action="screen-meta-cancel">${t("取消")} ${kbd("Esc")}</button><button class="btn btn-primary" type="submit">${I("check", 16)} ${t("保存修改")}</button><span class="muted small">${t("保存后仍留在这篇文献；其余信息请用“完整详情”里的编辑。")}</span></div>`
+    + `</form>`;
+}
+
+/** saveScreenMeta writes the inline form back to the paper on screen. */
+export function saveScreenMeta(app: App, form: HTMLFormElement): void {
+  const screen = app.screen;
+  const p = screen ? screenPapers(app)[screen.index] : undefined;
+  if (!screen || !p) return;
+  const f = new FormData(form);
+  Object.assign(p, {
+    species: readSpeciesRows(form), organs: splitList(f.get("organs")).slice(0, 50),
+    modalities: mergeChecked(f, "modalities", "modalitiesCustom"), platforms: mergeChecked(f, "platforms", "platformsCustom"),
+    articleTypes: f.getAll("articleTypes").map(String), updatedAt: nowISO(),
+  });
+  screen.editing = false;
+  app.logActivity(t("更新文献信息：{title}", { title: p.title }), "edit");
+  app.persist();
+  app.render();
+  app.toast(t("文献信息已更新。"));
+}
+
 export function renderScreening(app: App): string {
   const papers = screenPapers(app);
   const screen = app.screen!;
@@ -156,7 +196,6 @@ export function renderScreening(app: App): string {
   const total = papers.length;
   const decided = papers.filter((x) => x.screening !== "pending").length;
   const counts = Object.keys(SCREEN).map((s) => `<span class="screen-count ${s}">${esc(SCREEN[s]!)} <strong>${papers.filter((x) => x.screening === s).length}</strong></span>`).join("");
-  const ds = app.paperDatasets(p.id);
   const proposal = p.proposedScreening
     ? `<div class="notice-box compact proposal-box">${I("info", 16)}<span>${t("Agent 建议：")}<strong>${esc(SCREEN[p.proposedScreening] ?? p.proposedScreening)}</strong>${p.proposedReason ? `<br>${esc(p.proposedReason)}` : ""}</span><span class="section-actions"><button class="text-link" data-action="accept-proposal" data-id="${esc(p.id)}">${t("采纳")}</button><button class="text-link" data-action="dismiss-proposal" data-id="${esc(p.id)}">${t("忽略")}</button></span></div>`
     : "";
@@ -184,7 +223,7 @@ export function renderScreening(app: App): string {
     + `<div class="doi-bar"><span class="doi-bar-label">DOI</span>${doi}</div>`
     + proposal
     + aiBox(app, p)
-    + `<div class="detail-grid screen-grid">${detail(t("研究物种"), esc(speciesDisplay(p) || t("待补")) + (speciesNames(p).length ? `<small class="muted"> ${esc(joinList(speciesNames(p), listSeparator))}</small>` : ""))}${detail(t("组织 / 部位"), esc(displayList(p.organs) || t("待补")))}${detail(t("测序类型"), esc(displayList(p.modalities) || t("待补")))}${detail(t("测序平台"), esc(displayList(p.platforms) || t("待补")))}${detail(t("文献类型"), esc(displayList(p.articleTypes) || t("待判断")))}${detail(t("关联数据集"), ds.length ? esc(ds.map((d) => d.accession || d.title).join(listSeparator)) : `<span class="muted">${t("未关联")}</span>`)}${detail(t("发现来源"), esc(tv(p.source || "手动添加")))}${detail(t("加入时间"), dateText(p.addedAt))}</div>`
+    + (screen.editing ? metaForm(p) : metaGrid(app, p))
     + `<section class="detail-section"><h3>${t("摘要")}</h3><p class="abstract-text">${esc(p.abstract || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`
     + (arr(p.tags).length ? `<section class="detail-section"><h3>${t("主题标签")}</h3><div class="tag-list">${arr(p.tags).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}</div></section>` : "")
     + (p.notes ? `<section class="detail-section"><h3>${t("研究笔记")}</h3><p class="abstract-text">${esc(p.notes)}</p></section>` : "")
@@ -207,6 +246,8 @@ export const screenActions = (app: App): Record<string, (el: HTMLElement, id: st
   "screen-translate": (_el, id) => app.translateInScreening(id),
   "screen-translate-clear": () => app.clearTranslation(),
   "screen-pdf-toggle": () => app.toggleScreenPdf(),
+  "screen-meta-edit": () => app.setScreenEditing(true),
+  "screen-meta-cancel": () => app.setScreenEditing(false),
 });
 
 /** screenModelReady: the desktop app on a real library, with a model bound to screening. */

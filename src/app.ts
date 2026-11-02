@@ -16,7 +16,7 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, type ScreenState, type Translation } from "./screen.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, saveScreenMeta, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
@@ -563,6 +563,7 @@ export class App {
     if (!this.screen) return;
     const papers = screenPapers(this);
     const next = this.screen.index + delta;
+    this.screen.editing = false;
     if (next < 0 || next >= papers.length) return;
     this.screen.index = next;
     this.clearTranslation();
@@ -577,6 +578,14 @@ export class App {
     this.toast(t("已记为：{label}", { label: SCREEN[status] ?? status }));
     this.screeningDecided();
   }
+  /** setScreenEditing opens or closes the inline metadata editor of the paper on screen. */
+  setScreenEditing(on: boolean): void {
+    if (!this.screen) return;
+    this.screen.editing = on;
+    this.render();
+    if (on) $<HTMLInputElement>("#screen-meta-form input")?.focus();
+  }
+
   /** screeningDecided moves to the next paper after a decision, or re-renders on the last one. */
   screeningDecided(): void {
     if (!this.screen) return;
@@ -880,7 +889,7 @@ export class App {
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
       "paper-form": savePaper, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
-      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
+      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "screen-meta-form": saveScreenMeta, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
     const handler = handlers[form.getAttribute("id") ?? ""];
@@ -1025,11 +1034,12 @@ export class App {
       if (this.translation) this.clearTranslation();
       else if ($("#modal-root .modal")) this.closeModal();
       else if (this.drawer) this.closeDrawer();
+      else if (this.screen?.editing) this.setScreenEditing(false);
       else if (this.screen) this.exitScreening();
       else document.body.classList.remove("nav-open");
       return;
     }
-    if (this.screen && this.page === "papers" && !this.drawer && !$("#modal-root .modal") && !target?.matches("input,textarea,select") && !e.altKey && !e.ctrlKey && !e.metaKey && this.screenKey(e)) {
+    if (this.screen && !this.screen.editing && this.page === "papers" && !this.drawer && !$("#modal-root .modal") && !target?.matches("input,textarea,select") && !e.altKey && !e.ctrlKey && !e.metaKey && this.screenKey(e)) {
       e.preventDefault();
       return;
     }
