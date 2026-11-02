@@ -731,6 +731,10 @@ export class App {
 
   private onInput(e: Event): void {
     const target = e.target;
+    if (target instanceof HTMLTextAreaElement && target.dataset.queueIndex !== undefined) {
+      this.agent.queue[Number(target.dataset.queueIndex)] = target.value; // Queued messages stay editable until sent.
+      return;
+    }
     if (!(target instanceof HTMLInputElement)) return;
     if (target.id === "settings-font-size") {
       previewFontSize(target);

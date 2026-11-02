@@ -32,8 +32,9 @@ type anthropicMessage struct {
 
 type anthropicBlock struct {
 	Type string `json:"type"`
-	// text
-	Text string `json:"text,omitempty"`
+	// text, and thinking's summary
+	Text     string `json:"text,omitempty"`
+	Thinking string `json:"thinking,omitempty"`
 	// tool_use
 	ID    string          `json:"id,omitempty"`
 	Name  string          `json:"name,omitempty"`
@@ -45,11 +46,16 @@ type anthropicBlock struct {
 }
 
 type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int                `json:"max_tokens"`
-	System    string             `json:"system,omitempty"`
-	Messages  []anthropicMessage `json:"messages"`
-	Tools     []anthropicTool    `json:"tools,omitempty"`
+	Model        string             `json:"model"`
+	MaxTokens    int                `json:"max_tokens"`
+	System       string             `json:"system,omitempty"`
+	Messages     []anthropicMessage `json:"messages"`
+	Tools        []anthropicTool    `json:"tools,omitempty"`
+	OutputConfig *anthropicOutput   `json:"output_config,omitempty"`
+}
+
+type anthropicOutput struct {
+	Effort string `json:"effort"`
 }
 
 type anthropicResponse struct {
@@ -71,6 +77,9 @@ func (p *anthropicProvider) Complete(ctx context.Context, request Request) (Resp
 	body := anthropicRequest{Model: p.config.Model, MaxTokens: p.config.MaxTokens, System: request.System}
 	if body.MaxTokens <= 0 {
 		body.MaxTokens = DefaultMaxTokens
+	}
+	if p.config.Effort != "" {
+		body.OutputConfig = &anthropicOutput{Effort: p.config.Effort}
 	}
 	for _, tool := range request.Tools {
 		body.Tools = append(body.Tools, anthropicTool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema})
@@ -167,9 +176,13 @@ func (p *anthropicProvider) decode(reply anthropicResponse) (Response, error) {
 		return Response{}, fmt.Errorf("decode content blocks: %w", err)
 	}
 	message := Message{Role: "assistant", Raw: string(reply.Content), RawProtocol: ProtocolAnthropic}
-	var text []string
+	var text, thinking []string
 	for _, block := range blocks {
 		switch block.Type {
+		case "thinking":
+			if strings.TrimSpace(block.Thinking) != "" {
+				thinking = append(thinking, block.Thinking)
+			}
 		case "text":
 			text = append(text, block.Text)
 		case "tool_use":
@@ -177,6 +190,7 @@ func (p *anthropicProvider) decode(reply anthropicResponse) (Response, error) {
 		}
 	}
 	message.Content = strings.Join(text, "\n")
+	message.Thinking = strings.Join(thinking, "\n\n")
 	response := Response{Message: message, StopReason: reply.StopReason}
 	response.Usage.InputTokens = reply.Usage.InputTokens
 	response.Usage.OutputTokens = reply.Usage.OutputTokens

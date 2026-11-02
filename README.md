@@ -62,12 +62,14 @@
 - **Anthropic Messages**：`POST {地址}/v1/messages`，`x-api-key` 认证。默认地址 `https://api.anthropic.com`，默认模型 `claude-opus-5-5`。
 - **OpenAI Chat Completions（兼容）**：`POST {地址}/chat/completions`，Bearer 认证。默认地址 `https://api.openai.com/v1`；DeepSeek、通义千问、Ollama（`http://localhost:11434/v1`）、vLLM 等填各自地址和模型名即可。
 
-还可以设置单次运行的步数上限（默认 20）和单次回复的 token 上限。Key 和地址只保存在本机 `settings.json`，修改后下一次对话生效，无需重启。对话记录只保留在窗口里；助手的每次工具调用都显示在对话中，可展开查看参数和返回。
+还可以设置**思考强度**（low / medium / high / xhigh / max，默认跟随服务；Anthropic 发送 `output_config.effort`，OpenAI 兼容协议发送 `reasoning_effort`，xhigh 与 max 都按 high 发送，老模型不支持时保持“服务默认”）、单次运行的步数上限（默认 20）和单次回复的 token 上限。Key 和地址只保存在本机 `settings.json`，修改后下一次对话生效，无需重启。
+
+对话记录只保留在窗口里。助手的回复按 Markdown 渲染（标题、列表、代码、表格、链接），模型返回的思考摘要可展开查看；每次工具调用都显示在对话中，可展开查看参数和返回。运行中可以继续输入，发送的消息进入队列，当前一轮结束后按顺序自动发出；排队中的消息可以在队列里直接修改或移除，发送后光标留在输入框。
 
 命令行同样可用：
 
 ```bash
-BiblioCell settings set -ai-protocol openai -ai-base-url http://localhost:11434/v1 -ai-model qwen3
+BiblioCell settings set -ai-protocol openai -ai-base-url http://localhost:11434/v1 -ai-model qwen3 -ai-effort medium
 ```
 
 ```bash

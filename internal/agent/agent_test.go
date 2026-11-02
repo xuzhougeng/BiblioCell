@@ -109,14 +109,14 @@ func TestAnthropicProtocol(t *testing.T) {
 		requests = append(requests, body)
 		w.Header().Set("Content-Type", "application/json")
 		if len(requests) == 1 {
-			w.Write([]byte(`{"content":[{"type":"thinking","thinking":"","signature":"sig"},{"type":"text","text":"Looking."},{"type":"tool_use","id":"tu_1","name":"list_papers","input":{"query":"rice"}}],"stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5}}`))
+			w.Write([]byte(`{"content":[{"type":"thinking","thinking":"Need the list.","signature":"sig"},{"type":"text","text":"Looking."},{"type":"tool_use","id":"tu_1","name":"list_papers","input":{"query":"rice"}}],"stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5}}`))
 			return
 		}
 		w.Write([]byte(`{"content":[{"type":"text","text":"Found 2."}],"stop_reason":"end_turn","usage":{"input_tokens":20,"output_tokens":3}}`))
 	}))
 	defer server.Close()
 
-	provider, err := NewProvider(Config{Protocol: ProtocolAnthropic, BaseURL: server.URL + "/", APIKey: "sk-test", Model: "claude-opus-5-5"})
+	provider, err := NewProvider(Config{Protocol: ProtocolAnthropic, BaseURL: server.URL + "/", APIKey: "sk-test", Model: "claude-opus-5-5", Effort: "xhigh"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,6 +124,9 @@ func TestAnthropicProtocol(t *testing.T) {
 	first, err := provider.Complete(context.Background(), Request{System: "sys", Messages: []Message{{Role: "user", Content: "find rice"}}, Tools: tools})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if first.Message.Thinking != "Need the list." {
+		t.Fatalf("thinking = %q", first.Message.Thinking)
 	}
 	if first.StopReason != "tool_use" || first.Message.Content != "Looking." || len(first.Message.ToolCalls) != 1 || first.Message.ToolCalls[0].Arguments != `{"query":"rice"}` || first.Usage.InputTokens != 10 {
 		t.Fatalf("first = %+v", first)
@@ -133,6 +136,9 @@ func TestAnthropicProtocol(t *testing.T) {
 	}
 	if _, ok := requests[0]["thinking"]; ok {
 		t.Fatal("thinking parameter sent")
+	}
+	if effort := requests[0]["output_config"].(map[string]any)["effort"]; effort != "xhigh" {
+		t.Fatalf("effort = %v", effort)
 	}
 	if tool := requests[0]["tools"].([]any)[0].(map[string]any); tool["input_schema"] == nil || tool["name"] != "list_papers" {
 		t.Fatalf("tool = %v", tool)
@@ -183,7 +189,7 @@ func TestOpenAIProtocol(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := NewProvider(Config{Protocol: ProtocolOpenAI, BaseURL: server.URL + "/v1", APIKey: "sk-test", Model: "gpt-test", MaxTokens: 512})
+	provider, err := NewProvider(Config{Protocol: ProtocolOpenAI, BaseURL: server.URL + "/v1", APIKey: "sk-test", Model: "gpt-test", MaxTokens: 512, Effort: "max"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,8 +201,11 @@ func TestOpenAIProtocol(t *testing.T) {
 	if first.StopReason != "tool_use" || len(first.Message.ToolCalls) != 1 || first.Message.ToolCalls[0].Arguments != `{"id":"P1"}` || first.Usage.InputTokens != 7 {
 		t.Fatalf("first = %+v", first)
 	}
-	if requests[0]["max_tokens"].(float64) != 512 || requests[0]["messages"].([]any)[0].(map[string]any)["role"] != "system" {
+	if requests[0]["max_tokens"].(float64) != 512 || requests[0]["messages"].([]any)[0].(map[string]any)["role"] != "system" || requests[0]["reasoning_effort"] != "high" {
 		t.Fatalf("request = %v", requests[0])
+	}
+	if first.Message.Thinking != "hmm" {
+		t.Fatalf("thinking = %q", first.Message.Thinking)
 	}
 	if fn := requests[0]["tools"].([]any)[0].(map[string]any)["function"].(map[string]any); fn["parameters"] == nil {
 		t.Fatalf("tool = %v", fn)
@@ -260,6 +269,12 @@ func TestValidateAndNormalize(t *testing.T) {
 		t.Fatal("base URL without scheme accepted")
 	}
 	if err := Validate(Config{Protocol: "openai", BaseURL: "http://localhost:11434/v1", Model: "qwen"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Validate(Config{Model: "x", Effort: "turbo"}); err == nil {
+		t.Fatal("unknown effort accepted")
+	}
+	if err := Validate(Config{Model: "x", Effort: " High "}); err != nil {
 		t.Fatal(err)
 	}
 }

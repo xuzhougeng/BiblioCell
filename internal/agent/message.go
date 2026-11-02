@@ -10,6 +10,8 @@ type Message struct {
 	Role string `json:"role"`
 	// Content is the text of a user or assistant turn, or a tool's output.
 	Content string `json:"content"`
+	// Thinking is the reasoning summary a model chose to show, for display only.
+	Thinking string `json:"thinking,omitempty"`
 	// ToolCalls are the calls an assistant turn asked for.
 	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
 	// ToolCallID names the call a tool turn answers.
