@@ -14,6 +14,15 @@
 | **数据集详情 · Accession 直达仓库** | **待补事项 · 按整理状态生成** |
 | ![数据集详情](docs/screenshots/dataset-drawer.png) | ![待补事项](docs/screenshots/tasks.png) |
 
+## 下载安装
+
+正式版本在 [GitHub Releases](https://github.com/xuzhougeng/BiblioCell/releases) 发布：
+
+- **macOS**：`bibliocell-<版本>.dmg`，Apple Silicon 与 Intel 通用。已用 Developer ID 签名并经 Apple 公证，打开后把 BiblioCell 拖进“应用程序”即可。
+- **Windows**：`bibliocell-setup-<版本>-amd64.exe`，带 Authenticode 签名的安装包，安装到当前用户目录，不需要管理员权限。运行需要 Microsoft Edge WebView2（Windows 11 自带）。
+
+发布流程见下文“发布”。
+
 ## 两种数据模式
 
 应用默认启用 **Demo 模式**：
@@ -351,3 +360,27 @@ npm run build
 需要实际访问公开来源时，可额外运行 `BIBLIOCELL_LIVE_TEST=1 go test ./internal/library -run TestRemoteConnectorsLive -v`；默认测试不会访问网络。
 
 打包结果位于 `build/`，前端构建结果位于 `dist/`。正式数据库保存在 mygo 的用户数据目录，不在源码目录中。
+
+## 发布
+
+版本号只写在 `package.json` 的 `version` 里，`mygo.config.ts` 从那里读取。发布一个版本：
+
+```bash
+npm version 0.1.0 --no-git-tag-version
+```
+
+```bash
+git commit -am "release: v0.1.0" && git tag v0.1.0 && git push origin main v0.1.0
+```
+
+推送 `v*` 标签会触发 [`.github/workflows/release.yml`](.github/workflows/release.yml)：先核对标签与 `package.json` 版本一致、签名 secrets 齐全，然后在 macOS runner 上 `mygo build -platform darwin/universal`（Developer ID 签名 + Apple 公证），在 Windows runner 上 `mygo build -platform windows/amd64`（SSL.com eSigner 签 exe、卸载程序与安装包），两边都通过后创建 GitHub Release，上传 DMG、安装包和 `SHA256SUMS`。`.github/release-notes/<tag>.md` 存在时作为发布说明，后面附上自动生成的变更列表。
+
+签名只在设置了环境变量时启用（见 `mygo.config.ts` 顶部注释），本机 `npm run build` 仍是 ad hoc 签名、不公证，可以直接运行但 Gatekeeper 会拦截其他 Mac。仓库需要这些 secrets，与 citebox / wisp-science 同名，可复用同一套证书：
+
+| Secret | 用途 |
+|---|---|
+| `MAC_CERT_P12_BASE64`、`MAC_CERT_PASSWORD` | Developer ID Application 证书（含私钥）的 base64 与密码 |
+| `APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_PASSWORD` | 公证用的 Apple ID、Team ID 与 app 专用密码 |
+| `ESIGNER_CREDENTIAL_ID`、`ESIGNER_USERNAME`、`ESIGNER_PASSWORD`、`ESIGNER_TOTP_SECRET`、`ESIGNER_PIN` | SSL.com eSigner |
+
+手动运行该 workflow（workflow_dispatch）可以对已有标签重新构建；不勾选 publish 时只把签好名的安装包留作 artifact，不碰 Release。
