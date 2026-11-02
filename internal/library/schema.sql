@@ -1,4 +1,4 @@
--- BiblioCell · schema v10
+-- BiblioCell · schema v11
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -319,6 +319,22 @@ CREATE TABLE IF NOT EXISTS source_states (
     CHECK ((committed_watermark IS NULL AND committed_cursor IS NULL) OR last_successful_run_id IS NOT NULL)
 );
 
+-- 检索式的每次修改：谁改的、为什么、改前是什么，人可以据此恢复旧版本。
+-- query_version 与 source_states.query_version 一致，harvest_runs 记录运行时的版本。
+CREATE TABLE IF NOT EXISTS source_query_history (
+    id TEXT PRIMARY KEY NOT NULL,
+    source_id TEXT NOT NULL REFERENCES source_states(source_id),
+    query_version TEXT NOT NULL,
+    query_text TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT '',
+    previous_query TEXT NOT NULL DEFAULT '',
+    previous_provider TEXT NOT NULL DEFAULT '',
+    changed_by TEXT NOT NULL CHECK (changed_by IN ('human','agent')),
+    reason TEXT NOT NULL DEFAULT '',
+    changed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_source_query_history ON source_query_history(source_id, changed_at DESC);
+
 -- 自动更新只有一份设置，随数据库保存；各来源何时运行由 harvest_runs 决定。
 CREATE TABLE IF NOT EXISTS source_automation (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -507,7 +523,8 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (6, '区分人工决定与 agent 提议，记录真实核查时间'),
        (7, 'agent 导入批次与数据集人工核实时间'),
        (9, '内置助手对话记录'),
-       (10, '来源更新新增的文献与数据集进入待核查');
+       (10, '来源更新新增的文献与数据集进入待核查'),
+       (11, '检索式修改记录：助手可试检索、评估并更新检索式');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;
 COMMIT;

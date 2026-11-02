@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -48,17 +49,20 @@ type SourceRecord struct {
 
 // SourceStatus combines connector metadata, saved configuration, and run state.
 type SourceStatus struct {
-	ID            string         `json:"id"`
-	Name          string         `json:"name"`
-	Kind          string         `json:"kind"`
-	Description   string         `json:"description"`
-	HomeURL       string         `json:"homeUrl"`
-	Supported     bool           `json:"supported"`
-	Enabled       bool           `json:"enabled"`
-	Query         string         `json:"query"`
-	MaxResults    int            `json:"maxResults"`
-	Provider      string         `json:"provider"`
-	RecordCount   int            `json:"recordCount"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Description string `json:"description"`
+	HomeURL     string `json:"homeUrl"`
+	Supported   bool   `json:"supported"`
+	Enabled     bool   `json:"enabled"`
+	Query       string `json:"query"`
+	MaxResults  int    `json:"maxResults"`
+	Provider    string `json:"provider"`
+	RecordCount int    `json:"recordCount"`
+	// QueryVersion counts query changes; QueryChange is the latest one, if any.
+	QueryVersion  string         `json:"queryVersion"`
+	QueryChange   *QueryChange   `json:"queryChange"`
 	LastSuccessAt string         `json:"lastSuccessAt"`
 	LastRun       *HarvestRun    `json:"lastRun"`
 	RecentRecords []SourceRecord `json:"recentRecords"`
@@ -192,6 +196,13 @@ func (s *Store) ensureSourceStates(ctx context.Context) error {
 
 // SaveSourceConfig validates and persists one connector in the real database.
 func (s *Store) SaveSourceConfig(ctx context.Context, config SourceConfig) (SourceStatus, error) {
+	return s.saveSourceConfig(ctx, config, "human", "")
+}
+
+// saveSourceConfig persists a connector. A changed query or provider gets the
+// next query version and a history row naming who changed it and why, so a
+// person can see an agent's edit and restore what came before.
+func (s *Store) saveSourceConfig(ctx context.Context, config SourceConfig, changedBy, reason string) (SourceStatus, error) {
 	if s == nil || s.db == nil {
 		return SourceStatus{}, errors.New("library database is not ready")
 	}
@@ -199,17 +210,47 @@ func (s *Store) SaveSourceConfig(ctx context.Context, config SourceConfig) (Sour
 	if err != nil {
 		return SourceStatus{}, err
 	}
-	definition, _ := sourceDefinitionByID(config.ID)
+	if err := s.ensureSourceStates(ctx); err != nil {
+		return SourceStatus{}, err
+	}
 	encoded, _ := json.Marshal(config)
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO source_states(source_id, name, source_kind, base_url, enabled, query_text, config_json)
-		VALUES(?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(source_id) DO UPDATE SET enabled = excluded.enabled,
-			query_text = excluded.query_text, config_json = excluded.config_json`,
-		config.ID, definition.name, definition.kind, definition.homeURL,
-		boolInt(config.Enabled), config.Query, encoded)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return SourceStatus{}, fmt.Errorf("begin source configuration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var enabled int
+	var query, previousEncoded, version string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT enabled, coalesce(query_text, ''), coalesce(config_json, '{}'), query_version
+		FROM source_states WHERE source_id = ?`, config.ID).Scan(&enabled, &query, &previousEncoded, &version); err != nil {
+		return SourceStatus{}, fmt.Errorf("read source configuration: %w", err)
+	}
+	previous := sourceConfigFromRow(config.ID, enabled, query, previousEncoded)
+	if previous.Query != config.Query || previous.Provider != config.Provider {
+		number, _ := strconv.Atoi(version)
+		version = strconv.Itoa(max(number, 1) + 1)
+		historyID, err := newLocalID("QH")
+		if err != nil {
+			return SourceStatus{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO source_query_history(id, source_id, query_version, query_text, provider,
+				previous_query, previous_provider, changed_by, reason, changed_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			historyID, config.ID, version, config.Query, config.Provider, previous.Query, previous.Provider,
+			changedBy, reason, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return SourceStatus{}, fmt.Errorf("record query change: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE source_states SET enabled = ?, query_text = ?, config_json = ?, query_version = ?
+		WHERE source_id = ?`,
+		boolInt(config.Enabled), config.Query, encoded, version, config.ID); err != nil {
 		return SourceStatus{}, fmt.Errorf("save source configuration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return SourceStatus{}, fmt.Errorf("commit source configuration: %w", err)
 	}
 	return s.SourceStatus(ctx, config.ID)
 }
@@ -267,13 +308,14 @@ func (s *Store) SourceStatus(ctx context.Context, id string) (SourceStatus, erro
 	var encoded string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT enabled, coalesce(query_text, ''), coalesce(config_json, '{}'),
-		       coalesce(last_success_at, ''),
+		       coalesce(last_success_at, ''), query_version,
 		       (SELECT count(DISTINCT external_id) FROM source_records WHERE source_id = source_states.source_id)
 		FROM source_states WHERE source_id = ?`, id).
-		Scan(&enabled, &status.Query, &encoded, &status.LastSuccessAt, &status.RecordCount)
+		Scan(&enabled, &status.Query, &encoded, &status.LastSuccessAt, &status.QueryVersion, &status.RecordCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		config := definition.defaults
 		status.Enabled, status.Query, status.MaxResults, status.Provider = config.Enabled, config.Query, config.MaxResults, config.Provider
+		status.QueryVersion = "1"
 		return status, nil
 	}
 	if err != nil {
@@ -281,6 +323,13 @@ func (s *Store) SourceStatus(ctx context.Context, id string) (SourceStatus, erro
 	}
 	config := sourceConfigFromRow(id, enabled, status.Query, encoded)
 	status.Enabled, status.MaxResults, status.Provider = config.Enabled, config.MaxResults, config.Provider
+	changes, err := s.queryHistory(ctx, id, 1)
+	if err != nil {
+		return SourceStatus{}, err
+	}
+	if len(changes) > 0 {
+		status.QueryChange = &changes[0]
+	}
 
 	var run HarvestRun
 	err = s.db.QueryRowContext(ctx, `
@@ -380,10 +429,10 @@ func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarve
 	// One statement, so the check and the claim cannot be split by another
 	// process: a manual, scheduled, or CLI update each find the others here.
 	started, err := s.db.ExecContext(ctx, `
-		INSERT INTO harvest_runs(id, source_id, status, query_text, started_at)
-		SELECT ?, ?, 'running', ?, ?
+		INSERT INTO harvest_runs(id, source_id, status, query_text, query_version, started_at)
+		SELECT ?, ?, 'running', ?, ?, ?
 		WHERE NOT EXISTS (SELECT 1 FROM harvest_runs WHERE status = 'running' AND started_at > ?)`,
-		runID, id, config.Query, now.Format(time.RFC3339Nano), now.Add(-sourceRunLimit).Format(time.RFC3339Nano))
+		runID, id, config.Query, status.QueryVersion, now.Format(time.RFC3339Nano), now.Add(-sourceRunLimit).Format(time.RFC3339Nano))
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("start source run: %w", err)
 	}

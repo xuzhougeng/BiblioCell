@@ -841,6 +841,14 @@ func TestRemoteConnectorsLive(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// A trial survives a failed count, so a rate-limited one is only noted.
+			if count, err := harvester.Count(context.Background(), config); err != nil {
+				t.Logf("count failed: %v", err)
+			} else if count >= 0 && count < len(records) {
+				t.Errorf("count %d is below the %d records fetched", count, len(records))
+			} else {
+				t.Logf("total hits %d", count)
+			}
 			if len(records) == 0 {
 				t.Log("query succeeded and returned no matching records")
 				return

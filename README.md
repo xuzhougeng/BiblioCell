@@ -125,6 +125,17 @@ BiblioCell agent "库里有多少篇还没判断收录的文献？"
 
 配置、来源记录快照、每次成功/失败的运行记录和最近成功时间均保存在正式 SQLite 数据库中。Demo 数据不会与同步结果混合。
 
+### 让助手优化检索式
+
+可以直接对 AI 助手说“帮我改进 PubMed 的检索式”。助手按这样的流程做：
+
+1. `list_sources` 读取各来源当前的检索式和检索语法；`list_papers` 看你已收录和已排除的文献，从中提炼关键词、同义词和应排除的方向。
+2. `try_source_query` 先用当前检索式跑一次作为基准，再逐个试候选检索式。试检索只访问远程来源，**不写入任何文献、记录或运行**，返回命中总数（PubMed、Europe PMC、Crossref、GEO、SRA 支持）和取回的每条结果：题目、摘要片段，以及它对应库里哪篇文献、你对它的收录判断。
+3. 比较各检索式：取回结果里命中已收录的多、命中已排除的少、新结果的题目摘要切题、命中总数在可处理的范围内，就是更好的检索式。
+4. 只有候选明显优于基准时，助手才用 `update_source_query` 保存，必须写明理由（例如两次试检索的对比）。来源的启用状态不变，下一次同步起生效。
+
+检索式的每次修改都记入 `source_query_history`（schema v11）：版本号、手动还是助手改的、理由、改前的检索式。来源卡片显示检索式版本和最近一次由谁修改；配置窗口列出全部版本，“填入”可以把任一旧版本放回输入框，保存后即恢复，记为手动修改。每次同步运行记录当时的检索式版本。
+
 ## 外部 AI：MCP
 
 桌面应用启动后在本机回环地址提供 Streamable HTTP MCP 服务。不开窗口时用 `./BiblioCell serve` 提供同一服务，适合由 agent 调度；两者默认用同一端口，只能运行一个，`serve -addr 127.0.0.1:PORT` 可换端口，只接受回环地址。
@@ -156,6 +167,10 @@ http://127.0.0.1:37841/mcp
 | `attach_file` | 把存放文件夹 `inbox/` 中的文件移入文库并挂到文献上，需要写权限 |
 | `fetch_fulltext` | 通过 PMC 和 Unpaywall 查找开放获取 PDF 并保存，需要写权限 |
 | `list_files` | 列出文献的附件，路径相对存放文件夹 |
+| `list_sources` | 读取各来源的检索式、检索语法、最近运行和最近一次检索式修改 |
+| `try_source_query` | 试运行检索式并对照文库评估，不写入任何内容；会访问远程来源，需要写权限 |
+| `update_source_query` | 保存新检索式并记录理由，需要写权限 |
+| `source_query_history` | 读取一个来源的检索式修改记录 |
 
 `list_papers` 可按 `query`、`screening`、`source`、`batchId`、`needsReview` 筛选，用 `limit`（最大 500）和 `offset` 翻页，`total` 是匹配总数。`list_datasets` 同样分页。
 
@@ -283,6 +298,7 @@ BiblioCell/
 │   ├── source_automation.go # 自动更新设置、到期判断与后台调度
 │   ├── source_clients.go    # 文献公开 API 客户端与解析器
 │   ├── source_repositories.go # GEO / SRA / ENA 仓库检索
+│   ├── source_query.go      # 试检索评估、助手更新检索式与修改记录
 │   ├── mcp.go               # 本机 MCP 服务与 AI 工具
 │   ├── schema.sql           # 嵌入二进制的数据库结构 v5
 │   └── *_test.go            # 数据库与 MCP 端到端测试
