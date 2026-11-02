@@ -912,6 +912,14 @@ a.link-chip:hover svg { color: var(--primary) }
 .source-footer .text-link { font-size: calc(13px * var(--font-scale, 1)) }
 .source-query { margin: 0 0 15px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-deep); overflow: hidden }
 .source-query code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(11.5px * var(--font-scale, 1)); color: var(--muted) }
+.source-query-change { margin: -9px 0 15px; font-size: calc(11.5px * var(--font-scale, 1)); color: var(--muted) }
+.source-query-change.by-agent { color: var(--primary) }
+.query-history { list-style: none; margin: 4px 0 0; padding: 0; border-top: 1px solid var(--line); max-height: 260px; overflow-y: auto }
+.query-history li { display: grid; gap: 5px; padding: 10px 0; border-bottom: 1px solid var(--line) }
+.query-history-meta { display: flex; align-items: center; gap: 10px; font-size: calc(12px * var(--font-scale, 1)) }
+.query-history-meta span:first-of-type { color: var(--muted); flex: 1 }
+.query-history code { font-size: calc(11.5px * var(--font-scale, 1)); color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap }
+.query-history p { margin: 0; font-size: calc(12.5px * var(--font-scale, 1)); line-height: 1.6 }
 .source-error { max-height: 84px; overflow: auto; padding: 9px 11px; border-left: 3px solid #a66b27; background: #f7edda; color: #7b4b1c !important; font-size: calc(12px * var(--font-scale, 1)) !important; overflow-wrap: anywhere }
 .source-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 15px }
 .source-actions > .text-link { margin-right: auto; font-size: calc(12.5px * var(--font-scale, 1)) }

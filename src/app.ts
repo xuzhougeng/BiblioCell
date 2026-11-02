@@ -13,7 +13,7 @@ import {
   PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, csvText, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   speciesNameFor, tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
-import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, watchSources } from "./sources.ts";
+import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
 import { previewFontSize, renderSettings, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
@@ -461,6 +461,7 @@ export class App {
     "configure-source": (_el, id) => sourceConfigModal(this, id),
     "sync-source": (_el, id) => void syncSource(this, id),
     "source-records": (_el, id) => sourceRecordsModal(this, id),
+    "use-source-query": (el) => useSourceQuery(el),
     "add-species-row": () => {
       const rows = $("#species-rows");
       if (!rows) return;

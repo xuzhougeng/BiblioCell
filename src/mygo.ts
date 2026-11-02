@@ -210,6 +210,19 @@ export interface PaperFile {
   addedAt: string;
 }
 
+export interface QueryChange {
+  id: string;
+  sourceId: string;
+  version: string;
+  query: string;
+  provider: string;
+  previousQuery: string;
+  previousProvider: string;
+  changedBy: string;
+  reason: string;
+  changedAt: string;
+}
+
 export interface Result {
   messages: Message[];
   text: string;
@@ -270,6 +283,8 @@ export interface SourceStatus {
   maxResults: number;
   provider: string;
   recordCount: number;
+  queryVersion: string;
+  queryChange: QueryChange | null;
   lastSuccessAt: string;
   lastRun: HarvestRun | null;
   recentRecords: SourceRecord[];
@@ -447,6 +462,13 @@ export const Library = {
   /** SourceAutomation returns the update schedule and the latest runs' results. */
   sourceAutomation(): Promise<SourceAutomation> {
     return call("Library.SourceAutomation");
+  },
+  /**
+   * SourceQueryHistory lists a source's query changes, newest first, so a person
+   * can see an assistant's edits and restore an earlier query.
+   */
+  sourceQueryHistory(id: string): Promise<QueryChange[]> {
+    return call("Library.SourceQueryHistory", id);
   },
   /** Status returns the state of the Go-backed SQLite library. */
   status(): Promise<Status> {
