@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>批量筛选交互验证</title>
+<link rel="stylesheet" href="/src/style.css">
+<body style="padding:24px">
+<p>隔离测试数据 · 模拟模型响应 · 不连接真实数据库或 AI 服务</p>
+<button class="btn btn-secondary" id="regression">运行交互回归</button><button class="btn btn-secondary" data-page="settings">设置页</button><button class="btn btn-secondary" data-page="papers">文献库</button><p id="result" role="status">就绪</p>
+<main id="app-content"></main><div id="modal-root"></div><div id="drawer-root"></div><div id="toast-root"></div>
+<script type="module">
+import { App } from "../src/app.ts";
+import { demoState } from "../src/demo-data.ts";
+import { Library } from "../src/mygo.ts";
+const state = demoState();
+state.papers.forEach(p => { p.screening = "pending"; });
+history.replaceState(null, "", "#papers");
+const app = new App({ initial: state, store: { load: async () => state, save: async () => {} }, env: {
+  desktop: false, real: false, settings: { storagePath: 'C:/batch-fixture', fontSize: 15, mcpToken: 'a'.repeat(64), batchScreenConcurrency: 3, models: [
+    { id: 'default', name: '日常模型', config: { protocol: 'openai', model: 'default-model', baseUrl: 'http://localhost:1234', apiKey: '' } },
+    { id: 'batch', name: '文献筛选模型', config: { protocol: 'openai', model: 'screen-model', baseUrl: 'http://localhost:1234', apiKey: '' } },
+  ], tasks: { screen: 'default' } }, mcp: { tools: [], resources: [] }, status: null, sources: [], automation: {},
+} });
+app.start();
+app.env.desktop = true; app.env.real = true;
+Library.saveSettings = async settings => ({ settings, storageChanged: false, mcpTokenChanged: false, restartRequired: false });
+let fast = false;
+const calls = [];
+Library.screenPaperWithModel = async (id, requirement, modelId) => {
+  calls.push({ id, requirement, modelId });
+  await new Promise(resolve => setTimeout(resolve, fast ? 30 : 12000));
+  const i = state.papers.findIndex(p => p.id === id);
+  if (!fast && i === 2) throw new Error('模型服务限流，请重试');
+  return { verdict: i % 2 ? 'uncertain' : 'included', reason: '文中提供了植物组织的单细胞转录组证据。', basis: 'abstract', skipped: i === 3 };
+};
+const click = selector => { const el = document.querySelector(selector); if (!el) throw new Error(`Missing ${selector}`); el.click(); };
+const change = (selector, value) => { const el = document.querySelector(selector); el.value = value; el.dispatchEvent(new Event('change', { bubbles:true })); };
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+document.querySelector('#regression').onclick = async () => {
+  const result = document.querySelector('#result');
+  try {
+    fast = true; calls.length = 0;
+    assert(!app.batch?.running, 'Wait for the manual run to finish');
+    app.batch = null; app.batchDraft = null;
+    app.navigate('settings');
+    change('[name="batchScreenConcurrency"]', '5');
+    document.querySelector('#settings-form').requestSubmit();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert(app.env.settings.batchScreenConcurrency === 5, 'settings page saves concurrency');
+    app.navigate('papers');
+    const decisions = state.papers.map(p => p.screening);
+    click('[data-action="batch-open"]');
+    click('[data-action="batch-clear"]');
+    assert(document.querySelector('#batch-next').disabled, 'empty selection must disable next');
+    const boxes = [...document.querySelectorAll('[data-batch-paper]')];
+    boxes[0].click(); boxes[1].click();
+    assert(app.batchDraft.selected.size === 2, 'individual selection');
+    const search = document.querySelector('#batch-search');
+    search.value = 'no-such-candidate-123'; search.dispatchEvent(new Event('input', {bubbles:true}));
+    assert(app.batchDraft.selected.size === 2 && !document.querySelector('[data-batch-paper]'), 'search preserves hidden selection');
+    click('[data-action="batch-config"]');
+    assert(document.querySelector('[name="concurrency"]').value === '5', 'batch inherits saved concurrency');
+    change('[name="modelId"]', 'batch'); change('[name="concurrency"]', '2');
+    document.querySelector('[name="requirement"]').value = '植物单细胞研究';
+    click('[data-action="batch-back"]');
+    click('[data-action="batch-config"]');
+    assert(document.querySelector('[name="modelId"]').value === 'batch', 'back must retain configuration');
+    document.querySelector('#batch-screen-form').requestSubmit();
+    assert(app.batch.running && calls.length === 2, 'two concurrent calls');
+    click('#modal-root .modal-header [data-action="close-modal"]');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    click('[data-action="batch-open"]');
+    assert(document.querySelector('#batch-fraction').textContent === '2 / 2', 'reopen sees completion');
+    assert(calls.every(c => c.modelId === 'batch' && c.requirement === '植物单细胞研究'), 'selected profile and requirement reach every call');
+    assert(app.env.settings.tasks.screen === 'default', 'default model binding unchanged');
+    assert(JSON.stringify(decisions) === JSON.stringify(state.papers.map(p => p.screening)), 'AI must not change decisions');
+    click('[data-action="batch-review"]');
+    assert(app.screen.ids.length === 2 && document.querySelector('[data-action="screen-ai-adopt"]'), 'results transfer to review');
+    assert(calls.length === 2, 'review does not rerun successful calls');
+    result.textContent = 'PASS · 设置页保存并发数、新任务继承、选择、搜索、返回保留配置、并发、收起恢复、模型传递、不自动采纳、逐篇核对';
+  } catch (error) { result.textContent = `FAIL · ${error.message}`; }
+};
+</script>
+</body></html>

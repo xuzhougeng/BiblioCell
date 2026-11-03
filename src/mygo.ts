@@ -27,6 +27,7 @@ export interface AgentConversation {
 export interface Config {
   storagePath: string;
   fontSize: number;
+  batchScreenConcurrency: number;
   mcpToken: string;
   ncbiApiKey: string;
   contactEmail: string;
@@ -524,6 +525,13 @@ export const Library = {
    */
   screenPaper(paperID: string, requirement: string): Promise<Judgement> {
     return call("Library.ScreenPaper", paperID, requirement);
+  },
+  /**
+   * ScreenPaperWithModel uses a selected profile without changing task bindings.
+   * Like ScreenPaper, it returns a suggestion and never changes the paper.
+   */
+  screenPaperWithModel(paperID: string, requirement: string, modelID: string): Promise<Judgement> {
+    return call("Library.ScreenPaperWithModel", paperID, requirement, modelID);
   },
   /** SourceAutomation returns the update schedule and the latest runs' results. */
   sourceAutomation(): Promise<SourceAutomation> {

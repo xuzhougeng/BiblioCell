@@ -4,6 +4,61 @@
    单一样式表，按级联顺序分三段：外壳与设置页 → 基础与布局 → 页面组件。
    ============================================================ */
 /* ---------------- 外壳：运行提示、侧栏折叠、设置页 ---------------- */
+/* Batch screening: selection, a live document scanner, and per-paper results. */
+.batch-steps { display: flex; gap: 14px; align-items: center; color: #8c8776; margin-bottom: 18px }
+.batch-steps .active { color: #286347; font-weight: 700 }
+.batch-controls { display: grid; grid-template-columns: 210px 1fr; gap: 12px; margin: 18px 0 }
+.batch-selection, .batch-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 15px 0 }
+.batch-candidates, .batch-results { max-height: 340px; overflow-y: auto; border: 1px solid #ddd4ba; border-radius: 6px; overscroll-behavior: contain }
+.batch-candidate { display: flex; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #e8e1ce; cursor: pointer }
+.batch-candidate:last-child, .batch-result:last-child { border-bottom: 0 }
+.batch-candidate:has(input:checked) { background: #edf1e3 }
+.batch-candidate input { accent-color: #286347; width: 18px; height: 18px; flex: 0 0 auto; margin-top: 4px }
+.batch-candidate strong, .batch-candidate small { display: block; overflow-wrap: anywhere }
+.batch-candidate small { margin-top: 5px }
+#batch-screen-form .form-field { margin-top: 18px }
+.batch-visual { height: 120px; display: flex; align-items: center; justify-content: center; gap: 36px; background: #eef0e4; border-radius: 8px; overflow: hidden }
+.batch-paper { position: relative; width: 62px; height: 80px; background: #fffdf5; border: 1px solid #bcb89f; border-radius: 4px; padding: 18px 12px; box-shadow: -6px 5px 0 #dedfcf, -12px 10px 0 #e5e6d9; transform: rotate(-5deg) }
+.batch-paper i { display: block; height: 3px; background: #b6bcaa; margin: 6px 0 }
+.batch-paper i:last-of-type { width: 60% }
+.batch-scan { position: absolute; left: -4px; right: -4px; top: 10%; height: 2px; background: #39876a; box-shadow: 0 6px 14px 4px #39876a33; opacity: 0 }
+.batch-spark, .batch-output { color: #286347; display: grid; place-items: center }
+.batch-spark { border: 1px dashed #9faf91; border-radius: 50%; width: 56px; height: 56px }
+.is-running .batch-scan { opacity: 1; animation: batch-scan 2.4s ease-in-out infinite }
+.is-running .batch-spark { animation: batch-pulse 2.4s ease-in-out infinite }
+.is-running .batch-output { animation: batch-arrive 2.4s ease-in-out infinite }
+@keyframes batch-scan { 0%, 100% { top: 10% } 50% { top: 90% } }
+@keyframes batch-pulse { 50% { box-shadow: 0 0 0 10px #2863470d; transform: scale(1.06) } }
+@keyframes batch-arrive { 0% { opacity: .25; transform: translateX(-10px) } 70%, 100% { opacity: 1; transform: translateX(0) } }
+#batch-meter { width: 100%; height: 9px; accent-color: #286347; display: block; border: 0; border-radius: 8px; overflow: hidden }
+#batch-meter::-webkit-progress-bar { background: #e5dfcb }
+#batch-meter::-webkit-progress-value { background: #286347; transition: width .35s ease }
+.batch-progress-heading h3 { margin: 0 }
+.batch-requirement { margin: 14px 0; font-size: 13px; color: #77725f }
+.batch-requirement summary { cursor: pointer }
+.batch-requirement p { white-space: pre-wrap; overflow-wrap: anywhere }
+.batch-result { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 16px; border-bottom: 1px solid #e8e1ce; transition: background .3s }
+.batch-result.is-reading { background: #f0f3e9 }
+.batch-row-number { color: #8c8776; font-size: 13px }
+.batch-result strong { font-size: 14px; overflow-wrap: anywhere }
+.batch-row-result { font-size: 13px; margin-top: 7px; overflow-wrap: anywhere }
+.batch-row-result p { margin: 5px 0 0; line-height: 1.6 }
+.batch-reading { display: flex; align-items: center; gap: 8px; color: #286347 }
+.batch-verdict { font-weight: 700 }
+.batch-verdict.included { color: #286347 }
+.batch-verdict.excluded { color: #756b60 }
+.batch-verdict.uncertain { color: #976617 }
+.modal-footer:has([data-action="batch-stop"]) { flex-wrap: wrap }
+.modal-footer [hidden] { display: none }
+@media (prefers-reduced-motion: reduce) {
+  .batch-visual *, .batch-reading .ai-spinner { animation: none !important }
+  .batch-result, #batch-meter::-webkit-progress-value { transition: none }
+}
+@media (max-width: 600px) {
+  .batch-controls { grid-template-columns: 1fr }
+  .batch-selection { flex-wrap: wrap }
+  .batch-steps { font-size: 13px; gap: 8px }
+}
 #runtime-message { min-width: 0 }
 .heading-actions[hidden] { display: none }
 .real-mode [data-action="import-json"], .real-mode [data-action="add-resource"], .real-mode [data-action="reset-demo"] { display: none !important }
