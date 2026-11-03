@@ -870,11 +870,6 @@ code { font-family: var(--mono) }
 .screening-proposal > svg { vertical-align: -2px; margin-right: 4px }
 .screening-proposal.excluded { color: #914333 }
 .screening-proposal small { display: block; font-weight: 400; color: var(--muted) }
-.review-summary { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: -4px 0 20px; padding: 16px 20px; border: 1px solid #d9bc83; border-radius: 6px; background: #f9f0dc; color: #805a23 }
-.review-summary > svg { flex-shrink: 0 }
-.review-summary > div { flex: 1 1 280px; min-width: 0 }
-.review-summary strong { font-size: calc(14px * var(--font-scale, 1)) }
-.review-summary p { margin-top: 4px; font-size: calc(12.5px * var(--font-scale, 1)); line-height: 1.65; color: #786b51 }
 .view-tab.review-tab { color: #805a23 }
 .view-tab.review-tab.active { border-bottom-color: #a8772c; color: #805a23 }
 .view-tab.review-tab > span, .view-tab.review-tab.active > span { background: #f1dfbb; color: #805a23 }

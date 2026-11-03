@@ -34,7 +34,7 @@ test("list exposes the proposal reason safely and explains why the total stays u
   const html = renderPapers(app);
   assert.match(html, /需核对 <span>1<\/span>/);
   assert.match(html, /全部文献 <span>1<\/span>/);
-  assert.match(html, /确认前仍计入全部文献/);
+  assert.doesNotMatch(html, /class="review-summary"/); // No banner: the tab count and the row carry the state.
   assert.match(html, /建议排除 · 待你确认/);
   assert.match(html, /&lt;img src=x onerror=&quot;bad\(\)&quot;&gt;/);
   assert.doesNotMatch(html, /<img src=x/);
@@ -90,7 +90,8 @@ test("datasets page has its own review tab for what a source update added", () =
   const all = renderDatasets(app);
   assert.match(all, /全部数据集 <span>2<\/span>/);
   assert.match(all, /需核对 <span>1<\/span>/);
-  assert.match(all, /有 1 组数据集需要核对/);
+  assert.doesNotMatch(all, /class="review-summary"/); // No banner: the tab count and the row carry the state.
+  assert.match(all, /来源新增 · 待你确认/);
   app.datasetReview = true;
   const review = renderDatasets(app);
   assert.match(review, /GEO series/);
