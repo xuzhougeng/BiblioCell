@@ -35,12 +35,13 @@ function candidates(app: App): Paper[] {
 
 const batchTitle = (kind: BatchKind): string => (kind === "rerun" ? t("重跑 AI 对照") : t("批量 AI 筛选"));
 
-export function openBatch(app: App, kind: BatchKind = "batch"): void {
+export function openBatch(app: App, kind: BatchKind = "batch", ids?: string[]): void {
   if (app.batch) { showBatchProgress(app); return; }
   // Each entry from the library takes a fresh snapshot of its candidates: the
-  // current filtered results for a batch, every decided paper for a rerun.
-  // Returning from configuration uses showCandidates directly, retaining manual choices.
-  const current = kind === "rerun" ? app.state.papers.filter(decided).map(p => p.id) : filterPapers(app.state.papers, app.filters).map(p => p.id);
+  // current filtered results for a batch, every decided paper for a rerun, or
+  // the papers ticked in the table. Returning from configuration uses
+  // showCandidates directly, retaining manual choices.
+  const current = ids?.length ? ids.filter(id => app.paperById(id)) : kind === "rerun" ? app.state.papers.filter(decided).map(p => p.id) : filterPapers(app.state.papers, app.filters).map(p => p.id);
   const previous = app.batchDraft;
   app.batchDraft = {
     current, selected: new Set(current), scope: kind === "rerun" ? "decided" : "current", search: "",

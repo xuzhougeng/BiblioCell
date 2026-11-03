@@ -221,3 +221,52 @@ test("the heading's import and add-paper buttons appear only on pages about the 
     assert.equal(actions.hidden, true, `${page} hides the heading actions`);
   }
 });
+
+test("ticking rows keeps them selected across pages and feeds the bulk bar's actions", async () => {
+  const { app, state } = papersApp();
+  const bar = () => $("#bulk-bar");
+  assert.equal(bar().hidden, true);
+  const first = $<HTMLInputElement>(`input[data-select-paper="${state.papers[0]!.id}"]`);
+  first.checked = true;
+  first.dispatchEvent(new Event("change", { bubbles: true }));
+  assert.deepEqual([...app.selectedPapers], [state.papers[0]!.id]);
+  assert.equal(bar().hidden, false);
+  assert.match(text("#bulk-bar .bulk-bar-count"), /已勾选 1 篇/);
+  assert.ok(first.closest("tr")!.classList.contains("is-selected"));
+  // Ticking a box never opens the row's drawer.
+  first.click();
+  assert.equal(app.drawer, null);
+
+  // Select-all covers the page; the selection survives turning the page and comes back.
+  const all = $<HTMLInputElement>("input[data-select-all]");
+  all.checked = true;
+  all.dispatchEvent(new Event("change", { bubbles: true }));
+  assert.equal(app.selectedPapers.size, 10);
+  $('.page-btn[data-id="2"]').click();
+  assert.equal($<HTMLInputElement>("input[data-select-all]").checked, false);
+  assert.match(text("#bulk-bar .bulk-bar-count"), /已勾选 10 篇/);
+  $('.page-btn[data-id="1"]').click();
+  assert.equal($<HTMLInputElement>("input[data-select-all]").checked, true);
+  assert.equal($$("tbody tr.is-selected").length, 10);
+
+  // Batch screening starts from the ticked papers, export offers them as a range.
+  $('[data-action="bulk-screen"]').click();
+  assert.deepEqual(new Set(app.batchDraft!.current), app.selectedPapers);
+  assert.equal(app.batchDraft!.selected.size, 10);
+  $('#modal-root button[data-action="close-modal"]').click();
+  app.batchDraft = null;
+  $('[data-action="bulk-export"]').click();
+  assert.equal($<HTMLInputElement>('#export-form input[name="range"][value="selected"]').checked, true);
+  assert.match(text('#export-form .radio-choice:has(input[value="selected"])'), /已勾选的文献（10 篇）/);
+  $('#modal-root button[data-action="close-modal"]').click();
+
+  // Deleting asks once for the lot, then removes them and empties the selection.
+  $('[data-action="bulk-delete"]').click();
+  assert.match(text("#modal-root .modal-body"), /确定删除已勾选的 10 篇文献/);
+  $('[data-action="confirm-delete-selected"]').click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(app.state.papers.length, 4);
+  assert.equal(app.selectedPapers.size, 0);
+  assert.equal(bar().hidden, true);
+  assert.equal(document.querySelector("#modal-root .modal"), null);
+});

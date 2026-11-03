@@ -1,6 +1,7 @@
 import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } from "./screen-batch.ts";
 import { calibrationActions, calibrationChange, emptyCalibration, type CalibrationState } from "./calibration.ts";
+import { pruneSelection, selectionActions, selectionChange } from "./selection.ts";
 import type { ScreeningBatch } from "./screen-batch-queue.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
@@ -73,6 +74,8 @@ export class App {
   paperPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-page-size"))) ? Number(localStorage.getItem("bibliocell-page-size")) : PAGE_SIZES[0]!;
   /** Row the arrow keys last landed on, per table; null until the first ↑/↓ press. */
   paperCursor: number | null = null;
+  /** Papers ticked in the table, for the bulk actions bar; kept across filters and pages until cleared. */
+  selectedPapers = new Set<string>();
   datasetCursor: number | null = null;
   /** Datasets page: table vs card view plus the same pagination pattern. */
   datasetView: "cards" | "table" = localStorage.getItem("bibliocell-datasets-view") === "cards" ? "cards" : "table";
@@ -190,27 +193,35 @@ export class App {
     this.showModal(t("删除文献"), `<p>${t("确定删除《{title}》？", { title: esc(paper.title) })}</p><p>${t("将删除文献、笔记、相关证据和保存的附件副本，并解除数据集关联。数据集及原始导入文件会保留。此操作无法撤销。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-paper" data-id="${esc(id)}">${t("确认删除")}</button>`);
   }
 
-  private async deletePaper(id: string, button: HTMLElement): Promise<void> {
-    if (this.deleting || !this.paperById(id)) return;
+  private deletePaper(id: string, button: HTMLElement): Promise<void> {
+    return this.deletePapers([id], button);
+  }
+
+  /** deletePapers removes papers with their notes, evidence and attachment copies; datasets stay, unlinked. */
+  async deletePapers(ids: string[], button: HTMLElement): Promise<void> {
+    ids = ids.filter((id) => this.paperById(id));
+    if (this.deleting || !ids.length) return;
     this.deleting = true;
     button.setAttribute("disabled", "");
     try {
-      if (this.env.real) await enqueue(() => Library.deletePaper(id));
+      if (this.env.real) for (const id of ids) await enqueue(() => Library.deletePaper(id));
+      const gone = new Set(ids);
       const next = clone(this.state);
-      const fileIds = new Set(next.resources.filter(r => r.paperId === id).map(r => r.id));
-      next.papers = next.papers.filter(p => p.id !== id);
-      next.resources = next.resources.filter(r => r.paperId !== id);
-      next.evidence = (next.evidence ?? []).filter(e => e.paperId !== id && !fileIds.has(e.fileId));
-      next.datasets.forEach(d => { d.paperLinks = d.paperLinks.filter(l => l.paperId !== id); });
+      const fileIds = new Set(next.resources.filter(r => gone.has(r.paperId ?? "")).map(r => r.id));
+      next.papers = next.papers.filter(p => !gone.has(p.id));
+      next.resources = next.resources.filter(r => !gone.has(r.paperId ?? ""));
+      next.evidence = (next.evidence ?? []).filter(e => !gone.has(e.paperId ?? "") && !fileIds.has(e.fileId));
+      next.datasets.forEach(d => { d.paperLinks = d.paperLinks.filter(l => !gone.has(l.paperId)); });
       if (!this.env.real) await this.store.save(next, this.saved);
       this.state = next;
       this.saved = clone(next);
       this.edits++;
+      for (const id of ids) this.selectedPapers.delete(id);
       this.closeModal();
-      if (this.drawer?.type === "paper" && this.drawer.id === id) this.closeDrawer();
+      if (this.drawer?.type === "paper" && gone.has(this.drawer.id)) this.closeDrawer();
       this.render();
       if (this.env.real) await this.reload();
-      this.toast(t("文献已删除。"));
+      this.toast(ids.length === 1 ? t("文献已删除。") : t("已删除 {n} 篇文献。", { n: ids.length }));
     } catch (error) {
       this.toast(errorMessage(error, t("删除失败，请重试。")), true);
     } finally {
@@ -297,6 +308,7 @@ export class App {
     };
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
     if (!this.screen) this.clearTranslation();
+    pruneSelection(this);
     updateScreeningContent(content, renderers[this.page]());
     if (this.screen) {
       const current = screenPapers(this)[this.screen.index];
@@ -937,6 +949,7 @@ export class App {
     ...screenActions(this),
     ...batchActions(this),
     ...calibrationActions(this),
+    ...selectionActions(this),
   };
 
   private onClick(e: MouseEvent): void {
@@ -947,6 +960,8 @@ export class App {
     if (this.translation && !target.closest("#translate-pop") && !target.closest("[data-action=screen-translate]") && window.getSelection()?.isCollapsed) this.clearTranslation();
     // Anchors navigate by themselves; the row or card around them must not also open.
     if (target.closest("a[href]")) return;
+    // The checkbox column ticks a row; the row around it must not open.
+    if (target.closest(".select-cell, .col-select")) return;
     const el = target.closest<HTMLElement>("[data-action]");
     if (el) {
       const action = el.dataset.action ?? "";
@@ -984,6 +999,7 @@ export class App {
     if (!(target instanceof HTMLElement)) return;
     if (batchChange(this, target)) return;
     if (calibrationChange(this, target)) return;
+    if (selectionChange(this, target)) return;
     if (target instanceof HTMLInputElement && target.dataset.paperColumn) {
       const column = PAPER_COLUMNS.find(([id]) => id === target.dataset.paperColumn)?.[0];
       if (!column) return;

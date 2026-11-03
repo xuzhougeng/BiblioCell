@@ -413,7 +413,19 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .th-sort svg { width: 12px; height: 12px }
 .paper-table .year-cell { white-space: nowrap; color: #6a7161; font-variant-numeric: tabular-nums }
 .paper-table td { padding: 11px 16px; border-bottom: 1px solid #e6dec6; font-size: calc(14px * var(--font-scale, 1)); vertical-align: middle; color: #4a5142 }
-.paper-table th:first-child, .paper-table td:first-child { min-width: 0; width: 42px; max-width: 42px; padding-left: 13px; padding-right: 4px }
+.paper-table th.col-star, .paper-table td.star-cell { min-width: 0; width: 42px; max-width: 42px; padding-left: 13px; padding-right: 4px }
+/* Selection column: a checkbox at the start of each row, the bar below while any is ticked. */
+.paper-table th.col-select, .paper-table td.select-cell { min-width: 0; width: 36px; max-width: 36px; padding-left: 14px; padding-right: 0 }
+.paper-table th.col-select { padding-top: 0; padding-bottom: 0 }
+.paper-table .select-cell input, .paper-table .col-select input { display: block; width: 16px; height: 16px; margin: 0; accent-color: var(--primary); cursor: pointer }
+.paper-table th.col-select + th.col-star, .paper-table td.select-cell + td.star-cell { padding-left: 6px }
+.paper-table tbody tr.is-selected { background: var(--green-soft) }
+.paper-table tbody tr.is-selected:hover { background: var(--green-soft) }
+.bulk-bar { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 10px 22px; border-top: 1px solid var(--line-strong); background: var(--surface); box-shadow: 0 -8px 24px rgba(38, 46, 36, 0.08) }
+.bulk-bar[hidden] { display: none }
+.bulk-bar-count { font-weight: 650; color: var(--text-strong); font-variant-numeric: tabular-nums }
+.bulk-bar-actions { display: flex; flex-wrap: wrap; gap: 8px }
+.bulk-bar-clear { margin-left: auto; white-space: nowrap }
 .paper-table th:last-child, .paper-table td:last-child { padding-right: 22px }
 .paper-table tbody tr:last-child td { border-bottom: 0 }
 .paper-table tbody tr:hover { background: #f6f0dd }
@@ -1340,6 +1352,9 @@ select.input { appearance: auto }
   .paper-table tbody tr:has(> .star-cell) { padding-left: 46px }
   .paper-table tbody td, .paper-table th:first-child, .paper-table td:first-child, .paper-table td:last-child { display: block; width: auto; min-width: 0; max-width: none; padding: 0; border: 0 }
   .paper-table td.star-cell { position: absolute; top: 12px; left: 10px }
+  .paper-table td.select-cell, .paper-table th.col-select { display: none }
+  .bulk-bar { padding: 10px 16px }
+  .bulk-bar-clear { margin-left: 0 }
   .paper-table .paper-main-cell, .compact-table .paper-main-cell, .dataset-table .dataset-main-cell { flex: 1 1 100%; width: auto; min-width: 0 }
   .paper-table td.row-arrow { display: none }
   .paper-table .species-label, .paper-table .species-name { display: inline }

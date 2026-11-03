@@ -9,6 +9,7 @@ import {
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter, sortChip } from "./ui.ts";
 import { renderCalibration } from "./calibration.ts";
+import { bulkBar, selectCell, selectHeader } from "./selection.ts";
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 
 /** displayList joins stored values for display, translating known labels like modalities. */
@@ -104,9 +105,12 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
       fulltext: `<td>${fulltextCell(app, p)}</td>`,
       screening: `<td class="screening-cell">${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}" title="${esc(concernReason)}">${I("alert", 13)}${t("{label} · 待你确认", { label: concernLabel })}<small>${concernHint}</small></div>` : ""}</td>`,
     };
-    return `<tr${concern ? ` class="paper-needs-review ${concern}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? t("{label}，待确认：{title}", { label: concernLabel, title: esc(p.title) }) : t("查看 {title}", { title: esc(p.title) })}">${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
+    const selected = !compact && app.selectedPapers.has(p.id);
+    const classes = [concern ? `paper-needs-review ${concern}` : "", selected ? "is-selected" : ""].filter(Boolean).join(" ");
+    return `<tr${classes ? ` class="${classes}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? t("{label}，待确认：{title}", { label: concernLabel, title: esc(p.title) }) : t("查看 {title}", { title: esc(p.title) })}">${compact ? "" : selectCell(p.id, p.title, selected)}${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
-  const head = `<tr>${columns.map(id => id === "star" ? `<th class="col-star"><span class="sr-only">${t("收藏")}</span></th>` : th(labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
+  const selectAll = compact ? "" : selectHeader(items.every((p) => app.selectedPapers.has(p.id)), items.length > 0);
+  const head = `<tr>${selectAll}${columns.map(id => id === "star" ? `<th class="col-star"><span class="sr-only">${t("收藏")}</span></th>` : th(labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
 
   return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -193,7 +197,7 @@ export function renderPapers(app: App): string {
     + selectFilter(filters, "source", t("来源"), uniqueValues(papers, "source").map((v) => ({ value: v, label: tv(v) })))
     + selectFilter(filters, "preprint", t("预印本"), [{ value: "yes", label: t("是") }, { value: "no", label: t("否") }])
     + (filterCount || filters.search ? `<button class="text-link filter-clear-all" data-action="clear-filters">${I("x", 13)} ${filterCount ? t("清空 {n} 项筛选", { n: filterCount }) : t("清空")}</button>` : "")
-    + `</div>${paperTable(items.slice(info.start, info.end), app, false, filters.sort)}<div class="table-footer"><span>${t("显示 {range} / {total} 篇文献", { range: items.length ? `${info.start + 1}–${info.end}` : 0, total: items.length })}</span><span class="muted footer-hint">${t("↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情")}</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
+    + `</div>${paperTable(items.slice(info.start, info.end), app, false, filters.sort)}${bulkBar(app)}<div class="table-footer"><span>${t("显示 {range} / {total} 篇文献", { range: items.length ? `${info.start + 1}–${info.end}` : 0, total: items.length })}</span><span class="muted footer-hint">${t("↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情")}</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
 }
 
 /** datasetTable renders the datasets list: one row per dataset with its linked papers. */

@@ -287,6 +287,17 @@ export const views: Record<string, string> = {
   "显示 {range} / {total} 篇文献": "Showing {range} of {total} papers",
   "↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情": "↑↓ switch paper · ←→ change page · Enter open details",
 
+  // selection.ts: checkbox column and bulk actions
+  "选择 {title}": "Select {title}",
+  "选择本页全部文献": "Select every paper on this page",
+  "批量操作": "Bulk actions",
+  "已勾选 {n} 篇": "{n} selected",
+  "清除选择": "Clear selection",
+  "确定删除已勾选的 {n} 篇文献？": "Delete the {n} selected papers?",
+  "确认删除 {n} 篇": "Delete {n} papers",
+  "已删除 {n} 篇文献。": "{n} papers deleted.",
+  "已勾选的文献（{n} 篇）": "Selected papers ({n})",
+
   // views.ts: datasets page
   "暂无匹配数据集": "No matching datasets",
   "从文献详情关联数据，或先创建一条数据集记录。": "Link data from a paper's details, or create a dataset record first.",

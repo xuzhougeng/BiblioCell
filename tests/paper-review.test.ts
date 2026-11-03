@@ -29,7 +29,7 @@ test("list exposes the proposal reason safely and explains why the total stays u
   const app = {
     state: { ...demoState(), papers: [paper] }, filters: emptyFilters(),
     paperPage: 1, paperPageSize: 10, paperColumns: defaultPaperColumns(),
-    paperDatasets: () => [], paperResources: () => [],
+    paperDatasets: () => [], paperResources: () => [], selectedPapers: new Set<string>(),
   } as unknown as App;
   const html = renderPapers(app);
   assert.match(html, /需核对 <span>1<\/span>/);
@@ -63,7 +63,7 @@ test("papers a source update added wait in review until a person decides or fini
   const app = {
     state: { ...demoState(), papers: [added, own] }, filters: emptyFilters(),
     paperPage: 1, paperPageSize: 10, paperColumns: defaultPaperColumns(),
-    paperDatasets: () => [], paperResources: () => [],
+    paperDatasets: () => [], paperResources: () => [], selectedPapers: new Set<string>(),
   } as unknown as App;
   const html = renderPapers(app);
   assert.match(html, /需核对 <span>1<\/span>/);
