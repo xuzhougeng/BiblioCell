@@ -54,6 +54,29 @@ test("the overview charts years, techniques and tissues, and each bar filters th
   assert.equal($("[data-overview-only]").hidden, true, "the assistant button stays on the overview");
 });
 
+test("the overview counts article types and can leave preprints out of the statistics", () => {
+  const { app, state } = overviewApp();
+  assert.ok($(".overview-progress-grid .dashboard-panel") && $(".overview-progress-grid .coverage-panel"), "screening progress sits beside coverage");
+  const research = state.papers.filter((p) => p.articleTypes.includes("原创研究"));
+  const row = $('[data-field="articleType"][data-value="原创研究"]');
+  assert.equal(row.querySelector("strong")!.textContent, String(research.length));
+
+  const box = $<HTMLInputElement>("#overview-hide-preprint");
+  box.checked = true;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+  assert.equal(localStorage.getItem("bibliocell-overview-hide-preprint"), "on");
+  const published = research.filter((p) => p.publicationStatus !== "preprint").length;
+  assert.ok(published < research.length, "the demo has preprints to leave out");
+  assert.equal($('[data-field="articleType"][data-value="原创研究"] strong').textContent, String(published));
+  assert.match(text(".coverage-panel"), new RegExp(`/ ${state.papers.length}`), "coverage still counts every paper");
+
+  $('[data-field="articleType"][data-value="原创研究"]').click();
+  assert.equal(app.page, "papers");
+  assert.equal(app.filters.articleType, "原创研究");
+  assert.equal(app.filters.preprint, "no", "the library shows the papers the bar counted");
+  assert.equal($$("#app-content .paper-table tbody tr").length, published);
+});
+
 test("? opens the shortcut sheet unless typing, and the top bar has the same button", () => {
   overviewApp();
   assert.ok($("#shortcuts-help"));
