@@ -1,0 +1,30 @@
+html, body { margin: 0; height: 100%; font: 13px system-ui, sans-serif; color: #333; background: #e6e6e6; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.pdf-toolbar, .pdf-find { display: flex; align-items: center; gap: 5px; height: 44px; padding: 5px 8px; background: #f7f7f7; border-bottom: 1px solid #ccc; }
+.pdf-toolbar { overflow-x: auto; }
+button { border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; cursor: pointer; min-width: 30px; height: 32px; font-size: 21px; }
+button:hover { background: #e4e8e5; }
+button:focus-visible, input:focus-visible { outline: 2px solid #26734d; outline-offset: -2px; }
+input { min-width: 0; height: 30px; border: 1px solid #aaa; border-radius: 4px; padding: 3px 7px; font: inherit; }
+.pdf-toolbar input { width: 55px; flex-shrink: 0; }
+.pdf-toolbar span { white-space: nowrap; }
+.pdf-find input { flex: 1; max-width: 240px; }
+.pdf-find span { white-space: nowrap; font-size: 12px; }
+.pdf-container { position: absolute; overflow: auto; inset: 44px 0 0; }
+.with-find .pdf-container, .with-find .pdf-outline { top: 88px; }
+.pdf-status { position: absolute; top: 90px; left: 15px; right: 15px; margin: 0; z-index: 3; background: #fff5d8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pdf-status:empty { display: none; }
+.pdf-outline { position: absolute; top: 44px; bottom: 0; left: 0; width: 200px; overflow: auto; background: white; padding: 10px; }
+.pdf-outline ul { padding-left: 12px; list-style: none; }
+.pdf-outline button { text-align: left; height: auto; font-size: 13px; padding: 6px 3px; width: 100%; }
+.with-outline .pdf-container { left: 200px; }
+.pdf-print { display: none; }
+@media print {
+  @page { margin: 0; }
+  body { background: white; }
+  main { display: none; }
+  .pdf-print { display: block; }
+  .pdf-print canvas { display: block; width: 100%; height: auto; break-after: page; }
+  .pdf-print canvas:last-child { break-after: auto; }
+}
