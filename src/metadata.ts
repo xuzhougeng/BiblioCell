@@ -41,9 +41,9 @@ function reviewHTML(app: App, p: Paper, proposal: MetadataProposal): string {
     const current = claim.field === "dataset" ? app.paperDatasets(p.id).map(d => d.accession || d.title).join("; ")
       : claim.field === "species" ? arr(p.species).map(s => s.label ? `${s.label} · ${s.name}` : s.name).join("; ")
         : fields.includes(claim.field as Field) ? arr(p[claim.field as Exclude<Field, "species">]).join("; ") : "";
-    return `<label class="metadata-claim"><span class="metadata-choice"><input type="checkbox" name="claim" value="${index}" ${metadataSelectedByDefault(p, claim, linked) ? "checked" : ""}><strong>${esc(labels[claim.field] ?? claim.field)}</strong></span><span class="muted small">${t("当前：{value}", { value: esc(current || t("待补")) })}</span><strong>${esc(metadataValue(claim))}</strong><blockquote>${esc(claim.excerpt)}</blockquote></label>`;
+    return `<label class="metadata-claim"><span class="metadata-choice"><input type="checkbox" name="claim" value="${index}" ${metadataSelectedByDefault(p, claim, linked) ? "checked" : ""}><strong>${esc(labels[claim.field] ?? claim.field)}</strong></span><span class="muted small">${t("当前：{value}", { value: esc(current || t("待补")) })}</span><strong>${esc(metadataValue(claim))}</strong><blockquote>${esc(claim.excerpt)}${claim.page ? `<span class="muted small evidence-page">${t("PDF 第 {n} 页", { n: claim.page })}</span>` : ""}</blockquote></label>`;
   }).join("");
-  return `<p class="muted small">${t("来源全文：{title}", { title: esc(proposal.fileTitle) })}</p><p>${t("默认勾选空缺字段；勾选已有字段将替换其内容。数据集编号与关联仍需核实。")}</p>`
+  return `<p class="muted small">${t("来源全文：{title}", { title: esc(proposal.fileTitle) })}${proposal.extractor ? ` · ${esc(proposal.extractor)}` : ""}</p><p>${t("默认勾选空缺字段；勾选已有字段将替换其内容。数据集编号与关联仍需核实。")}</p>`
     + (proposal.truncated ? `<p class="notice-box">${t("全文较长，本次读取了开头和结尾部分，未覆盖的内容可能遗漏。")}</p>` : "")
     + (proposal.omitted ? `<p class="muted small">${t("已过滤 {n} 条缺少原文依据或格式不完整的建议。", { n: proposal.omitted })}</p>` : "")
     + (rows ? `<form id="metadata-apply-form">${rows}<p id="metadata-error" class="form-error" role="alert"></p></form>` : `<p>${t("未提取到有原文依据的字段。可以检查全文文本层，或手动填写。")}</p>`);

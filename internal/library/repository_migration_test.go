@@ -60,12 +60,12 @@ func TestOpenMigratesRepositoryConstraintAndPreservesAssociations(t *testing.T) 
 		t.Fatal(err)
 	}
 	legacy := strings.ReplaceAll(schemaSQL, "length(trim(repository)) BETWEEN 1 AND 100 AND repository = trim(repository)", "repository IN ('geo','sra','ena','gsa','bioproject','biosample','biostudies','zenodo','figshare','dryad','other')")
-	legacy = strings.ReplaceAll(legacy, "PRAGMA user_version = 13", "PRAGMA user_version = 11")
 	if _, err := db.Exec(legacy); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
+		PRAGMA user_version = 11;
 		DELETE FROM schema_migrations WHERE version >= 12;
 		INSERT INTO datasets(id, title) VALUES ('DS-one', 'One'), ('DS-two', 'Two');
 		INSERT INTO repository_records(id, repository, accession, record_kind, url, public_status, metadata_json, first_seen_at, last_checked_at)

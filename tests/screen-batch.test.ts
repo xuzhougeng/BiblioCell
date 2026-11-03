@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate } from "node:timers/promises";
 import { ScreeningBatch } from "../src/screen-batch-queue.ts";
-import type { Judgement } from "../src/mygo.ts";
+import type { ScreeningSuggestion } from "../src/mygo.ts";
 
-const answer = { verdict: "included", reason: "Plant cells", basis: "abstract", skipped: false } as Judgement;
+const answer = { verdict: "included", reason: "Plant cells", basis: "abstract", skipped: false } as ScreeningSuggestion;
 
 test("batch bounds concurrency, handles out-of-order results and deduplicates papers", async () => {
   const batch = new ScreeningBatch(["a", "b", "c", "a"], "plants", "model-b", 2);
-  const requests = new Map<string, ReturnType<typeof Promise.withResolvers<Judgement>>>();
+  const requests = new Map<string, ReturnType<typeof Promise.withResolvers<ScreeningSuggestion>>>();
   const work = batch.run(id => {
-    const pending = Promise.withResolvers<Judgement>(); requests.set(id, pending); return pending.promise;
+    const pending = Promise.withResolvers<ScreeningSuggestion>(); requests.set(id, pending); return pending.promise;
   }, () => {});
   assert.deepEqual([...requests.keys()], ["a", "b"]);
   await batch.run(() => assert.fail("duplicate run"), () => {});
@@ -27,8 +27,8 @@ test("batch bounds concurrency, handles out-of-order results and deduplicates pa
 
 test("stop drains active calls; retry only requests errors and untouched papers", async () => {
   const batch = new ScreeningBatch(["a", "b", "c", "d"], "plants", "model-b", 2);
-  const a = Promise.withResolvers<Judgement>();
-  const b = Promise.withResolvers<Judgement>();
+  const a = Promise.withResolvers<ScreeningSuggestion>();
+  const b = Promise.withResolvers<ScreeningSuggestion>();
   const called: string[] = [];
   const work = batch.run(id => { called.push(id); return id === "a" ? a.promise : b.promise; }, () => {});
   batch.stop();

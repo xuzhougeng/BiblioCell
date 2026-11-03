@@ -24,6 +24,59 @@ export interface AgentConversation {
   updatedAt: string;
 }
 
+export interface Agreement {
+  profileId: string;
+  profileName: string;
+  model: string;
+  compared: number;
+  agreed: number;
+  rate: number;
+}
+
+export interface CalibrationFilter {
+  profileId: string;
+  model: string;
+  runId: string;
+  from: string;
+  to: string;
+}
+
+export interface CalibrationPair {
+  suggestionId: string;
+  paperId: string;
+  title: string;
+  profileId: string;
+  profileName: string;
+  model: string;
+  runId: string;
+  kind: string;
+  requirement: string;
+  verdict: string;
+  reason: string;
+  basis: string;
+  excerpt: string;
+  page: number;
+  confidence: number | null;
+  createdAt: string;
+  decision: string;
+  decisionReason: string;
+  decidedAt: string;
+}
+
+export interface CalibrationReport {
+  total: number;
+  compared: number;
+  agreed: number;
+  pending: number;
+  rate: number;
+  verdicts: string[];
+  matrix: MatrixCell[];
+  byModel: Agreement[];
+  mismatches: CalibrationPair[];
+  models: Agreement[];
+  runs: RunSummary[];
+}
+
 export interface Config {
   storagePath: string;
   fontSize: number;
@@ -115,6 +168,7 @@ export interface Evidence {
   sourceUrl: string;
   fileId: string;
   location: string;
+  page: number;
   excerpt: string;
   extractor: string;
   status: string;
@@ -159,14 +213,6 @@ export interface HarvestRun {
   errorMessage: string;
 }
 
-export interface Judgement {
-  verdict: string;
-  reason: string;
-  basis: string;
-  skipped: boolean;
-  usage: Usage;
-}
-
 /** MCPInfo describes the optional local AI integration. */
 export interface MCPInfo {
   enabled: boolean;
@@ -174,6 +220,12 @@ export interface MCPInfo {
   token: string;
   tools: string[];
   resources: string[];
+}
+
+export interface MatrixCell {
+  verdict: string;
+  decision: string;
+  count: number;
 }
 
 export interface Message {
@@ -196,6 +248,7 @@ export interface MetadataClaim {
   accession: string;
   role: string;
   excerpt: string;
+  page: number;
 }
 
 export interface MetadataProposal {
@@ -205,6 +258,7 @@ export interface MetadataProposal {
   truncated: boolean;
   omitted: number;
   claims: MetadataClaim[];
+  extractor: string;
 }
 
 export interface ModelProfile {
@@ -281,6 +335,42 @@ export interface Result {
   steps: number;
   stopReason: string;
   usage: Usage;
+}
+
+export interface RunSummary {
+  runId: string;
+  kind: string;
+  profileId: string;
+  profileName: string;
+  model: string;
+  requirement: string;
+  startedAt: string;
+  total: number;
+  compared: number;
+  agreed: number;
+  rate: number;
+}
+
+export interface ScreeningSuggestion {
+  id: string;
+  paperId: string;
+  requirement: string;
+  profileId: string;
+  profileName: string;
+  model: string;
+  protocol: string;
+  verdict: string;
+  reason: string;
+  basis: string;
+  excerpt: string;
+  page: number;
+  confidence: number | null;
+  runId: string;
+  kind: string;
+  inputTokens: number;
+  outputTokens: number;
+  skipped: boolean;
+  createdAt: string;
 }
 
 /** SettingsSaveResult tells the frontend which configuration changes need a restart. */
@@ -407,6 +497,13 @@ export const Library = {
   applyPaperMetadata(before: Paper, proposal: MetadataProposal): Promise<void> {
     return call("Library.ApplyPaperMetadata", before, proposal);
   },
+  /**
+   * CalibrationReport compares recorded AI suggestions with the person's
+   * decisions: agreement rate, confusion matrix and the papers they disagree on.
+   */
+  calibrationReport(filter: CalibrationFilter): Promise<CalibrationReport> {
+    return call("Library.CalibrationReport", filter);
+  },
   /** ChooseStoragePath opens a native directory picker for the storage folder. */
   chooseStoragePath(): Promise<string> {
     return call("Library.ChooseStoragePath");
@@ -470,9 +567,24 @@ export const Library = {
   listPapers(): Promise<Paper[]> {
     return call("Library.ListPapers");
   },
+  /**
+   * ListScreeningSuggestions returns the recorded AI suggestions for one paper,
+   * newest first, or all of them when paperID is empty.
+   */
+  listScreeningSuggestions(paperID: string): Promise<ScreeningSuggestion[]> {
+    return call("Library.ListScreeningSuggestions", paperID);
+  },
   /** ListSources returns saved connector configurations and their latest runs. */
   listSources(): Promise<SourceStatus[]> {
     return call("Library.ListSources");
+  },
+  /**
+   * LocateFulltextPage finds the PDF page a passage sits on, by searching the
+   * stored full text; 0 means it was not found. It lets the window jump to a
+   * quote whose page was not recorded.
+   */
+  locateFulltextPage(paperID: string, excerpt: string): Promise<number> {
+    return call("Library.LocateFulltextPage", paperID, excerpt);
   },
   /** LookupDOI fetches bibliographic metadata for a DOI without saving it. */
   lookupDOI(doi: string): Promise<Paper> {
@@ -544,18 +656,28 @@ export const Library = {
     return call("Library.SaveSourceConfig", config);
   },
   /**
-   * ScreenPaper asks the configured model whether one paper meets a requirement,
-   * reading its stored full text when there is one and its abstract otherwise.
-   * The answer is a suggestion for the person; nothing is written.
+   * ScreenPaper asks the model bound to screening whether one paper meets a
+   * requirement, reading its stored full text when there is one and its abstract
+   * otherwise. The answer is a suggestion for the person: it is recorded for the
+   * comparison view, and the paper itself is never changed.
    */
-  screenPaper(paperID: string, requirement: string): Promise<Judgement> {
+  screenPaper(paperID: string, requirement: string): Promise<ScreeningSuggestion> {
     return call("Library.ScreenPaper", paperID, requirement);
   },
   /**
-   * ScreenPaperWithModel uses a selected profile without changing task bindings.
-   * Like ScreenPaper, it returns a suggestion and never changes the paper.
+   * ScreenPaperInRun screens one paper as part of a batch run or a calibration
+   * rerun: the suggestion is recorded under runID with the given kind (screen,
+   * batch or rerun) so a whole run can be compared with the person's decisions.
+   * An empty modelID uses the profile bound to screening.
    */
-  screenPaperWithModel(paperID: string, requirement: string, modelID: string): Promise<Judgement> {
+  screenPaperInRun(paperID: string, requirement: string, modelID: string, runID: string, kind: string): Promise<ScreeningSuggestion> {
+    return call("Library.ScreenPaperInRun", paperID, requirement, modelID, runID, kind);
+  },
+  /**
+   * ScreenPaperWithModel uses a selected profile without changing task bindings.
+   * Like ScreenPaper, it returns a recorded suggestion and never changes the paper.
+   */
+  screenPaperWithModel(paperID: string, requirement: string, modelID: string): Promise<ScreeningSuggestion> {
     return call("Library.ScreenPaperWithModel", paperID, requirement, modelID);
   },
   /** SourceAutomation returns the update schedule and the latest runs' results. */

@@ -35,7 +35,7 @@ func TestScreenPaperUsesSelectedModelWithoutChangingLibrary(t *testing.T) {
 		if len(body.Messages) < 2 || !strings.Contains(body.Messages[1].Content, "plant cells") {
 			t.Error("missing screening requirement")
 		}
-		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"{\"verdict\":\"included\",\"reason\":\"Plant cell evidence\"}"}}]}`)
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"{\"verdict\":\"included\",\"reason\":\"Plant cell evidence\",\"excerpt\":\"Plant cell atlas evidence\",\"confidence\":0.8}"}}]}`)
 	}))
 	defer server.Close()
 	dir := t.TempDir()
@@ -77,6 +77,23 @@ func TestScreenPaperUsesSelectedModelWithoutChangingLibrary(t *testing.T) {
 	}
 	if got := <-requests; got != "batch-model" {
 		t.Fatalf("selected model = %s", got)
+	}
+	// The suggestion is on record with the model that gave it, for the comparison view.
+	if answer.ID == "" || answer.ProfileID != "batch" || answer.ProfileName != "Batch" || answer.Model != "batch-model" || answer.Excerpt != "Plant cell atlas evidence" || answer.Confidence == nil || *answer.Confidence != 0.8 || answer.Kind != "screen" {
+		t.Fatalf("suggestion not recorded: %+v", answer)
+	}
+	if _, err := service.ScreenPaperInRun(paper.ID, "plant cells", "batch", "run-1", "rerun"); err != nil {
+		t.Fatal(err)
+	}
+	<-requests
+	recorded, err := service.ListScreeningSuggestions(paper.ID)
+	if err != nil || len(recorded) != 2 || recorded[0].RunID != "run-1" || recorded[0].Kind != "rerun" || recorded[1].ID != answer.ID {
+		t.Fatalf("recorded = %+v, %v", recorded, err)
+	}
+	// Both answers came from the same model, so the report keeps the newer one; the run is listed on its own.
+	report, err := service.CalibrationReport(library.CalibrationFilter{})
+	if err != nil || report.Total != 1 || report.Compared != 0 || report.Pending != 1 || len(report.Runs) != 1 || report.Runs[0].RunID != "run-1" {
+		t.Fatalf("report = %+v, %v", report, err)
 	}
 	if _, err := service.ScreenPaper(paper.ID, "plant cells"); err != nil {
 		t.Fatal(err)

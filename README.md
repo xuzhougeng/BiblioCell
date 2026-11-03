@@ -92,6 +92,23 @@ BiblioCell agent "库里有多少篇还没判断收录的文献？"
 
 `agent` 命令把工具调用打印到 stderr，最终结果（完整对话、回复、步数、token 用量）以 JSON 打印到 stdout。
 
+### AI 筛选建议、对照与重跑
+
+逐篇筛选页的「AI 建议」和文献库的「批量 AI 筛选」会按你写的筛选要求让模型判断每篇文献（优先读全文，没有全文读摘要），给出 included / excluded / uncertain 的建议、理由、一段逐字引用的原文和 0～1 的置信度。建议只是建议：采纳与否由你按 Y / N / U 决定，模型永远不写 `screening_status`。
+
+每条建议都记进 `screening_suggestions` 表：生成时间、所用模型配置（设置里的名称 + 模型 id + 协议）、筛选要求、结论、理由、置信度、引用原文及其 PDF 页码、所属批次。文献库顶部的 **AI 对照** 标签把这些建议和你最终的收录判定放在一起：
+
+- **一致率**、已对照 / 待判定篇数，以及 AI 建议 × 人工判定的 3×3 **混淆矩阵**（收录 / 排除 / 证据不足）。
+- 可按**模型配置**、**批次**和**时间范围**筛选；不按批次筛选时，同一篇文献同一模型只取最新一条建议，所以重跑会替换旧答案而不是重复计数。
+- **按模型配置**和**按批次**两张表分别给出各自的一致率，换模型或改提示词后的差异一眼可见。
+- **不一致样本**列出 AI 与人判断不同的文献，点开直接进入逐篇筛选页，建议、理由和模型信息原样显示，退出后回到对照页。
+
+对照用的人工判定永远是当前记录的那一个（`screening_method = 'human'`）；agent 通过 MCP 写的 `proposed_screening` 和仍待判断的文献不参与一致率。
+
+**重跑对照**（对照页右上，或批量筛选弹窗把范围换成「已人工判定的文献」）选一组已经判定过的文献，用当前或指定的模型配置重新生成一批建议。它复用批量筛选的并发逻辑，不会改动任何人工判定；结果带着自己的批次号进入对照页，批次表里能直接比较新旧两批的一致率。
+
+模型引用的原文和「AI 从全文填写」保存的证据都记录所在 PDF 页码（提取时按页读取 PDF 文本层定位，存在 `field_evidence.source_location` 的 `page N`）。筛选页的 AI 建议框和「全文依据」区里点击页码，右侧内嵌 PDF 跳到对应页；没有页码的旧证据点「在 PDF 中查找」，由后端在 PDF 文本里搜索这段话再跳转，找不到时提示。
+
 ## 更新与来源
 
 真实数据库模式下，“更新与来源”页面可以保存每个来源的启用状态、检索式和单次结果上限（1–100），手动运行同步，也可以开启定时自动更新：
@@ -372,6 +389,7 @@ BiblioCell/
 │   ├── source_query.go      # 试检索评估、助手更新检索式与修改记录
 │   ├── export.go            # BibTeX / CSV / 下载脚本 / 进度报告导出与 accession 分类
 │   ├── mcp.go               # 本机 MCP 服务与 AI 工具
+│   ├── suggestion.go / calibration.go  # AI 筛选建议记录、一致率与混淆矩阵
 │   ├── schema.sql           # 嵌入二进制的当前数据库结构（新库一次建成）
 │   ├── testdata/            # 冻结的历史 schema：v11（v0.1.0 发布版）与 v13（迁移基线）
 │   └── *_test.go            # 数据库、迁移与 MCP 端到端测试
@@ -383,6 +401,7 @@ BiblioCell/
 │   ├── export.ts            # 导出弹窗；浏览器预览用的 TypeScript 版导出格式
 │   ├── store.ts             # 持久化：SQLite（经 Go）与 localStorage（Demo）两种实现
 │   ├── views.ts / drawer.ts / forms.ts / sources.ts / settings.ts  # 各页面、抽屉与弹窗
+│   ├── screen.ts / screen-batch.ts / calibration.ts  # 逐篇筛选、批量 AI 筛选与 AI 对照
 │   ├── ui.ts / icons.ts / shell.ts  # HTML 片段构造、图标与侧栏等静态外壳
 │   ├── demo-data.ts         # 明确标记的虚构演示数据
 │   ├── style.css            # 单一样式表（外壳与设置页 → 基础 → 组件）
@@ -415,7 +434,7 @@ npm run typecheck
 npm run build
 ```
 
-测试覆盖数据库初始化与重开、从 v0.1.0 数据库升级与备份、迁移失败回滚、迁移链与 schema.sql 一致性、文献编辑、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化；导出的 BibTeX 转义、CSV 多值字段、accession 分类、下载脚本和进度报告在 `internal/library/export_test.go` 与 `tests/export.test.ts` 中各有一套。
+测试覆盖数据库初始化与重开、从 v0.1.0 数据库升级与备份、迁移失败回滚、迁移链与 schema.sql 一致性、文献编辑、AI 筛选建议记录与一致率 / 混淆矩阵、证据页码定位、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化；导出的 BibTeX 转义、CSV 多值字段、accession 分类、下载脚本和进度报告在 `internal/library/export_test.go` 与 `tests/export.test.ts` 中各有一套。
 
 需要实际访问公开来源时，可额外运行 `BIBLIOCELL_LIVE_TEST=1 go test ./internal/library -run TestRemoteConnectorsLive -v`；默认测试不会访问网络。
 

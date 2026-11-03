@@ -75,3 +75,31 @@ func TestTranslateReturnsTheModelsText(t *testing.T) {
 		t.Fatal("empty text accepted")
 	}
 }
+
+func TestParseJudgementReadsConfidenceAndExcerpt(t *testing.T) {
+	j, err := parseJudgement("```json\n{\"verdict\":\"Include\",\"reason\":\"roots\",\"excerpt\":\" Root cells were sequenced. \",\"confidence\":0.75}\n```")
+	if err != nil || j.Verdict != "included" || j.Reason != "roots" || j.Excerpt != "Root cells were sequenced." || j.Confidence == nil || *j.Confidence != 0.75 {
+		t.Fatalf("judgement = %+v, %v", j, err)
+	}
+	for text, want := range map[string]*float64{
+		`{"verdict":"excluded","reason":"x"}`:                     nil,
+		`{"verdict":"excluded","reason":"x","confidence":"80%"}`:  ptr(0.8),
+		`{"verdict":"excluded","reason":"x","confidence":85}`:     ptr(0.85),
+		`{"verdict":"excluded","reason":"x","confidence":"high"}`: nil,
+		`{"verdict":"excluded","reason":"x","confidence":-1}`:     nil,
+		`{"verdict":"excluded","reason":"x","confidence":null}`:   nil,
+	} {
+		j, err := parseJudgement(text)
+		if err != nil {
+			t.Fatalf("%s: %v", text, err)
+		}
+		if (j.Confidence == nil) != (want == nil) || (want != nil && *j.Confidence != *want) {
+			t.Errorf("%s: confidence = %v, want %v", text, j.Confidence, want)
+		}
+	}
+	if _, err := parseJudgement(`{"verdict":"maybe","reason":"x"}`); err == nil {
+		t.Fatal("unknown verdict accepted")
+	}
+}
+
+func ptr(v float64) *float64 { return &v }

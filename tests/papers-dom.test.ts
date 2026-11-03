@@ -27,6 +27,21 @@ const rowIds = (): string[] => $$("tbody tr[data-action=open-paper]").map((tr) =
 const years = (state: LibraryState): number[] => rowIds().map((id) => Number(state.papers.find((p) => p.id === id)!.year));
 const sortedAsc = (values: number[]) => values.every((v, i) => i === 0 || values[i - 1]! <= v);
 
+test("AI calibration and paper export remain reachable from the library", () => {
+  const { app } = papersApp();
+  $('[data-action="export-papers"]').click();
+  assert.ok(document.querySelector('#modal-root [role="dialog"]'));
+  $('#modal-root button[data-action="close-modal"]').click();
+
+  $('[data-action="calibration-open"]').click();
+  assert.equal(app.calibrationView, true);
+  assert.ok(document.querySelector("#calibration-panel"));
+  $('[data-action="all-papers"]').click();
+  assert.equal(app.calibrationView, false);
+  $('[data-action="export-papers"]').click();
+  assert.ok(document.querySelector('#modal-root [role="dialog"]'));
+});
+
 test("the table pages through the list and clamps the page when the list shrinks", () => {
   const { app, state } = papersApp();
   assert.equal(state.papers.length, 14);

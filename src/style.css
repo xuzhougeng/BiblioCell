@@ -1436,3 +1436,38 @@ select.input { appearance: auto }
 .settings-subheading { margin: 24px 0 12px; font-size: calc(15px * var(--font-scale, 1)); color: var(--text-strong) }
 .settings-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) }
 @media (max-width: 1024px) { .settings-grid-3 { grid-template-columns: 1fr } }
+
+/* AI calibration: suggestions beside decisions */
+.calibration-intro { margin: 0 0 14px; line-height: 1.7; font-size: calc(13px * var(--font-scale, 1)) }
+.calibration-toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 18px }
+.calibration-toolbar .form-field.compact { margin: 0; min-width: 150px; max-width: 320px }
+.calibration-toolbar .form-field.compact > span { font-size: calc(12px * var(--font-scale, 1)); color: #6a6450 }
+.calibration-toolbar .section-actions { margin-left: auto; display: flex; gap: 8px }
+.calibration-panel.is-loading .calibration-stats, .calibration-panel.is-loading .calibration-grid, .calibration-panel.is-loading .calibration-mismatches { opacity: 0.55; transition: opacity .2s }
+.calibration-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px }
+.calibration-matrix, .calibration-table { width: 100%; border-collapse: collapse; font-size: calc(13px * var(--font-scale, 1)); font-variant-numeric: tabular-nums }
+.calibration-matrix th, .calibration-matrix td, .calibration-table th, .calibration-table td { padding: 8px 10px; border-bottom: 1px solid #e6dec6; text-align: left; vertical-align: top }
+.calibration-matrix thead th, .calibration-table thead th { font-weight: 600; color: #6a6450; font-size: calc(12px * var(--font-scale, 1)) }
+.calibration-matrix td { text-align: center; font-size: calc(15px * var(--font-scale, 1)) }
+.calibration-matrix td.agree { background: #e6eedb; color: #286347; font-weight: 700 }
+.calibration-matrix td.disagree { background: #f9ecd9; color: #8c5a1a; font-weight: 700 }
+.calibration-table tr.is-current td { background: var(--surface-deep) }
+.calibration-table code { font-size: calc(12px * var(--font-scale, 1)) }
+.calibration-mismatches { display: flex; flex-direction: column }
+.calibration-mismatch { padding: 12px 0; border-bottom: 1px solid #e6dec6 }
+.calibration-mismatch:last-child { border-bottom: 0 }
+.calibration-title { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; color: var(--primary-deep); text-align: left; cursor: pointer }
+.calibration-title:hover strong { text-decoration: underline }
+.calibration-verdicts { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 6px 0 4px; font-size: calc(12.5px * var(--font-scale, 1)); color: #6a6450 }
+.calibration-verdicts .badge { margin-left: 4px }
+.calibration-mismatch p { margin: 2px 0; line-height: 1.6 }
+.batch-decision.agree { color: #286347 }
+.batch-decision.disagree { color: #8c5a1a; font-weight: 600 }
+.ai-box-model { flex-basis: 100% }
+.ai-box-excerpt, .screen-evidence blockquote { flex-basis: 100%; margin: 0; padding: 8px 12px; border-left: 3px solid var(--line-strong); background: var(--surface); font-size: calc(13px * var(--font-scale, 1)); line-height: 1.7; color: #4a5142; overflow-wrap: anywhere }
+.evidence-jump { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; white-space: nowrap }
+.evidence-page { margin-left: 8px; white-space: nowrap }
+.screen-evidence .evidence-item { padding: 10px 0 }
+@media (max-width: 900px) {
+  .calibration-grid { grid-template-columns: minmax(0, 1fr) }
+}

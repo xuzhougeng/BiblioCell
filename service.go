@@ -377,34 +377,47 @@ func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, erro
 	}, nil
 }
 
-// ScreenPaper asks the configured model whether one paper meets a requirement,
-// reading its stored full text when there is one and its abstract otherwise.
-// The answer is a suggestion for the person; nothing is written.
-func (l *Library) ScreenPaper(paperID, requirement string) (agent.Judgement, error) {
-	return l.ScreenPaperWithModel(paperID, requirement, "")
+// ScreenPaper asks the model bound to screening whether one paper meets a
+// requirement, reading its stored full text when there is one and its abstract
+// otherwise. The answer is a suggestion for the person: it is recorded for the
+// comparison view, and the paper itself is never changed.
+func (l *Library) ScreenPaper(paperID, requirement string) (library.ScreeningSuggestion, error) {
+	return l.ScreenPaperInRun(paperID, requirement, "", "", "screen")
 }
 
 // ScreenPaperWithModel uses a selected profile without changing task bindings.
-// Like ScreenPaper, it returns a suggestion and never changes the paper.
-func (l *Library) ScreenPaperWithModel(paperID, requirement, modelID string) (agent.Judgement, error) {
+// Like ScreenPaper, it returns a recorded suggestion and never changes the paper.
+func (l *Library) ScreenPaperWithModel(paperID, requirement, modelID string) (library.ScreeningSuggestion, error) {
+	return l.ScreenPaperInRun(paperID, requirement, modelID, "", "screen")
+}
+
+// ScreenPaperInRun screens one paper as part of a batch run or a calibration
+// rerun: the suggestion is recorded under runID with the given kind (screen,
+// batch or rerun) so a whole run can be compared with the person's decisions.
+// An empty modelID uses the profile bound to screening.
+func (l *Library) ScreenPaperInRun(paperID, requirement, modelID, runID, kind string) (library.ScreeningSuggestion, error) {
 	if l.store == nil || l.settings == nil {
-		return agent.Judgement{}, errors.New("library database is not ready")
+		return library.ScreeningSuggestion{}, errors.New("library database is not ready")
 	}
-	provider, err := l.screenProvider(modelID)
+	profile, err := l.screenProfile(modelID)
 	if err != nil {
-		return agent.Judgement{}, err
+		return library.ScreeningSuggestion{}, err
+	}
+	provider, err := agent.NewProvider(profile.Config)
+	if err != nil {
+		return library.ScreeningSuggestion{}, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	paper, err := l.store.GetPaper(ctx, paperID)
 	if err != nil {
-		return agent.Judgement{}, err
+		return library.ScreeningSuggestion{}, err
 	}
-	fulltext, err := l.store.PaperFulltextText(ctx, paperID)
+	_, pages, err := l.store.PaperFulltextPages(ctx, paperID)
 	if err != nil {
 		// The abstract still tells something; the reason says the full text was not read.
 		log.Printf("screen %s: %v", paperID, err)
-		fulltext = ""
+		pages = nil
 	}
 	species := make([]string, 0, len(paper.Species))
 	for _, entry := range paper.Species {
@@ -418,7 +431,7 @@ func (l *Library) ScreenPaperWithModel(paperID, requirement, modelID string) (ag
 	if paper.Year != nil {
 		year = fmt.Sprint(*paper.Year)
 	}
-	return agent.Screen(ctx, provider, agent.ScreenInput{
+	judgement, err := agent.Screen(ctx, provider, agent.ScreenInput{
 		Requirement: requirement,
 		Title:       paper.Title,
 		Authors:     paper.Authors,
@@ -428,20 +441,78 @@ func (l *Library) ScreenPaperWithModel(paperID, requirement, modelID string) (ag
 		Organs:      strings.Join(paper.Organs, "、"),
 		Modalities:  strings.Join(paper.Modalities, "、"),
 		Abstract:    paper.Abstract,
-		Fulltext:    fulltext,
+		Fulltext:    strings.TrimSpace(strings.Join(pages, "\n\n")),
 	})
+	if err != nil {
+		return library.ScreeningSuggestion{}, err
+	}
+	suggestion := library.ScreeningSuggestion{
+		PaperID: paperID, Requirement: requirement,
+		ProfileID: profile.ID, ProfileName: profile.Name, Model: profile.Config.Model, Protocol: profile.Config.Protocol,
+		Verdict: judgement.Verdict, Reason: judgement.Reason, Basis: judgement.Basis, Excerpt: judgement.Excerpt,
+		Confidence: judgement.Confidence, RunID: runID, Kind: kind,
+		InputTokens: judgement.Usage.InputTokens, OutputTokens: judgement.Usage.OutputTokens, Skipped: judgement.Skipped,
+	}
+	if judgement.Skipped {
+		return suggestion, nil
+	}
+	if judgement.Basis == "fulltext" {
+		suggestion.Page = library.LocatePage(pages, judgement.Excerpt)
+	}
+	saved, err := l.store.AddScreeningSuggestion(ctx, suggestion)
+	if err != nil {
+		// The answer is still worth showing; only its record is missing.
+		log.Printf("record screening suggestion for %s: %v", paperID, err)
+		return suggestion, nil
+	}
+	return saved, nil
 }
 
-func (l *Library) screenProvider(modelID string) (agent.Provider, error) {
+// screenProfile returns the selected profile, or the one bound to screening.
+func (l *Library) screenProfile(modelID string) (settings.ModelProfile, error) {
 	if modelID == "" {
-		return l.provider(settings.TaskScreen)
+		return l.settings.Get().ModelFor(settings.TaskScreen)
 	}
 	for _, profile := range l.settings.Get().Models {
 		if profile.ID == modelID {
-			return agent.NewProvider(profile.Config)
+			return profile, nil
 		}
 	}
-	return nil, errors.New("所选模型已不存在，请重新选择")
+	return settings.ModelProfile{}, errors.New("所选模型已不存在，请重新选择")
+}
+
+// ListScreeningSuggestions returns the recorded AI suggestions for one paper,
+// newest first, or all of them when paperID is empty.
+func (l *Library) ListScreeningSuggestions(paperID string) ([]library.ScreeningSuggestion, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	return l.store.ListScreeningSuggestions(context.Background(), paperID)
+}
+
+// CalibrationReport compares recorded AI suggestions with the person's
+// decisions: agreement rate, confusion matrix and the papers they disagree on.
+func (l *Library) CalibrationReport(filter library.CalibrationFilter) (library.CalibrationReport, error) {
+	if l.store == nil {
+		return library.CalibrationReport{}, errors.New("library database is not ready")
+	}
+	return l.store.CalibrationReport(context.Background(), filter)
+}
+
+// LocateFulltextPage finds the PDF page a passage sits on, by searching the
+// stored full text; 0 means it was not found. It lets the window jump to a
+// quote whose page was not recorded.
+func (l *Library) LocateFulltextPage(paperID, excerpt string) (int, error) {
+	if l.store == nil {
+		return 0, errors.New("library database is not ready")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	_, pages, err := l.store.PaperFulltextPages(ctx, paperID)
+	if err != nil {
+		return 0, err
+	}
+	return library.LocatePage(pages, excerpt), nil
 }
 
 // provider builds the client for the model a task is bound to.

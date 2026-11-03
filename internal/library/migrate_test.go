@@ -337,6 +337,29 @@ func TestMigrationsMatchSchema(t *testing.T) {
 	}
 }
 
+func TestNumberedMigrationsCreateScreeningSuggestions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "baseline.sqlite")
+	buildDatabase(t, path, "schema_v13.sql")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// Exercise the numbered chain alone so schema.sql cannot mask a missing step.
+	if err := applyMigrations(db, baselineVersion, ""); err != nil {
+		t.Fatal(err)
+	}
+	var objects int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name IN (
+		'screening_suggestions', 'idx_screening_suggestions_paper', 'idx_screening_suggestions_run'
+	)`).Scan(&objects); err != nil || objects != 3 {
+		t.Fatalf("screening suggestion schema objects = %d, error = %v", objects, err)
+	}
+	if got := userVersion(t, path); got != SchemaVersion {
+		t.Fatalf("migrated version = %d, want %d", got, SchemaVersion)
+	}
+}
+
 func TestMigrationsRunInOrderAndRecordVersions(t *testing.T) {
 	withMigrations(t, []Migration{
 		{Version: 14, Description: "test column", SQL: "ALTER TABLE papers ADD COLUMN mig_test TEXT NOT NULL DEFAULT ''"},

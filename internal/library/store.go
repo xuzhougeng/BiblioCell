@@ -144,6 +144,15 @@ func legacyUpgrade(db *sql.DB) error {
 	if err := migrateRepositoryNames(db); err != nil {
 		return err
 	}
+	// Early databases may predate the migration log. Numbered migrations need
+	// it before schema.sql runs at the end of Open.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version INTEGER PRIMARY KEY,
+		description TEXT NOT NULL,
+		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+	)`); err != nil {
+		return fmt.Errorf("initialize migration log: %w", err)
+	}
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", baselineVersion)); err != nil {
 		return fmt.Errorf("stamp baseline version: %w", err)
 	}

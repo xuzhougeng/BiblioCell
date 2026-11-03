@@ -132,6 +132,17 @@ export const splitList = (value: unknown): string[] =>
   [...new Set(String(value ?? "").split(/[,，;；\n]/).map((s) => s.trim()).filter(Boolean))];
 export const nowISO = (): string => new Date().toISOString();
 
+/** evidenceValueText shows a stored evidence value: a JSON array of strings or species as a list, anything else as is. */
+export function evidenceValueText(value: string): string {
+  const raw = value.trim();
+  if (!raw.startsWith("[")) return raw;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return raw;
+    return parsed.map((item: unknown) => typeof item === "string" ? item : item && typeof item === "object" && "name" in item ? String((item as { name: unknown }).name) : JSON.stringify(item)).join(listSeparator);
+  } catch { return raw; }
+}
+
 /** changedItems pairs each item that differs from the last synced list with its synced version. */
 export function changedItems<T extends { id: string }>(next: T[], saved: T[]): [T, T | undefined][] {
   const byID = new Map(saved.map((item) => [item.id, item]));

@@ -38,7 +38,38 @@ type Migration struct {
 
 // migrations lists every step after the baseline, in order and without gaps.
 // Keep entries forever: a database may be several versions behind.
-var migrations = []Migration{}
+var migrations = []Migration{
+	{
+		Version:     14,
+		Description: "AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照",
+		SQL: `CREATE TABLE IF NOT EXISTS screening_suggestions (
+    id TEXT PRIMARY KEY NOT NULL,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    requirement TEXT NOT NULL,
+    -- 设置中的模型配置：profile 名称与模型 id 都存下来，配置改名或删除后仍能对照。
+    profile_id TEXT NOT NULL DEFAULT '',
+    profile_name TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    protocol TEXT NOT NULL DEFAULT '',
+    verdict TEXT NOT NULL CHECK (verdict IN ('included','excluded','uncertain')),
+    reason TEXT NOT NULL DEFAULT '',
+    -- 模型读的是全文还是摘要。
+    basis TEXT NOT NULL DEFAULT '',
+    -- 模型引用的原文片段及其所在 PDF 页码（0 表示未定位到）。
+    excerpt TEXT NOT NULL DEFAULT '',
+    page INTEGER NOT NULL DEFAULT 0 CHECK (page >= 0),
+    confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    -- 同一次批量筛选或重跑共用一个 run_id；逐篇筛选时为空。
+    run_id TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'screen' CHECK (kind IN ('screen','batch','rerun')),
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_screening_suggestions_paper ON screening_suggestions(paper_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_screening_suggestions_run ON screening_suggestions(run_id, created_at DESC);`,
+	},
+}
 
 // SchemaVersion is the schema this build writes: the baseline plus every
 // migration. Databases with a higher user_version come from a newer build and

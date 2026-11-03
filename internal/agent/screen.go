@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -17,6 +18,11 @@ type Judgement struct {
 	Reason  string `json:"reason"`
 	// Basis says what the model read: fulltext or abstract.
 	Basis string `json:"basis"`
+	// Excerpt is the passage the model rests its verdict on, quoted from the
+	// text it was given; empty when it named none.
+	Excerpt string `json:"excerpt"`
+	// Confidence is the model's own 0–1 estimate; nil when it gave none.
+	Confidence *float64 `json:"confidence"`
 	// Skipped is set when the paper had neither full text nor abstract, so no
 	// model was asked.
 	Skipped bool  `json:"skipped"`
@@ -50,7 +56,9 @@ const screenSystem = `你是文献筛选助手。一个研究者正在逐篇筛�
 - 只依据给出的内容判断，不要编造文中没有的信息。
 - 符合要求答 included；明确不符合答 excluded；信息不足或模棱两可答 uncertain。
 - reason 用中文写 1～3 句，引用文中的具体依据（物种、组织、技术、数据类型等）。
-只输出一个 JSON 对象，不要输出其他文字：{"verdict": "included" | "excluded" | "uncertain", "reason": "..."}`
+- excerpt 是支持你判断的一段原文，必须逐字摘自给出的摘要或全文（不超过 300 字），没有合适的就留空字符串。
+- confidence 是你对这个判断的把握，0 到 1 之间的小数。
+只输出一个 JSON 对象，不要输出其他文字：{"verdict": "included" | "excluded" | "uncertain", "reason": "...", "excerpt": "...", "confidence": 0.8}`
 
 // Screen asks the model whether one paper meets the requirement. The caller
 // decides what text it can supply; with neither full text nor abstract the
@@ -119,11 +127,29 @@ func parseJudgement(text string) (Judgement, error) {
 		return Judgement{}, fmt.Errorf("模型没有返回 JSON 判断：%s", truncateRunes(strings.TrimSpace(text), 200))
 	}
 	var answer struct {
-		Verdict string `json:"verdict"`
-		Reason  string `json:"reason"`
+		Verdict    string          `json:"verdict"`
+		Reason     string          `json:"reason"`
+		Excerpt    string          `json:"excerpt"`
+		Confidence json.RawMessage `json:"confidence"`
 	}
 	if err := json.Unmarshal([]byte(text[start:end+1]), &answer); err != nil {
 		return Judgement{}, fmt.Errorf("模型返回的判断无法解析：%w", err)
+	}
+	// A confidence the model wrote as "0.8" or 80 is still usable; nonsense is dropped.
+	var confidence *float64
+	if raw := strings.Trim(strings.TrimSpace(string(answer.Confidence)), `"`); raw != "" && raw != "null" {
+		if value, err := strconv.ParseFloat(strings.TrimSuffix(raw, "%"), 64); err == nil {
+			if value > 1 && value <= 100 {
+				value /= 100
+			}
+			if value >= 0 && value <= 1 {
+				confidence = &value
+			}
+		}
+	}
+	excerpt := strings.TrimSpace(answer.Excerpt)
+	if runes := []rune(excerpt); len(runes) > 600 {
+		excerpt = string(runes[:600])
 	}
 	verdict := strings.ToLower(strings.TrimSpace(answer.Verdict))
 	switch verdict {
@@ -135,7 +161,7 @@ func parseJudgement(text string) (Judgement, error) {
 	default:
 		return Judgement{}, fmt.Errorf("模型返回了未知的判断 %q", answer.Verdict)
 	}
-	return Judgement{Verdict: verdict, Reason: strings.TrimSpace(answer.Reason)}, nil
+	return Judgement{Verdict: verdict, Reason: strings.TrimSpace(answer.Reason), Excerpt: excerpt, Confidence: confidence}, nil
 }
 
 // truncateRunes keeps the first limit runes and says how much was cut.

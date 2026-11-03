@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"bibliocell/internal/agent"
@@ -22,14 +23,19 @@ func (l *Library) ExtractPaperMetadata(paperID string) (library.MetadataProposal
 	if err != nil {
 		return library.MetadataProposal{}, err
 	}
-	file, fulltext, err := l.store.PaperFulltextSource(ctx, paperID)
+	file, pages, err := l.store.PaperFulltextPages(ctx, paperID)
 	if err != nil {
 		return library.MetadataProposal{}, err
 	}
+	fulltext := strings.TrimSpace(strings.Join(pages, "\n\n"))
 	if file.ID == "" || fulltext == "" {
 		return library.MetadataProposal{}, errors.New("请先导入可读取文本的全文；本功能不会使用摘要代替全文")
 	}
-	provider, err := l.provider(settings.TaskChat)
+	profile, err := l.settings.Get().ModelFor(settings.TaskChat)
+	if err != nil {
+		return library.MetadataProposal{}, err
+	}
+	provider, err := agent.NewProvider(profile.Config)
 	if err != nil {
 		return library.MetadataProposal{}, err
 	}
@@ -38,6 +44,9 @@ func (l *Library) ExtractPaperMetadata(paperID string) (library.MetadataProposal
 		return library.MetadataProposal{}, err
 	}
 	proposal.PaperID, proposal.FileID, proposal.FileTitle = paper.ID, file.ID, file.Title
+	// Each claim is traced to its PDF page, and the evidence names the model that read it.
+	proposal.Claims = library.LocateClaimPages(proposal.Claims, pages)
+	proposal.Extractor = "fulltext-metadata:" + profile.Name + "/" + profile.Config.Model
 	return proposal, nil
 }
 

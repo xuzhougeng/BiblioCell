@@ -1,5 +1,6 @@
 import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } from "./screen-batch.ts";
+import { calibrationActions, calibrationChange, emptyCalibration, type CalibrationState } from "./calibration.ts";
 import type { ScreeningBatch } from "./screen-batch-queue.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
@@ -78,6 +79,9 @@ export class App {
   screen: ScreenState | null = null;
   batch: ScreeningBatch | null = null;
   batchDraft: BatchDraft | null = null;
+  /** Papers page: the AI comparison tab, with its filter and the last report read. */
+  calibrationView = false;
+  calibration: CalibrationState = emptyCalibration();
   /** The translation card floating by the selection in screening mode, if any. */
   translation: Translation | null = null;
   /** Screening mode shows the stored PDF beside the paper unless hidden. */
@@ -403,6 +407,7 @@ export class App {
   // ---- screening mode ----
   /** startScreening snapshots the filtered list and opens it one paper at a time, from the row cursor if any. */
   startScreening(): void {
+    this.calibrationView = false;
     const ids = filterPapers(this.state.papers, this.filters).map((p) => p.id);
     const index = this.paperCursor == null ? 0 : (this.paperPage - 1) * this.paperPageSize + this.paperCursor;
     this.screen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)), ai: null };
@@ -554,8 +559,16 @@ export class App {
     if (!this.screen) return;
     this.clearTranslation();
     const id = screenPapers(this)[this.screen.index]?.id;
+    const returnTo = this.screen.returnTo;
     this.screen = null;
     this.closeDrawer();
+    if (returnTo === "calibration") {
+      // Back to the comparison, which rereads so a decision made here shows at once.
+      this.calibrationView = true;
+      this.render();
+      void this.reload().then(() => { this.actions["calibration-refresh"]!(document.body, ""); });
+      return;
+    }
     if (id) {
       // Land the table on the paper that was open, so the list picks up where screening left off.
       const index = filterPapers(this.state.papers, this.filters).findIndex((p) => p.id === id);
@@ -779,17 +792,20 @@ export class App {
     "all-papers": () => {
       this.filters.starred = false;
       this.filters.review = "";
+      this.calibrationView = false;
       this.paperPage = 1;
       this.render();
     },
     "starred-papers": () => {
       this.filters.starred = true;
       this.filters.review = "";
+      this.calibrationView = false;
       this.paperPage = 1;
       this.render();
     },
     "review-papers": () => {
       clearTimeout(this.searchTimer);
+      this.calibrationView = false;
       this.filters = { ...emptyFilters(), review: "concern", sort: this.filters.sort };
       this.paperPage = 1;
       const search = $<HTMLInputElement>("#global-search");
@@ -862,6 +878,7 @@ export class App {
     ...reviewActions(this),
     ...screenActions(this),
     ...batchActions(this),
+    ...calibrationActions(this),
   };
 
   private onClick(e: MouseEvent): void {
@@ -908,6 +925,7 @@ export class App {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
     if (batchChange(this, target)) return;
+    if (calibrationChange(this, target)) return;
     if (target instanceof HTMLInputElement && target.dataset.paperColumn) {
       const column = PAPER_COLUMNS.find(([id]) => id === target.dataset.paperColumn)?.[0];
       if (!column) return;

@@ -28,14 +28,16 @@ type EvidenceInput struct {
 // Evidence is a stored claim. Status is a person's verdict: unreviewed, verified,
 // or rejected.
 type Evidence struct {
-	ID         string `json:"id"`
-	PaperID    string `json:"paperId"`
-	DatasetID  string `json:"datasetId"`
-	Field      string `json:"field"`
-	Value      string `json:"value"`
-	SourceURL  string `json:"sourceUrl"`
-	FileID     string `json:"fileId"`
-	Location   string `json:"location"`
+	ID        string `json:"id"`
+	PaperID   string `json:"paperId"`
+	DatasetID string `json:"datasetId"`
+	Field     string `json:"field"`
+	Value     string `json:"value"`
+	SourceURL string `json:"sourceUrl"`
+	FileID    string `json:"fileId"`
+	Location  string `json:"location"`
+	// Page is the PDF page Location names, 0 when it names none.
+	Page       int    `json:"page"`
 	Excerpt    string `json:"excerpt"`
 	Extractor  string `json:"extractor"`
 	Status     string `json:"status"`
@@ -78,6 +80,7 @@ func (s *Store) AddEvidence(ctx context.Context, inputs []EvidenceInput) ([]Evid
 		if err := tx.QueryRowContext(ctx, evidenceSelect+" WHERE id = ?", id).Scan(evidenceFields(&e)...); err != nil {
 			return nil, fmt.Errorf("read evidence: %w", err)
 		}
+		e.Page = PageOf(e.Location)
 		evidence = append(evidence, e)
 	}
 	if err := tx.Commit(); err != nil {
@@ -162,6 +165,7 @@ func (s *Store) ListEvidence(ctx context.Context, paperID, datasetID string) ([]
 		if err := rows.Scan(evidenceFields(&e)...); err != nil {
 			return nil, fmt.Errorf("read evidence: %w", err)
 		}
+		e.Page = PageOf(e.Location)
 		evidence = append(evidence, e)
 	}
 	if err := rows.Err(); err != nil {

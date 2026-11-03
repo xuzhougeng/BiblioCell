@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 对照交互验证</title>
+<link rel="stylesheet" href="/src/style.css">
+<body style="padding:24px">
+<p>隔离测试数据 · 模拟对照报告与模型响应 · 不连接真实数据库或 AI 服务</p>
+<button class="btn btn-secondary" id="regression">运行交互回归</button><button class="btn btn-secondary" data-page="papers">文献库</button><p id="result" role="status">就绪</p>
+<main id="app-content"></main><div id="modal-root"></div><div id="drawer-root"></div><div id="toast-root"></div>
+<script type="module">
+import { App } from "../src/app.ts";
+import { demoState } from "../src/demo-data.ts";
+import { Library } from "../src/mygo.ts";
+const state = demoState();
+state.papers.forEach((p, i) => { p.screening = i < 4 ? ["included", "excluded", "uncertain", "included"][i] : "pending"; if (p.screening === "excluded") p.screeningReason = "不是单细胞研究"; });
+state.resources = [{ id: "pdf-0", paperId: state.papers[0].id, datasetId: null, type: "fulltext", title: "paper-0.pdf", localPath: "paper-0.pdf", status: "stored", url: "", isDemo: false, addedAt: "2026-01-01" }];
+state.evidence = [{ id: "E-1", paperId: state.papers[0].id, datasetId: "", field: "platforms", value: '["10x Genomics Chromium"]', sourceUrl: "", fileId: "pdf-0", location: "page 4", page: 4, excerpt: "Libraries were prepared with 10x Genomics Chromium.", extractor: "fulltext-metadata:日常模型/default-model", status: "unreviewed", observedAt: "2026-01-02" },
+  { id: "E-2", paperId: state.papers[0].id, datasetId: "", field: "organs", value: '["根"]', sourceUrl: "", fileId: "pdf-0", location: "", page: 0, excerpt: "Root tips were dissected.", extractor: "fulltext-metadata", status: "verified", observedAt: "2026-01-02" }];
+history.replaceState(null, "", "#papers");
+const app = new App({ initial: state, store: { load: async () => state, save: async () => {} }, env: {
+  desktop: false, real: false, settings: { storagePath: 'C:/calibration-fixture', fontSize: 15, mcpToken: 'a'.repeat(64), batchScreenConcurrency: 3, models: [
+    { id: 'default', name: '日常模型', config: { protocol: 'openai', model: 'default-model', baseUrl: 'http://localhost:1234', apiKey: '' } },
+    { id: 'big', name: '大模型', config: { protocol: 'openai', model: 'big-model', baseUrl: 'http://localhost:1234', apiKey: '' } },
+  ], tasks: { screen: 'default' } }, mcp: { tools: [], resources: [] }, status: null, sources: [], automation: {},
+} });
+app.start();
+app.env.desktop = true; app.env.real = true;
+// A tiny in-memory stand-in for the Go side: suggestions are kept and compared with the demo decisions.
+const suggestions = [];
+const suggest = (p, verdict, profile, runId, kind, createdAt) => suggestions.push({ id: `SG-${suggestions.length + 1}`, paperId: p.id, requirement: "植物单细胞研究", profileId: profile.id, profileName: profile.name, model: profile.config.model, protocol: "openai", verdict, reason: "文中提供了植物组织的单细胞转录组证据。", basis: "fulltext", excerpt: "Libraries were prepared with 10x Genomics Chromium.", page: 0, confidence: 0.8, runId, kind, inputTokens: 0, outputTokens: 0, skipped: false, createdAt });
+const profiles = app.env.settings.models;
+suggest(state.papers[0], "included", profiles[0], "", "screen", "2026-02-01T10:00:00Z");
+suggest(state.papers[1], "included", profiles[0], "R-old", "batch", "2026-02-02T10:00:00Z");
+suggest(state.papers[2], "uncertain", profiles[0], "R-old", "batch", "2026-02-02T10:00:01Z");
+suggest(state.papers[3], "excluded", profiles[0], "R-old", "batch", "2026-02-02T10:00:02Z");
+suggest(state.papers[4], "included", profiles[0], "R-old", "batch", "2026-02-02T10:00:03Z");
+const VERDICTS = ["included", "excluded", "uncertain"];
+Library.calibrationReport = async filter => {
+  const decisionOf = id => { const p = state.papers.find(p => p.id === id); return p && p.screening !== "pending" ? p.screening : ""; };
+  const all = [...suggestions].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(s => ({ suggestionId: s.id, paperId: s.paperId, title: state.papers.find(p => p.id === s.paperId)?.title ?? s.paperId, profileId: s.profileId, profileName: s.profileName, model: s.model, runId: s.runId, kind: s.kind, requirement: s.requirement, verdict: s.verdict, reason: s.reason, basis: s.basis, excerpt: s.excerpt, page: s.page, confidence: s.confidence, createdAt: s.createdAt, decision: decisionOf(s.paperId), decisionReason: "", decidedAt: "" }));
+  const seen = new Set();
+  const selected = all.filter(p => (!filter.profileId || p.profileId === filter.profileId) && (!filter.runId || p.runId === filter.runId) && (!filter.from || p.createdAt >= filter.from) && (!filter.to || p.createdAt <= filter.to + "T23:59:59Z"))
+    .filter(p => { if (filter.runId) return true; const key = `${p.paperId}|${p.profileId}`; if (seen.has(key)) return false; seen.add(key); return true; });
+  const compared = selected.filter(p => p.decision);
+  const agreed = compared.filter(p => p.verdict === p.decision);
+  const agreement = list => { const c = list.filter(p => p.decision), a = c.filter(p => p.verdict === p.decision); return { compared: c.length, agreed: a.length, rate: c.length ? a.length / c.length : 0 }; };
+  const models = [...new Map(all.map(p => [`${p.profileId}|${p.model}`, p])).values()].map(p => ({ profileId: p.profileId, profileName: p.profileName, model: p.model, ...agreement(all.filter(q => q.profileId === p.profileId)) }));
+  const runs = [...new Map(all.filter(p => p.runId).map(p => [p.runId, p])).values()].map(p => { const list = all.filter(q => q.runId === p.runId); return { runId: p.runId, kind: p.kind, profileId: p.profileId, profileName: p.profileName, model: p.model, requirement: p.requirement, startedAt: list.at(-1).createdAt, total: list.length, ...agreement(list) }; });
+  return { total: selected.length, compared: compared.length, agreed: agreed.length, pending: selected.length - compared.length, rate: compared.length ? agreed.length / compared.length : 0, verdicts: VERDICTS,
+    matrix: VERDICTS.flatMap(v => VERDICTS.map(d => ({ verdict: v, decision: d, count: compared.filter(p => p.verdict === v && p.decision === d).length }))),
+    byModel: models.map(m => ({ ...m, ...agreement(selected.filter(q => q.profileId === m.profileId)) })), mismatches: compared.filter(p => p.verdict !== p.decision), models, runs };
+};
+const calls = [];
+Library.screenPaperInRun = async (id, requirement, modelId, runId, kind) => {
+  calls.push({ id, requirement, modelId, runId, kind });
+  await new Promise(resolve => setTimeout(resolve, 40));
+  const p = state.papers.find(p => p.id === id);
+  const profile = profiles.find(m => m.id === modelId);
+  const verdict = p.screening === "pending" ? "uncertain" : p.screening; // the big model agrees with every decision
+  return suggestions[suggest(p, verdict, profile, runId, kind, new Date().toISOString()) - 1];
+};
+Library.locateFulltextPage = async (id, excerpt) => (excerpt.includes("Root tips") ? 7 : 0);
+const click = selector => { const el = document.querySelector(selector); if (!el) throw new Error(`Missing ${selector}`); el.click(); };
+const change = (selector, value) => { const el = document.querySelector(selector); el.value = value; el.dispatchEvent(new Event('change', { bubbles:true })); };
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const settle = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+const text = selector => document.querySelector(selector)?.textContent ?? "";
+document.querySelector('#regression').onclick = async () => {
+  const result = document.querySelector('#result');
+  try {
+    app.batch = null; app.batchDraft = null;
+    app.navigate('papers');
+    click('[data-action="calibration-open"]');
+    await settle(20);
+    assert(app.calibrationView && document.querySelector('#calibration-panel'), 'calibration tab opens');
+    assert(text('.calibration-stats .stat-card:first-child .stat-value') === '50%', `agreement should be 50%, got ${text('.calibration-stats .stat-card:first-child .stat-value')}`);
+    assert(document.querySelectorAll('.calibration-mismatch').length === 2, 'two disagreements listed');
+    assert(document.querySelectorAll('.calibration-matrix td.agree').length === 3 && document.querySelector('.calibration-matrix tbody tr:first-child td.agree').textContent === '1', 'matrix shows included/included = 1');
+    const decisions = state.papers.map(p => p.screening);
+    // Filter by run: the single-paper screen suggestion disappears.
+    change('[data-calibration="run"]', 'R-old');
+    await settle(20);
+    assert(app.calibration.report.total === 4, 'run filter narrows to the batch');
+    change('[data-calibration="run"]', '');
+    change('[data-calibration="to"]', '2026-02-01');
+    await settle(20);
+    assert(app.calibration.report.total === 1, 'date filter keeps only the earlier suggestion');
+    click('[data-action="calibration-clear"]');
+    await settle(20);
+    assert(app.calibration.report.total === 5, 'clear restores every suggestion');
+    // A disagreement opens in screening with the recorded suggestion, and leaving returns to the comparison.
+    click('.calibration-mismatch .calibration-title');
+    assert(app.screen && app.screen.ids.length === 2 && app.screen.returnTo === 'calibration', 'mismatch opens screening on the disagreeing papers');
+    assert(document.querySelector('.ai-box') && text('.ai-box').includes('日常模型') && text('.ai-box').includes('置信度 80%'), 'recorded suggestion shows model and confidence');
+    assert(!app.calibrationView, 'screening replaces the comparison while open');
+    app.exitScreening();
+    await settle(20);
+    assert(app.calibrationView && document.querySelector('#calibration-panel'), 'exit returns to the comparison');
+    // Rerun: decided papers preselected, suggestions recorded under one run, decisions untouched.
+    click('[data-action="calibration-rerun"]');
+    assert(app.batchDraft.kind === 'rerun' && app.batchDraft.scope === 'decided' && app.batchDraft.selected.size === 4, 'rerun preselects decided papers');
+    assert(!document.querySelector('[data-batch-paper]:not(:checked)'), 'rerun candidates are the decided papers');
+    click('[data-action="batch-config"]');
+    change('[name="modelId"]', 'big');
+    document.querySelector('[name="requirement"]').value = '植物单细胞研究';
+    document.querySelector('#batch-screen-form').requestSubmit();
+    assert(app.batch.kind === 'rerun' && app.batch.runId.startsWith('R-'), 'rerun carries a run id');
+    await settle(300);
+    assert(calls.length === 4 && calls.every(c => c.modelId === 'big' && c.kind === 'rerun' && c.runId === app.batch.runId), 'every call records under the run');
+    assert(JSON.stringify(decisions) === JSON.stringify(state.papers.map(p => p.screening)), 'rerun must not change decisions');
+    assert(text('#batch-progress').includes('与人工判定一致'), 'rerun rows show agreement with the decision');
+    click('[data-action="batch-calibration"]');
+    await settle(20);
+    assert(app.calibrationView && app.calibration.filter.runId === app.batch.runId, 'view comparison narrows to the new run');
+    assert(text('.calibration-stats .stat-card:first-child .stat-value') === '100%', 'new run agrees fully');
+    assert(document.querySelectorAll('.calibration-table tbody tr').length >= 2, 'both models listed');
+    // Evidence on the screening page jumps into the PDF: a recorded page directly, otherwise by searching the text.
+    click('[data-action="calibration-clear"]');
+    await settle(20);
+    app.screen = { ids: [state.papers[0].id], index: 0, ai: null };
+    app.render();
+    const jumps = [...document.querySelectorAll('.screen-evidence [data-action="screen-jump-page"]')];
+    assert(jumps.length === 2 && jumps[0].textContent.includes('第 4 页') && jumps[1].textContent.includes('在 PDF 中查找'), 'evidence shows its page or a search entry');
+    const frame = document.querySelector('.screen-pdf-frame');
+    assert(frame, 'screening shows the PDF');
+    jumps[0].click();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    assert(frame.getAttribute('src').endsWith('#page=4'), `direct jump sets page 4, got ${frame.getAttribute('src')}`);
+    jumps[1].click();
+    await settle(20);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    assert(document.querySelector('.screen-pdf-frame') === frame && frame.getAttribute('src').endsWith('#page=7'), 'search fallback locates page 7 without replacing the frame');
+    app.render();
+    assert(document.querySelector('.screen-pdf-frame') === frame, 'a re-render keeps the frame despite the page fragment');
+    result.textContent = 'PASS · 对照页一致率/矩阵/不一致样本、按批次与日期筛选、不一致样本进入筛选页并返回、重跑对照记录批次且不改判定、查看对照按批次筛选、证据跳转与文本搜索回退';
+  } catch (error) { result.textContent = `FAIL · ${error.stack || error.message}`; }
+};
+</script>
+</body></html>
