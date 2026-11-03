@@ -54,6 +54,8 @@ type Drawer = { type: "paper" | "dataset"; id: string };
 type Action = (el: HTMLElement, id: string) => void;
 
 const DEMO_ONLY_ACTIONS = new Set(["import-json", "confirm-import", "reset-demo", "confirm-reset", "add-resource"]);
+/** Pages whose heading shows no "import / add paper" buttons, because they are not about the library's records. */
+export const HEADING_ACTIONS_HIDDEN: ReadonlySet<Page> = new Set<Page>(["settings", "agent", "sources"]);
 
 export class App {
   state: LibraryState;
@@ -304,8 +306,9 @@ export class App {
       const transcript = $("#agent-transcript");
       if (transcript) transcript.scrollTop = transcript.scrollHeight; // Open on the newest message, like a chat window.
     }
+    // "Import records / Add paper" belong to the library pages; settings, sources and the assistant have their own actions.
     const actions = $(".heading-actions");
-    if (actions) actions.hidden = this.page === "settings" || this.page === "agent";
+    if (actions) actions.hidden = HEADING_ACTIONS_HIDDEN.has(this.page);
     const [title, subtitle] = PAGES[this.page];
     for (const [selector, value] of [["#page-title", title], ["#page-subtitle", subtitle]] as const) {
       const el = $(selector);

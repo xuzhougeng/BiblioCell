@@ -205,3 +205,16 @@ test("the search box filters after a pause and resets the page", async () => {
   assert.ok(rowIds().length < 14);
   assert.equal(document.activeElement, $("#paper-search"));
 });
+
+test("the heading's import and add-paper buttons appear only on pages about the library's records", () => {
+  const { app } = papersApp();
+  const actions = $(".heading-actions");
+  for (const page of ["overview", "papers", "datasets", "tasks"]) {
+    app.navigate(page);
+    assert.equal(actions.hidden, false, `${page} keeps the heading actions`);
+  }
+  for (const page of ["settings", "agent", "sources"]) {
+    app.navigate(page);
+    assert.equal(actions.hidden, true, `${page} hides the heading actions`);
+  }
+});
