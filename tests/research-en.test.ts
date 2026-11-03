@@ -82,7 +82,7 @@ test("English lists, filters, overview navigation and dataset cards use translat
 
   englishApp("#overview");
   assert.match(text(".species-bars"), /Thale cress · Arabidopsis thaliana/);
-  $('[data-action="species-filter"][data-label="Thale cress · Arabidopsis thaliana"]').click();
+  $('[data-action="overview-filter"][data-field="species"][data-value="Arabidopsis thaliana"]').click();
   assert.equal($<HTMLSelectElement>('[data-filter="species"]').value, "Arabidopsis thaliana");
 });
 

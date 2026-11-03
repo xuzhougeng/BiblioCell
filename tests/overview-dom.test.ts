@@ -27,15 +27,31 @@ test("the overview dashboard sums up screening and resumes it on the first undec
   assert.match(text(".dashboard-panel .panel-header p"), new RegExp(`已判断 ${state.papers.length - undecided} / ${state.papers.length} 篇`));
   assert.equal($$(".screen-bar-seg").length, new Set(state.papers.map((p) => p.screening)).size);
   assert.match(text(".dashboard-metric:nth-child(3)"), new RegExp(`待判断\\s*${undecided}`));
-  // The assistant card shrank to a single line without the example prompts.
-  assert.ok($(".agent-entry.compact"));
-  assert.equal(document.querySelector(".agent-entry-prompt"), null);
+  // The assistant is a header button on the overview, not a card in the page.
+  assert.equal(document.querySelector(".agent-entry"), null);
+  assert.equal($("[data-overview-only]").hidden, false);
 
   $('[data-action="resume-screening"]').click();
   assert.ok(app.screen, "screening opened");
   const first = state.papers.find((p) => p.screening === "pending")!;
   assert.equal($(".screen-panel").dataset.paperId, first.id);
   assert.equal(app.screen!.ids.length, state.papers.length);
+});
+
+test("the overview charts years, techniques and tissues, and each bar filters the library", () => {
+  const { app, state } = overviewApp();
+  const year = String(state.papers.find((p) => p.year)!.year);
+  const inYear = state.papers.filter((p) => String(p.year) === year).length;
+  const col = $(`.year-col[data-value="${year}"]`);
+  assert.match(col.title, new RegExp(`${year}：${inYear} 篇`));
+  assert.ok($('[data-field="modality"]') && $('[data-field="organ"]') && $('[data-field="species"]'));
+
+  app.filters.organ = "stale";
+  col.click();
+  assert.equal(app.page, "papers");
+  assert.equal(app.filters.year, year);
+  assert.equal(app.filters.organ, "", "a chart click starts from a clean filter");
+  assert.equal($("[data-overview-only]").hidden, true, "the assistant button stays on the overview");
 });
 
 test("? opens the shortcut sheet unless typing, and the top bar has the same button", () => {

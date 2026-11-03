@@ -4,7 +4,8 @@ import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
+  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf, listValues,
+  type ListField,
   reviewConcern, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter, sortChip } from "./ui.ts";
@@ -115,6 +116,58 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
   return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 
+/** countBy tallies papers per value of a list field; a paper counts once per distinct value. */
+function countBy(papers: Paper[], field: ListField): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const p of papers) {
+    for (const v of new Set(listValues[field](p).filter(Boolean))) counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  return counts;
+}
+
+const DISTRIBUTION_LIMIT = 6;
+
+/** distributionPanel renders the top values of a field as horizontal bars; each row filters the papers page. */
+function distributionPanel(papers: Paper[], field: ListField, title: string, subtitle: string, label: (v: string) => string): string {
+  const counts = countBy(papers, field);
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], locale)).slice(0, DISTRIBUTION_LIMIT);
+  const max = Math.max(1, ...top.map((e) => e[1]));
+  const rows = top.map(([value, count]) =>
+    `<button class="species-bar-row" data-action="overview-filter" data-field="${field}" data-value="${esc(value)}" title="${esc(t("{label}：{n} 篇", { label: label(value), n: count }))}"><span>${esc(label(value))}</span><div class="species-bar-track"><div style="width:${Math.round((count / max) * 100)}%"></div></div><strong>${count}</strong></button>`,
+  ).join("");
+  return `<section class="panel"><div class="panel-header"><div><h2>${title}</h2><p class="muted">${subtitle}</p></div><span class="muted">${t("{n} 个分类", { n: counts.size })}</span></div><div class="panel-body species-bars">${rows || `<p class="muted">${t("暂无数据")}</p>`}</div></section>`;
+}
+
+const YEAR_SPAN = 15;
+
+/** yearPanel charts papers per publication year: the latest YEAR_SPAN years, gaps included, older years folded together. */
+function yearPanel(papers: Paper[]): string {
+  const counts = countBy(papers, "year");
+  const years = [...counts.keys()].map(Number).filter(Number.isInteger);
+  const missing = papers.filter((p) => !p.year).length;
+  const note = missing ? t("{n} 篇年份待补", { n: missing }) : t("{n} 个年份", { n: years.length });
+  let body = `<p class="muted">${t("暂无数据")}</p>`;
+  if (years.length) {
+    const last = Math.max(...years);
+    const first = Math.max(Math.min(...years), last - YEAR_SPAN + 1);
+    const earlier = years.filter((y) => y < first).reduce((sum, y) => sum + (counts.get(String(y)) ?? 0), 0);
+    const cols: { label: string; count: number; year?: string }[] = [];
+    if (earlier) cols.push({ label: t("{year} 前", { year: first }), count: earlier });
+    for (let y = first; y <= last; y++) cols.push({ label: String(y), count: counts.get(String(y)) ?? 0, year: String(y) });
+    const max = Math.max(1, ...cols.map((c) => c.count));
+    body = cols.map((c) => {
+      const tip = esc(t("{label}：{n} 篇", { label: c.label, n: c.count }));
+      const bar = `<span class="year-count">${c.count || ""}</span><span class="year-bar" style="height:${Math.round((c.count / max) * 100)}%"></span>`;
+      const label = `<span class="year-label">${esc(c.label)}</span>`;
+      return c.year && c.count
+        ? `<button class="year-col" data-action="overview-filter" data-field="year" data-value="${c.year}" title="${tip}"><span class="year-plot">${bar}</span>${label}</button>`
+        : `<div class="year-col${c.year ? "" : " year-earlier"}" title="${tip}"><span class="year-plot">${bar}</span>${label}</div>`;
+    }).join("");
+    body = `<div class="year-chart">${body}</div>`;
+  }
+  return `<section class="panel year-panel"><div class="panel-header"><div><h2>${t("年度发表")}</h2><p class="muted">${t("各年份发表的文献数量，点击柱子筛选")}</p></div><span class="muted">${note}</span></div><div class="panel-body">${body}</div></section>`;
+}
+
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 
 /** screeningDashboard shows how far screening has come and where to pick it up:
@@ -150,15 +203,6 @@ export function renderOverview(app: App): string {
   const withFulltext = papers.filter((p) => p.fulltext !== "missing").length;
   const recent = [...papers].sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt))).slice(0, 5);
   const ts = app.tasks();
-  const counts = new Map<string, number>();
-  for (const p of papers) {
-    for (const s of arr(p.species)) {
-      const label = s ? speciesText(s) : "";
-      if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
-    }
-  }
-  const species = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const maxCount = Math.max(1, ...species.map((s) => s[1]));
   const stats: [string, number, string, string, string][] = [
     [t("文献条目"), total, t("已纳入 {n} 篇", { n: papers.filter((p) => p.screening === "included").length }), "book", "papers"],
     [t("关联数据集"), app.state.datasets.length, t("支持原始、复用与重新处理"), "database", "datasets"],
@@ -168,16 +212,15 @@ export function renderOverview(app: App): string {
   const statCards = stats.map((s, i) =>
     `<button class="stat-card" data-action="stat-nav" data-target="${s[4]}"><div class="stat-top"><span class="stat-label">${s[0]}</span><span class="stat-icon">${I(s[3], 18)}</span></div><div class="stat-value">${s[1]}<span class="stat-unit">${i === 1 ? t("组") : t("篇")}</span></div><div class="stat-meta">${s[2]}${I("arrow-right", 14)}</div></button>`,
   ).join("");
-  const speciesBars = species.map(([label, count]) =>
-    `<button class="species-bar-row" data-action="species-filter" data-label="${esc(label)}"><span>${esc(label)}</span><div class="species-bar-track"><div style="width:${Math.round((count / maxCount) * 100)}%"></div></div><strong>${count}</strong></button>`,
-  ).join("");
-  // The assistant is one line here; its example prompts live on its own page.
-  const agentEntry = `<section class="panel agent-entry compact"><span class="agent-entry-icon">${I("sparkle", 18)}</span><div class="agent-entry-body"><h2>${t("AI 助手")}</h2><p class="muted">${t("用自己的模型，通过 MCP 工具检索、导入、补元数据、提收录建议。")}</p></div><button class="btn btn-secondary" data-action="agent-open">${I("sparkle", 15)} ${t("打开助手")}</button></section>`;
-  return `<div class="stat-grid">${statCards}</div>${screeningDashboard(app)}${agentEntry}`
+  return `<div class="stat-grid">${statCards}</div>${screeningDashboard(app)}`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>${t("最近收录")}</h2><p class="muted">${t("新线索先留下，整理慢慢来")}</p></div><button class="text-link" data-page="papers">${t("查看全部")} ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} ${t("当前条目为原型示例，可通过新增或导入建立自己的目录。")}</div></section>`
     + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>${t("接下来整理")}</h2><p class="muted">${t("按需要补齐信息")}</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">${t("查看全部待补事项")} ${I("arrow-right", 16)}</button></section></div>`
     + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><div><h2>${t("整理覆盖")}</h2><p class="muted">${t("收录与完善，各自向前一步")}</p></div><button class="text-link" data-action="export-report">${I("download", 15)} ${t("导出进度报告")}</button></div><div class="panel-body progress-list">${progressRow(t("收录范围已判断"), total - pending, total)}${progressRow(t("已关联数据集"), withData, total, "blue")}${progressRow(t("已记录全文入口"), withFulltext, total, "gold")}</div></section>`
-    + `<section class="panel"><div class="panel-header"><div><h2>${t("研究物种")}</h2><p class="muted">${t("当前目录中的文献分布")}</p></div><span class="muted">${t("{n} 个分类", { n: uniqueValues(papers, "species").length })}</span></div><div class="panel-body species-bars">${speciesBars}</div></section></div>`;
+    + distributionPanel(papers, "species", t("研究物种"), t("当前目录中的文献分布"), (v) => speciesLabelOf(papers, v))
+    + yearPanel(papers)
+    + distributionPanel(papers, "modality", t("研究技术"), t("按测序或成像技术统计"), tv)
+    + distributionPanel(papers, "organ", t("研究组织"), t("按组织或器官统计"), tv)
+    + `</div>`;
 }
 
 /** tablePager renders the shared page-size select and page buttons for the papers/datasets table footers. */

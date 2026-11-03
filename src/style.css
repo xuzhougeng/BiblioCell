@@ -61,7 +61,7 @@
   .batch-steps { font-size: 13px; gap: 8px }
 }
 #runtime-message { min-width: 0 }
-.heading-actions[hidden] { display: none }
+.heading-actions[hidden], .heading-actions > [hidden] { display: none }
 .real-mode [data-action="import-json"], .real-mode [data-action="add-resource"], .real-mode [data-action="reset-demo"] { display: none !important }
 .sidebar-settings { margin-bottom: 12px }
 /* 侧栏折叠按钮:置于顶栏左端,ghost 样式;悬停 tooltip"折叠侧栏/展开侧栏" */
@@ -927,7 +927,7 @@ a.link-chip:hover svg { color: var(--primary) }
 .progress-fill.gold { background: #c99b4e }
 .species-bar-row {
   display: grid;
-  grid-template-columns: 66px 1fr 26px;
+  grid-template-columns: 96px 1fr 26px;
   align-items: center;
   gap: 14px;
   border: 0;
@@ -947,6 +947,17 @@ a.link-chip:hover svg { color: var(--primary) }
 .species-bar-row:first-child .species-bar-track > div { background: var(--primary) }
 .species-bar-row > strong { font-weight: 500; text-align: right; color: #78725e }
 .species-bar-row:hover { color: var(--primary-deep) }
+.species-bar-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.year-panel { grid-column: 1 / -1 }
+.year-chart { display: flex; align-items: stretch; gap: 2px; height: 168px }
+.year-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 6px; border: 0; background: none; padding: 0; font: inherit; color: #78725e }
+.year-plot { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-height: 0 }
+.year-bar { display: block; width: 100%; max-width: 34px; background: #7c9668; border-radius: 4px 4px 0 0 }
+.year-count { font-size: calc(11.5px * var(--font-scale, 1)); color: #78725e; margin-bottom: 4px; line-height: 1 }
+.year-label { font-size: calc(11.5px * var(--font-scale, 1)); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.year-earlier .year-bar { background: #c9bf9f }
+button.year-col:hover .year-bar { background: var(--primary) }
+button.year-col:hover { color: var(--primary-deep) }
 .section-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; flex-wrap: wrap }
 .section-toolbar > p { font-size: calc(13.5px * var(--font-scale, 1)) }
 .view-tabs { display: flex; align-items: center; gap: 22px; flex-wrap: wrap }
@@ -1306,23 +1317,6 @@ select.input { appearance: auto }
 .agent-queue .btn-icon { width: 22px; height: 22px; flex: 0 0 auto }
 .agent-queue-edit { flex: 1; min-width: 0; font: inherit; font-size: calc(13px * var(--font-scale, 1)); line-height: 1.6; padding: 6px 9px; border: 1px solid #c8bda0; border-radius: 4px; background: #fffdf7; color: #333a2d; resize: vertical; field-sizing: content; min-height: 34px }
 .agent-queue-edit:focus { border-color: var(--primary); outline: none }
-
-/* Overview quick entry to the assistant */
-.agent-entry { display: flex; align-items: center; gap: 18px; padding: 18px 22px; margin-bottom: 18px; overflow: visible }
-.agent-entry-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; color: var(--primary); background: var(--surface-deep) }
-.agent-entry-body { flex: 1; min-width: 0 }
-.agent-entry-body h2 { font-size: calc(17px * var(--font-scale, 1)); margin-bottom: 2px }
-.agent-entry-body p { font-size: calc(13px * var(--font-scale, 1)) }
-.agent-entry > .btn { flex: 0 0 auto }
-.agent-entry.compact { padding: 10px 18px; gap: 14px }
-.agent-entry.compact .agent-entry-icon { width: 34px; height: 34px }
-.agent-entry.compact .agent-entry-body { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap }
-.agent-entry.compact .agent-entry-body h2 { font-size: calc(15px * var(--font-scale, 1)); margin: 0 }
-.agent-entry.compact .agent-entry-body p { margin: 0 }
-@media (max-width: 760px) {
-  .agent-entry { flex-wrap: wrap }
-  .agent-entry > .btn { width: 100% }
-}
 
 /* ---- overview: screening dashboard ---- */
 .dashboard-panel { margin-bottom: 18px }
