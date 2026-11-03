@@ -1,6 +1,8 @@
 import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } from "./screen-batch.ts";
 import { calibrationActions, calibrationChange, emptyCalibration, type CalibrationState } from "./calibration.ts";
+import { pruneSelection, selectionActions, selectionChange } from "./selection.ts";
+import { shortcutsModal } from "./shortcuts.ts";
 import type { ScreeningBatch } from "./screen-batch-queue.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
@@ -54,6 +56,10 @@ type Drawer = { type: "paper" | "dataset"; id: string };
 type Action = (el: HTMLElement, id: string) => void;
 
 const DEMO_ONLY_ACTIONS = new Set(["import-json", "confirm-import", "reset-demo", "confirm-reset", "add-resource"]);
+/** wideWindow: room for the screening queue rail beside the paper (the stylesheet folds it at 1250px). */
+const wideWindow = (): boolean => typeof window !== "undefined" && window.innerWidth > 1250;
+/** Pages whose heading shows no "import / add paper" buttons, because they are not about the library's records. */
+export const HEADING_ACTIONS_HIDDEN: ReadonlySet<Page> = new Set<Page>(["settings", "agent", "sources"]);
 
 export class App {
   state: LibraryState;
@@ -69,6 +75,8 @@ export class App {
   paperPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-page-size"))) ? Number(localStorage.getItem("bibliocell-page-size")) : PAGE_SIZES[0]!;
   /** Row the arrow keys last landed on, per table; null until the first ↑/↓ press. */
   paperCursor: number | null = null;
+  /** Papers ticked in the table, for the bulk actions bar; kept across filters and pages until cleared. */
+  selectedPapers = new Set<string>();
   datasetCursor: number | null = null;
   /** Datasets page: table vs card view plus the same pagination pattern. */
   datasetView: "cards" | "table" = localStorage.getItem("bibliocell-datasets-view") === "cards" ? "cards" : "table";
@@ -87,6 +95,8 @@ export class App {
   abstractTranslations = new Map<string, AbstractTranslation>();
   /** Screening mode shows the stored PDF beside the paper unless hidden. */
   screenPdf = localStorage.getItem("bibliocell-screen-pdf") !== "off";
+  /** Screening mode: the queue rail is open by default on wide windows; narrow ones show it as an overlay on request. */
+  screenQueueOpen = wideWindow();
   private translationAnchor: DOMRect | null = null;
   private selectionTimer: ReturnType<typeof setTimeout> | undefined;
   agent: AgentState = emptyAgentState();
@@ -148,6 +158,19 @@ export class App {
     document.addEventListener("change", (e) => this.onChange(e));
     document.addEventListener("input", (e) => this.onInput(e));
     document.addEventListener("keydown", (e) => this.onKeydown(e));
+    // A "?" in the top bar opens the same shortcut sheet as the key, for people who never press it.
+    const topbar = $(".topbar-right");
+    if (topbar && !$("#shortcuts-help")) {
+      const help = document.createElement("button");
+      help.type = "button";
+      help.id = "shortcuts-help";
+      help.className = "topbar-link shortcuts-link";
+      help.dataset.action = "shortcuts-help";
+      help.textContent = "?";
+      help.title = t("快捷键");
+      help.setAttribute("aria-label", t("快捷键"));
+      topbar.prepend(help);
+    }
     // Selecting text while screening translates it: the card appears once the selection settles.
     document.addEventListener("selectionchange", () => {
       clearTimeout(this.selectionTimer);
@@ -184,27 +207,35 @@ export class App {
     this.showModal(t("删除文献"), `<p>${t("确定删除《{title}》？", { title: esc(paper.title) })}</p><p>${t("将删除文献、笔记、相关证据和保存的附件副本，并解除数据集关联。数据集及原始导入文件会保留。此操作无法撤销。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-paper" data-id="${esc(id)}">${t("确认删除")}</button>`);
   }
 
-  private async deletePaper(id: string, button: HTMLElement): Promise<void> {
-    if (this.deleting || !this.paperById(id)) return;
+  private deletePaper(id: string, button: HTMLElement): Promise<void> {
+    return this.deletePapers([id], button);
+  }
+
+  /** deletePapers removes papers with their notes, evidence and attachment copies; datasets stay, unlinked. */
+  async deletePapers(ids: string[], button: HTMLElement): Promise<void> {
+    ids = ids.filter((id) => this.paperById(id));
+    if (this.deleting || !ids.length) return;
     this.deleting = true;
     button.setAttribute("disabled", "");
     try {
-      if (this.env.real) await enqueue(() => Library.deletePaper(id));
+      if (this.env.real) for (const id of ids) await enqueue(() => Library.deletePaper(id));
+      const gone = new Set(ids);
       const next = clone(this.state);
-      const fileIds = new Set(next.resources.filter(r => r.paperId === id).map(r => r.id));
-      next.papers = next.papers.filter(p => p.id !== id);
-      next.resources = next.resources.filter(r => r.paperId !== id);
-      next.evidence = (next.evidence ?? []).filter(e => e.paperId !== id && !fileIds.has(e.fileId));
-      next.datasets.forEach(d => { d.paperLinks = d.paperLinks.filter(l => l.paperId !== id); });
+      const fileIds = new Set(next.resources.filter(r => gone.has(r.paperId ?? "")).map(r => r.id));
+      next.papers = next.papers.filter(p => !gone.has(p.id));
+      next.resources = next.resources.filter(r => !gone.has(r.paperId ?? ""));
+      next.evidence = (next.evidence ?? []).filter(e => !gone.has(e.paperId ?? "") && !fileIds.has(e.fileId));
+      next.datasets.forEach(d => { d.paperLinks = d.paperLinks.filter(l => !gone.has(l.paperId)); });
       if (!this.env.real) await this.store.save(next, this.saved);
       this.state = next;
       this.saved = clone(next);
       this.edits++;
+      for (const id of ids) this.selectedPapers.delete(id);
       this.closeModal();
-      if (this.drawer?.type === "paper" && this.drawer.id === id) this.closeDrawer();
+      if (this.drawer?.type === "paper" && gone.has(this.drawer.id)) this.closeDrawer();
       this.render();
       if (this.env.real) await this.reload();
-      this.toast(t("文献已删除。"));
+      this.toast(ids.length === 1 ? t("文献已删除。") : t("已删除 {n} 篇文献。", { n: ids.length }));
     } catch (error) {
       this.toast(errorMessage(error, t("删除失败，请重试。")), true);
     } finally {
@@ -291,6 +322,7 @@ export class App {
     };
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
     if (!this.screen) this.clearTranslation();
+    pruneSelection(this);
     updateScreeningContent(content, renderers[this.page]());
     if (this.screen) {
       const current = screenPapers(this)[this.screen.index];
@@ -298,14 +330,16 @@ export class App {
         this.loadCachedAbstract(current);
         if (this.screen.ai) this.requestJudgement(current.id);
       }
+      $(".screen-queue-item[aria-current]")?.scrollIntoView({ block: "nearest" });
     }
     document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
     if (this.page === "agent") {
       const transcript = $("#agent-transcript");
       if (transcript) transcript.scrollTop = transcript.scrollHeight; // Open on the newest message, like a chat window.
     }
+    // "Import records / Add paper" belong to the library pages; settings, sources and the assistant have their own actions.
     const actions = $(".heading-actions");
-    if (actions) actions.hidden = this.page === "settings" || this.page === "agent";
+    if (actions) actions.hidden = HEADING_ACTIONS_HIDDEN.has(this.page);
     $$<HTMLElement>("[data-overview-only]").forEach((el) => { el.hidden = this.page !== "overview"; }); // The sidebar already reaches the assistant elsewhere.
     const [title, subtitle] = PAGES[this.page];
     for (const [selector, value] of [["#page-title", title], ["#page-subtitle", subtitle]] as const) {
@@ -416,12 +450,28 @@ export class App {
     const ids = filterPapers(this.state.papers, this.filters).map((p) => p.id);
     const index = this.paperCursor == null ? 0 : (this.paperPage - 1) * this.paperPageSize + this.paperCursor;
     this.screen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)), ai: null };
+    this.screenQueueOpen = wideWindow(); // Measured now: the window may have been resized since the app started.
     this.closeDrawer();
     this.render();
     window.scrollTo({ top: 0 });
     $("#app-content")?.focus({ preventScroll: true });
     // Offer suggestions once per entry, only where a model service can be reached; a standing choice turns the question off.
     if (ids.length && this.canScreenWithAI() && !askAIDisabled()) screenAIModal(this);
+  }
+  /** resumeScreening opens screening on the whole library at the first paper still undecided. */
+  resumeScreening(): void {
+    const list = filterPapers(this.state.papers, emptyFilters());
+    const index = list.findIndex((p) => p.screening === "pending");
+    if (index < 0) {
+      this.toast(t("没有待判断的文献。"));
+      return;
+    }
+    this.filters = emptyFilters();
+    this.calibrationView = false;
+    this.paperPage = Math.floor(index / this.paperPageSize) + 1;
+    this.paperCursor = index % this.paperPageSize;
+    this.navigate("papers");
+    this.startScreening();
   }
   /** canScreenWithAI: a model is bound to screening and the backend can reach it. */
   canScreenWithAI(): boolean {
@@ -623,13 +673,23 @@ export class App {
   }
   moveScreening(delta: number): void {
     if (!this.screen) return;
+    this.goToScreening(this.screen.index + delta);
+  }
+  /** goToScreening opens the paper at a position of the run, from the arrows or the queue rail. */
+  goToScreening(index: number): void {
+    if (!this.screen) return;
     const papers = screenPapers(this);
-    const next = this.screen.index + delta;
-    if (next < 0 || next >= papers.length) return;
-    this.screen.index = next;
+    if (!Number.isInteger(index) || index < 0 || index >= papers.length || index === this.screen.index) return;
+    this.screen.index = index;
     this.clearTranslation();
+    // On a narrow window the rail is an overlay: picking a paper there closes it.
+    if (this.screenQueueOpen && !wideWindow()) this.screenQueueOpen = false;
     this.render();
     window.scrollTo({ top: 0 });
+  }
+  toggleScreenQueue(): void {
+    this.screenQueueOpen = !this.screenQueueOpen;
+    this.render();
   }
   /** decideInScreening records the decision and moves on; an exclusion without a reason asks for one first. */
   decideInScreening(id: string, status: string): void {
@@ -868,6 +928,9 @@ export class App {
       this.taskFilter = value === "screen" || value === "fulltext" || value === "data" ? value : "all";
       this.render();
     },
+    "shortcuts-help": () => shortcutsModal(this),
+    "resume-screening": () => this.resumeScreening(),
+    "review-papers-nav": () => { this.navigate("papers"); this.actions["review-papers"]!(document.body, ""); },
     "stat-nav": (el) => {
       const target = el.dataset.target ?? "";
       if (target === "screen" || target === "fulltext") {
@@ -921,6 +984,7 @@ export class App {
     ...screenActions(this),
     ...batchActions(this),
     ...calibrationActions(this),
+    ...selectionActions(this),
   };
 
   private onClick(e: MouseEvent): void {
@@ -931,6 +995,8 @@ export class App {
     if (this.translation && !target.closest("#translate-pop") && !target.closest("[data-action=screen-translate]") && window.getSelection()?.isCollapsed) this.clearTranslation();
     // Anchors navigate by themselves; the row or card around them must not also open.
     if (target.closest("a[href]")) return;
+    // The checkbox column ticks a row; the row around it must not open.
+    if (target.closest(".select-cell, .col-select")) return;
     const el = target.closest<HTMLElement>("[data-action]");
     if (el) {
       const action = el.dataset.action ?? "";
@@ -968,6 +1034,7 @@ export class App {
     if (!(target instanceof HTMLElement)) return;
     if (batchChange(this, target)) return;
     if (calibrationChange(this, target)) return;
+    if (selectionChange(this, target)) return;
     if (target instanceof HTMLInputElement && target.dataset.paperColumn) {
       const column = PAPER_COLUMNS.find(([id]) => id === target.dataset.paperColumn)?.[0];
       if (!column) return;
@@ -1143,7 +1210,14 @@ export class App {
       if (this.page === "papers" || (this.page === "datasets" && this.datasetView === "table")) this.arrowTable(e);
       return;
     }
-    if ((e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "k")) && !target?.matches("input,textarea,select")) {
+    // A checkbox or radio under the focus is not a place to type, so the sheet and search keys still work there.
+    const typing = Boolean(target?.matches("input:not([type=checkbox]):not([type=radio]),textarea,select"));
+    if (e.key === "?" && !typing && !$("#modal-root .modal")) {
+      e.preventDefault();
+      shortcutsModal(this);
+      return;
+    }
+    if ((e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "k")) && !typing) {
       e.preventDefault();
       $("#global-search")?.focus();
       return;

@@ -29,19 +29,21 @@ test("list exposes the proposal reason safely and explains why the total stays u
   const app = {
     state: { ...demoState(), papers: [paper] }, filters: emptyFilters(),
     paperPage: 1, paperPageSize: 10, paperColumns: defaultPaperColumns(),
-    paperDatasets: () => [], paperResources: () => [],
+    paperDatasets: () => [], paperResources: () => [], selectedPapers: new Set<string>(),
   } as unknown as App;
   const html = renderPapers(app);
   assert.match(html, /需核对 <span>1<\/span>/);
   assert.match(html, /全部文献 <span>1<\/span>/);
-  assert.match(html, /确认前仍计入全部文献/);
+  assert.doesNotMatch(html, /class="review-summary"/); // No banner: the tab count and the row carry the state.
   assert.match(html, /建议排除 · 待你确认/);
   assert.match(html, /&lt;img src=x onerror=&quot;bad\(\)&quot;&gt;/);
   assert.doesNotMatch(html, /<img src=x/);
-  assert.match(html, /尚未确认/);
+  // The reason sits on the status cell as a tooltip, and the title cell stays one block tall.
+  assert.match(html, /class="screening-proposal excluded" title="[^"]*研究对象为人类"/);
+  assert.doesNotMatch(html, /class="paper-review-note/);
   // Warnings remain discoverable when the user hides the status column.
   app.paperColumns = ["title"];
-  assert.match(paperTable([paper], app), /建议排除 · 待你确认/);
+  assert.match(paperTable([paper], app), /class="paper-review-note excluded"[^]*建议排除 · 待你确认/);
   paper.proposedScreening = "";
   const dismissed = renderPapers(app);
   assert.match(dismissed, /需核对 <span>0<\/span>/);
@@ -61,7 +63,7 @@ test("papers a source update added wait in review until a person decides or fini
   const app = {
     state: { ...demoState(), papers: [added, own] }, filters: emptyFilters(),
     paperPage: 1, paperPageSize: 10, paperColumns: defaultPaperColumns(),
-    paperDatasets: () => [], paperResources: () => [],
+    paperDatasets: () => [], paperResources: () => [], selectedPapers: new Set<string>(),
   } as unknown as App;
   const html = renderPapers(app);
   assert.match(html, /需核对 <span>1<\/span>/);
@@ -88,7 +90,8 @@ test("datasets page has its own review tab for what a source update added", () =
   const all = renderDatasets(app);
   assert.match(all, /全部数据集 <span>2<\/span>/);
   assert.match(all, /需核对 <span>1<\/span>/);
-  assert.match(all, /有 1 组数据集需要核对/);
+  assert.doesNotMatch(all, /class="review-summary"/); // No banner: the tab count and the row carry the state.
+  assert.match(all, /来源新增 · 待你确认/);
   app.datasetReview = true;
   const review = renderDatasets(app);
   assert.match(review, /GEO series/);

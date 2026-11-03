@@ -8,8 +8,8 @@
 import { JSDOM } from "jsdom";
 
 const SKELETON = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>BiblioCell</title></head><body>
-<header><input id="global-search" type="search"><h1 id="page-title"></h1><p id="page-subtitle"></p><div class="heading-actions"></div></header>
-<a data-page="papers" href="#papers">papers</a>
+<header><div class="topbar-right"><input id="global-search" type="search"></div><h1 id="page-title"></h1><p id="page-subtitle"></p><div class="heading-actions"><button data-action="agent-open" data-overview-only>AI</button></div></header>
+<a data-page="papers" href="#papers">papers</a><a data-page="overview" href="#overview">overview</a>
 <div id="app-content" tabindex="-1"></div>
 <div id="drawer-root"></div><div id="modal-root"></div><div id="toast-root"></div>
 </body></html>`;

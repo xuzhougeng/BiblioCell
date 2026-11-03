@@ -84,8 +84,11 @@ test("column headers sort the list and flip direction; the sort select agrees", 
   assert.equal($('th[aria-sort]').getAttribute("aria-sort"), "ascending");
   assert.ok(sortedAsc(years(state)), `years ascending: ${years(state)}`);
 
+  // The sort control is a chip in the filter row, and its visible text follows the choice.
+  assert.ok($("select[data-filter=sort]").closest(".filter-row .sort-chip"));
   change($("select[data-filter=sort]"), "title-desc");
   assert.equal(app.filters.sort, "title-desc");
+  assert.equal(text(".sort-chip .filter-chip-value"), "标题 Z→A");
   // The rows follow the model's order (its comparators have their own tests).
   assert.deepEqual(rowIds(), filterPapers(state.papers, app.filters).slice(0, 10).map((p) => p.id));
   assert.notDeepEqual(rowIds(), state.papers.slice(0, 10).map((p) => p.id));
@@ -204,4 +207,66 @@ test("the search box filters after a pause and resets the page", async () => {
   assert.ok(rowIds().includes(target.id));
   assert.ok(rowIds().length < 14);
   assert.equal(document.activeElement, $("#paper-search"));
+});
+
+test("the heading's import and add-paper buttons appear only on pages about the library's records", () => {
+  const { app } = papersApp();
+  const actions = $(".heading-actions");
+  for (const page of ["overview", "papers", "datasets", "tasks"]) {
+    app.navigate(page);
+    assert.equal(actions.hidden, false, `${page} keeps the heading actions`);
+  }
+  for (const page of ["settings", "agent", "sources"]) {
+    app.navigate(page);
+    assert.equal(actions.hidden, true, `${page} hides the heading actions`);
+  }
+});
+
+test("ticking rows keeps them selected across pages and feeds the bulk bar's actions", async () => {
+  const { app, state } = papersApp();
+  const bar = () => $("#bulk-bar");
+  assert.equal(bar().hidden, true);
+  const first = $<HTMLInputElement>(`input[data-select-paper="${state.papers[0]!.id}"]`);
+  first.checked = true;
+  first.dispatchEvent(new Event("change", { bubbles: true }));
+  assert.deepEqual([...app.selectedPapers], [state.papers[0]!.id]);
+  assert.equal(bar().hidden, false);
+  assert.match(text("#bulk-bar .bulk-bar-count"), /已勾选 1 篇/);
+  assert.ok(first.closest("tr")!.classList.contains("is-selected"));
+  // Ticking a box never opens the row's drawer.
+  first.click();
+  assert.equal(app.drawer, null);
+
+  // Select-all covers the page; the selection survives turning the page and comes back.
+  const all = $<HTMLInputElement>("input[data-select-all]");
+  all.checked = true;
+  all.dispatchEvent(new Event("change", { bubbles: true }));
+  assert.equal(app.selectedPapers.size, 10);
+  $('.page-btn[data-id="2"]').click();
+  assert.equal($<HTMLInputElement>("input[data-select-all]").checked, false);
+  assert.match(text("#bulk-bar .bulk-bar-count"), /已勾选 10 篇/);
+  $('.page-btn[data-id="1"]').click();
+  assert.equal($<HTMLInputElement>("input[data-select-all]").checked, true);
+  assert.equal($$("tbody tr.is-selected").length, 10);
+
+  // Batch screening starts from the ticked papers, export offers them as a range.
+  $('[data-action="bulk-screen"]').click();
+  assert.deepEqual(new Set(app.batchDraft!.current), app.selectedPapers);
+  assert.equal(app.batchDraft!.selected.size, 10);
+  $('#modal-root button[data-action="close-modal"]').click();
+  app.batchDraft = null;
+  $('[data-action="bulk-export"]').click();
+  assert.equal($<HTMLInputElement>('#export-form input[name="range"][value="selected"]').checked, true);
+  assert.match(text('#export-form .radio-choice:has(input[value="selected"])'), /已勾选的文献（10 篇）/);
+  $('#modal-root button[data-action="close-modal"]').click();
+
+  // Deleting asks once for the lot, then removes them and empties the selection.
+  $('[data-action="bulk-delete"]').click();
+  assert.match(text("#modal-root .modal-body"), /确定删除已勾选的 10 篇文献/);
+  $('[data-action="confirm-delete-selected"]').click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(app.state.papers.length, 4);
+  assert.equal(app.selectedPapers.size, 0);
+  assert.equal(bar().hidden, true);
+  assert.equal(document.querySelector("#modal-root .modal"), null);
 });
