@@ -397,6 +397,11 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .paper-title:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 4px }
 .paper-meta { font-size: calc(12.5px * var(--font-scale, 1)); color: #75735f; line-height: 1.6; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
 .paper-meta > span + span:before { margin-right: 8px; color: #b8ac8d; content: none }
+/* In the table every row keeps the same height: two title lines at most, one line of labels. */
+.paper-table td .paper-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere }
+.paper-table .paper-meta { flex-wrap: nowrap; white-space: nowrap; min-width: 0; overflow: hidden }
+.paper-table .paper-meta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis }
+.paper-table .paper-meta > .meta-separator, .paper-table .paper-meta > .preprint-label, .paper-table .paper-meta > .demo-label { flex-shrink: 0 }
 .table-wrap { overflow: auto }
 .paper-table { min-width: 720px }
 .paper-table th { font-family: var(--serif); font-size: calc(13px * var(--font-scale, 1)); color: #78725d; letter-spacing: 1.2px; text-transform: uppercase; background: #f3edda; border-bottom: 1.5px solid var(--line-strong); padding: 9px 16px; white-space: nowrap }
@@ -415,7 +420,6 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 /* 方向键选中的行:悬停底色略深,行首加主色竖条 */
 .paper-table tbody tr.cursor-row, .paper-table tbody tr:focus-visible { background: #f2ead1; outline: none }
 .paper-table tbody tr.cursor-row td:first-child, .paper-table tbody tr:focus-visible td:first-child { box-shadow: inset 3px 0 0 var(--primary) }
-.paper-table td .paper-title { display: block }
 .paper-table td .badge { margin: 2px 4px 2px 0 }
 .table-footer { display: flex; justify-content: space-between; align-items: center; padding: 15px 22px; font-size: calc(12.5px * var(--font-scale, 1)); color: #78725e; background: var(--surface-deep); border-top: 1px solid var(--line) }
 .table-footer button { font-size: calc(13px * var(--font-scale, 1)) }
@@ -862,10 +866,10 @@ code { font-family: var(--mono) }
 .paper-review-label svg, .screening-proposal > svg { flex-shrink: 0 }
 .paper-review-reason { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin-top: 3px; color: #74634f }
 .paper-review-hint { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px }
-.screening-proposal { margin-top: 8px; font-size: calc(12px * var(--font-scale, 1)); font-weight: 650; color: #805a23; white-space: nowrap }
+.screening-proposal { margin-top: 6px; font-size: calc(12px * var(--font-scale, 1)); font-weight: 650; color: var(--amber); white-space: normal; line-height: 1.45; cursor: help }
 .screening-proposal > svg { vertical-align: -2px; margin-right: 4px }
 .screening-proposal.excluded { color: #914333 }
-.screening-proposal small { display: block; flex-basis: 100%; font-weight: 400; color: var(--muted) }
+.screening-proposal small { display: block; font-weight: 400; color: var(--muted) }
 .review-summary { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: -4px 0 20px; padding: 16px 20px; border: 1px solid #d9bc83; border-radius: 6px; background: #f9f0dc; color: #805a23 }
 .review-summary > svg { flex-shrink: 0 }
 .review-summary > div { flex: 1 1 280px; min-width: 0 }

@@ -91,7 +91,8 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
     const concernReason = concern === "source" ? t("来自 {source} 的更新，尚未人工核查。", { source: p.source ? tv(p.source) : t("来源") })
       : p.proposedReason || (concern === "excluded" ? t("可能不符合收录范围，请查看详情确认。") : t("收录依据仍有疑问，请查看详情确认。"));
     const concernHint = concern === "source" ? t("查看详情，确认收录范围") : t("查看详情，核对依据");
-    const warning = concern ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: concernLabel })}</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">${concernHint} ${I("arrow-right", 12)}</span></div>` : "";
+    // The review state lives in the status column; the note under the title only appears when that column is hidden.
+    const warning = concern && !columns.includes("screening") ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: concernLabel })}</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">${concernHint} ${I("arrow-right", 12)}</span></div>` : "";
     const cells: Record<PaperColumn, string> = {
       star: `<td class="star-cell"><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? t("取消收藏") : t("加入收藏")}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`,
       title: `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || t("作者待补"))}</span><span class="meta-separator">·</span><span>${esc(p.year || t("年份待补"))}</span>${p.publicationStatus === "preprint" ? `<span class="preprint-label">${t("预印本")}</span>` : ""}</div>${warning}</td>`,
@@ -101,7 +102,7 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
       datasets: `<td class="link-cell">${datasetChips(app, p)}</td>`,
       modality: `<td>${modalityBadges(p)}</td>`,
       fulltext: `<td>${fulltextCell(app, p)}</td>`,
-      screening: `<td class="screening-cell">${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}">${I("alert", 13)}${concernLabel}<small>${t("尚未确认")}</small></div>` : ""}</td>`,
+      screening: `<td class="screening-cell">${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}" title="${esc(concernReason)}">${I("alert", 13)}${t("{label} · 待你确认", { label: concernLabel })}<small>${concernHint}</small></div>` : ""}</td>`,
     };
     return `<tr${concern ? ` class="paper-needs-review ${concern}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? t("{label}，待确认：{title}", { label: concernLabel, title: esc(p.title) }) : t("查看 {title}", { title: esc(p.title) })}">${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
