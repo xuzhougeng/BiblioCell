@@ -5,11 +5,15 @@
 #   证书与公证凭证来自 secrets，导入到本次运行的临时钥匙串。
 # - Windows：SSL.com eSigner CodeSignTool 签 exe、卸载程序和安装包
 #   （mygo.config.ts 的 windows.signCommand → scripts/sign-windows-esigner.ps1）。
+# - 自动更新：mygo build 用 MYGO_UPDATER_PRIVATE_KEY 给每个平台写签名的更新包（.tar.gz）、
+#   从已发布版本出发的增量包（.delta）和清单 update-<平台>.json，随安装包一起上传。
+#   已安装的应用读最新 Release 里的清单（mygo.config.ts 的 updates）。
 # - 任何一个 secret 缺失都会在开头失败，不会发布未签名的安装包。
 #
 # 需要的 secrets（与 citebox / wisp-science 同名，可直接复用同一套证书）：
 #   MAC_CERT_P12_BASE64, MAC_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD,
-#   ESIGNER_CREDENTIAL_ID, ESIGNER_USERNAME, ESIGNER_PASSWORD, ESIGNER_TOTP_SECRET, ESIGNER_PIN
+#   ESIGNER_CREDENTIAL_ID, ESIGNER_USERNAME, ESIGNER_PASSWORD, ESIGNER_TOTP_SECRET, ESIGNER_PIN,
+#   MYGO_UPDATER_PRIVATE_KEY（`mygo keygen` 生成的 mygo-update.key，BiblioCell 专用）
 #
 # 手动触发（workflow_dispatch）可以对已有标签重新构建；不勾选 publish 时只把安装包留作
 # workflow artifact，用来验证签名而不动 Release。
@@ -76,11 +80,13 @@ jobs:
           ESIGNER_PASSWORD: ${{ secrets.ESIGNER_PASSWORD }}
           ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
           ESIGNER_PIN: ${{ secrets.ESIGNER_PIN }}
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           missing=()
           for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD \
-                      ESIGNER_CREDENTIAL_ID ESIGNER_USERNAME ESIGNER_PASSWORD ESIGNER_TOTP_SECRET ESIGNER_PIN; do
+                      ESIGNER_CREDENTIAL_ID ESIGNER_USERNAME ESIGNER_PASSWORD ESIGNER_TOTP_SECRET ESIGNER_PIN \
+                      MYGO_UPDATER_PRIVATE_KEY; do
             if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
           done
           if (( ${#missing[@]} > 0 )); then
@@ -158,11 +164,12 @@ jobs:
             --password "${APPLE_APP_PASSWORD}"
 
       # mygo build：跑 buildCommand（tsc + vite）、编译通用二进制、签名 .app、做 DMG、
-      # 提交公证并把票据钉到 DMG 和 .app 上。
+      # 提交公证并把票据钉到 DMG 和 .app 上，再把钉好票据的 .app 打成签名的更新包。
       - name: Build, sign and notarize
         env:
           BIBLIOCELL_MACOS_SIGNING_IDENTITY: ${{ env.CODESIGN_IDENTITY }}
           BIBLIOCELL_NOTARY_PROFILE: ${{ env.NOTARY_PROFILE }}
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: npx mygo build -platform darwin/universal
 
       - name: Verify signature and notarization
@@ -194,12 +201,23 @@ jobs:
           xcrun stapler validate "${app}"
           spctl --assess --type open --context context:primary-signature -vv "${dmg}"
 
-          echo "DMG_PATH=${dmg}" >> "${GITHUB_ENV}"
+          dir="$(dirname "${dmg}")"
+          test -s "${dir}/update-darwin-universal.json"
+          test -s "${dir}/bibliocell-${version}-darwin-universal.tar.gz"
+          jq -e --arg v "${version}" '.version == $v and (.signature | length > 0)' "${dir}/update-darwin-universal.json"
 
+          echo "DMG_PATH=${dmg}" >> "${GITHUB_ENV}"
+          echo "BUILD_DIR=${dir}" >> "${GITHUB_ENV}"
+
+      # 安装包和更新文件在同一个目录里，上传后平铺在 artifact 根下。
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ env.RELEASE_TAG }}
-          path: ${{ env.DMG_PATH }}
+          path: |
+            ${{ env.DMG_PATH }}
+            ${{ env.BUILD_DIR }}/*.tar.gz
+            ${{ env.BUILD_DIR }}/*.delta
+            ${{ env.BUILD_DIR }}/update-*.json
           if-no-files-found: error
 
       - name: Clean up keychain
@@ -265,6 +283,7 @@ jobs:
         shell: pwsh
         env:
           BIBLIOCELL_WINDOWS_SIGN_COMMAND: pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/sign-windows-esigner.ps1 -Path %1
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: |
           npx mygo build -platform windows/amd64
           if ($LASTEXITCODE -ne 0) { throw "mygo build exited $LASTEXITCODE" }
@@ -293,12 +312,25 @@ jobs:
           Write-Host "eSigner signed:"; $log | ForEach-Object { Write-Host "  $_" }
           # 应用 exe、卸载程序、安装包：三次签名都要在日志里。
           if (@($log | Where-Object { $_ -like 'signed*' }).Count -lt 3) { throw "Expected at least 3 eSigner signatures (app, uninstaller, installer)" }
+          $dir = $setup[0].DirectoryName
+          $manifest = Join-Path $dir 'update-windows-amd64.json'
+          $archive = Join-Path $dir "bibliocell-$version-windows-amd64.tar.gz"
+          foreach ($file in @($manifest, $archive)) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing update file $file" }
+          }
+          $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          if ($m.version -ne $version -or -not $m.signature) { throw "update-windows-amd64.json is not a signed manifest of $version" }
           "SETUP_PATH=$($setup[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BUILD_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ env.RELEASE_TAG }}
-          path: ${{ env.SETUP_PATH }}
+          path: |
+            ${{ env.SETUP_PATH }}
+            ${{ env.BUILD_DIR }}/*.tar.gz
+            ${{ env.BUILD_DIR }}/*.delta
+            ${{ env.BUILD_DIR }}/update-*.json
           if-no-files-found: error
 
   publish:
@@ -325,9 +357,10 @@ jobs:
           cd release-assets
           ls -la
           files=()
-          while IFS= read -r -d '' f; do files+=("$f"); done < <(find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.exe' \) -print0 | sort -z)
-          if (( ${#files[@]} != 2 )); then
-            echo "::error::Expected one DMG and one installer, found: ${files[*]}" >&2
+          while IFS= read -r -d '' f; do files+=("$f"); done < <(find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -print0 | sort -z)
+          count() { find . -maxdepth 1 -type f -name "$1" | wc -l; }
+          if (( $(count '*.dmg') != 1 || $(count '*.exe') != 1 || $(count '*.tar.gz') != 2 || $(count 'update-*.json') != 2 )); then
+            echo "::error::Expected one DMG, one installer, and an update archive and manifest per platform, found: ${files[*]}" >&2
             exit 1
           fi
           sha256sum "${files[@]}" | sed 's#\./##' > SHA256SUMS

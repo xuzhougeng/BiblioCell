@@ -495,6 +495,23 @@ export interface ToolCall {
   arguments: string;
 }
 
+/** UpdateState is what the top bar's Update pill shows. */
+export interface UpdateState {
+  /**
+   * State is "off" (a development build, or one that cannot replace
+   * itself where it is installed), "idle", "downloading", "ready" (staged,
+   * waiting for a restart) or "error" (the download failed).
+   */
+  state: string;
+  current: string;
+  latest: string;
+  /** Notes are the release notes in Markdown, empty when the release has none. */
+  notes: string;
+  done: number;
+  total: number;
+  error: string;
+}
+
 export interface Usage {
   inputTokens: number;
   outputTokens: number;
@@ -665,6 +682,14 @@ export const Library = {
   restart(): Promise<void> {
     return call("Library.Restart");
   },
+  /** RestartToUpdate relaunches into the downloaded update. */
+  restartToUpdate(): Promise<void> {
+    return call("Library.RestartToUpdate");
+  },
+  /** RetryUpdate checks for an update again after a download failed. */
+  retryUpdate(): Promise<void> {
+    return call("Library.RetryUpdate");
+  },
   /** ReviewEvidence records a person's verdict on a claim. */
   reviewEvidence(id: string, status: string): Promise<void> {
     return call("Library.ReviewEvidence", id, status);
@@ -751,6 +776,10 @@ export const Library = {
   translateText(text: string): Promise<string> {
     return call("Library.TranslateText", text);
   },
+  /** UpdateStatus returns the state of the app's own update. */
+  updateStatus(): Promise<UpdateState> {
+    return call("Library.UpdateStatus");
+  },
   /** VerifyDatasetLink records a person's check of a paper-dataset link. */
   verifyDatasetLink(paperID: string, datasetID: string, role: string, verified: boolean): Promise<void> {
     return call("Library.VerifyDatasetLink", paperID, datasetID, role, verified);
@@ -769,4 +798,6 @@ export const events = {
   sourcesChanged: event<SourceAutomation>("sourcesChanged"),
   /** agentProgress shows the window each step of a run while it happens. */
   agentProgress: event<Event>("agentProgress"),
+  /** updateChanged tells the window the update was found, downloaded or failed. */
+  updateChanged: event<UpdateState>("updateChanged"),
 } as const;
