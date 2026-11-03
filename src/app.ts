@@ -449,6 +449,7 @@ export class App {
     const ids = filterPapers(this.state.papers, this.filters).map((p) => p.id);
     const index = this.paperCursor == null ? 0 : (this.paperPage - 1) * this.paperPageSize + this.paperCursor;
     this.screen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)), ai: null };
+    this.screenQueueOpen = wideWindow(); // Measured now: the window may have been resized since the app started.
     this.closeDrawer();
     this.render();
     window.scrollTo({ top: 0 });
