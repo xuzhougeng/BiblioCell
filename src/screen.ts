@@ -51,12 +51,8 @@ export function translationPop(tr: Translation): string {
   return `${head}<p class="translate-pop-text">${esc(tr.text)}</p>`;
 }
 
-/** paperFileURL is where the window loads a stored file. WebView2 cannot load a
- * custom scheme itself, so on Windows mygo serves paperfile:// at
- * http://paperfile.localhost and only maps the URLs it navigates to, not an
- * iframe's src: the page has to use that address directly. */
-const paperFileURL = (id: string): string =>
-  `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(id)}`;
+/** Keep the reader in its own document so PDF search is scoped to the PDF. */
+const paperFileURL = (id: string): string => `/pdf-viewer.html?file=${encodeURIComponent(id)}`;
 
 /** pdfPane shows the stored PDF, or an upload entry when the paper has none. */
 function pdfPane(app: App, p: Paper): string {

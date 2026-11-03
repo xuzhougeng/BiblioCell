@@ -54,7 +54,7 @@ function reader(frame: HTMLIFrameElement) {
 test("an AI suggestion arriving, failing and being adopted never rebuilds the PDF frame", async (t: TestContext) => {
   const { app, ids, saved } = screeningApp();
   const frame = $<HTMLIFrameElement>(".screen-pdf-frame");
-  assert.match(frame.getAttribute("src") ?? "", /pdf-0$/);
+  assert.equal(frame.getAttribute("src"), "/pdf-viewer.html?file=pdf-0", "PDF search must use the isolated reader instead of the native plug-in");
   const check = reader(frame);
 
   const pending = Promise.withResolvers<Judgement>();
