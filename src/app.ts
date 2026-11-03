@@ -1,4 +1,6 @@
 import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
+import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } from "./screen-batch.ts";
+import type { ScreeningBatch } from "./screen-batch-queue.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
 import type { Config, MCPInfo, Paper, SourceAutomation, SourceStatus, Status } from "./mygo.ts";
@@ -73,6 +75,8 @@ export class App {
   drawer: Drawer | null = null;
   /** Papers page: screening mode shows one paper at a time instead of the table. */
   screen: ScreenState | null = null;
+  batch: ScreeningBatch | null = null;
+  batchDraft: BatchDraft | null = null;
   /** The translation card floating by the selection in screening mode, if any. */
   translation: Translation | null = null;
   /** Screening mode shows the stored PDF beside the paper unless hidden. */
@@ -859,6 +863,7 @@ export class App {
     ...doiActions(this),
     ...reviewActions(this),
     ...screenActions(this),
+    ...batchActions(this),
   };
 
   private onClick(e: MouseEvent): void {
@@ -890,6 +895,7 @@ export class App {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
+      "batch-screen-form": startBatch,
       "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
@@ -903,6 +909,7 @@ export class App {
   private onChange(e: Event): void {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
+    if (batchChange(this, target)) return;
     if (target instanceof HTMLInputElement && target.dataset.paperColumn) {
       const column = PAPER_COLUMNS.find(([id]) => id === target.dataset.paperColumn)?.[0];
       if (!column) return;
@@ -991,6 +998,7 @@ export class App {
       return;
     }
     if (!(target instanceof HTMLInputElement)) return;
+    if (target.id === "batch-search") { batchSearch(this, target.value); return; }
     if (target.matches("[name=speciesName], [name=speciesLabel]")) {
       const picker = target.closest(".species-row")?.querySelector<HTMLSelectElement>("[data-species-picker]");
       if (picker) picker.value = "";

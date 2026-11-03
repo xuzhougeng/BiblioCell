@@ -15,6 +15,44 @@ import (
 
 var testToken = strings.Repeat("t", 64)
 
+func TestBatchScreenConcurrencyDefaultsPersistsAndRejectsInvalidValues(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "settings.json")
+	legacy := Config{StoragePath: directory, FontSize: 15, MCPToken: testToken}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path, directory, testToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.Get().BatchScreenConcurrency != 3 {
+		t.Fatal("legacy settings must default to 3")
+	}
+	config := store.Get()
+	config.BatchScreenConcurrency = 6
+	if err := store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path, directory, testToken)
+	if err != nil || reopened.Get().BatchScreenConcurrency != 6 {
+		t.Fatalf("concurrency did not persist: %v", err)
+	}
+	for _, invalid := range []int{-1, 9} {
+		config.BatchScreenConcurrency = invalid
+		if err := store.Save(config); err == nil {
+			t.Fatalf("accepted concurrency %d", invalid)
+		}
+		if store.Get().BatchScreenConcurrency != 6 {
+			t.Fatal("invalid value changed settings")
+		}
+	}
+}
+
 func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "settings.json")
@@ -30,7 +68,7 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 		t.Fatalf("DatabasePath() = %q, want %q", got, want)
 	}
 
-	want := Config{StoragePath: filepath.Join(directory, "research"), FontSize: 18, MCPToken: testToken}
+	want := Config{StoragePath: filepath.Join(directory, "research"), FontSize: 18, BatchScreenConcurrency: DefaultBatchScreenConcurrency, MCPToken: testToken}
 	if err := store.Save(want); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}

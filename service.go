@@ -345,10 +345,16 @@ func (l *Library) SaveSettings(config settings.Config) (SettingsSaveResult, erro
 // reading its stored full text when there is one and its abstract otherwise.
 // The answer is a suggestion for the person; nothing is written.
 func (l *Library) ScreenPaper(paperID, requirement string) (agent.Judgement, error) {
+	return l.ScreenPaperWithModel(paperID, requirement, "")
+}
+
+// ScreenPaperWithModel uses a selected profile without changing task bindings.
+// Like ScreenPaper, it returns a suggestion and never changes the paper.
+func (l *Library) ScreenPaperWithModel(paperID, requirement, modelID string) (agent.Judgement, error) {
 	if l.store == nil || l.settings == nil {
 		return agent.Judgement{}, errors.New("library database is not ready")
 	}
-	provider, err := l.provider(settings.TaskScreen)
+	provider, err := l.screenProvider(modelID)
 	if err != nil {
 		return agent.Judgement{}, err
 	}
@@ -388,6 +394,18 @@ func (l *Library) ScreenPaper(paperID, requirement string) (agent.Judgement, err
 		Abstract:    paper.Abstract,
 		Fulltext:    fulltext,
 	})
+}
+
+func (l *Library) screenProvider(modelID string) (agent.Provider, error) {
+	if modelID == "" {
+		return l.provider(settings.TaskScreen)
+	}
+	for _, profile := range l.settings.Get().Models {
+		if profile.ID == modelID {
+			return agent.NewProvider(profile.Config)
+		}
+	}
+	return nil, errors.New("所选模型已不存在，请重新选择")
 }
 
 // provider builds the client for the model a task is bound to.

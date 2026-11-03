@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	DefaultFontSize = 15
-	MinFontSize     = 12
-	MaxFontSize     = 20
+	DefaultFontSize               = 15
+	MinFontSize                   = 12
+	MaxFontSize                   = 20
+	DefaultBatchScreenConcurrency = 3
 
 	// DatabaseFile is the SQLite file name inside the storage folder.
 	DatabaseFile = "bibliocell.sqlite"
@@ -25,9 +26,10 @@ const (
 
 // Config contains preferences that survive application restarts.
 type Config struct {
-	StoragePath string `json:"storagePath"`
-	FontSize    int    `json:"fontSize"`
-	MCPToken    string `json:"mcpToken"`
+	StoragePath            string `json:"storagePath"`
+	FontSize               int    `json:"fontSize"`
+	BatchScreenConcurrency int    `json:"batchScreenConcurrency"`
+	MCPToken               string `json:"mcpToken"`
 	// NCBIAPIKey and ContactEmail identify this user to public APIs. They live here, not
 	// in the database, so they stay on this machine when the folder moves.
 	NCBIAPIKey   string `json:"ncbiApiKey"`
@@ -130,7 +132,7 @@ type Store struct {
 // Open loads settings. On invalid or unreadable contents it returns usable
 // defaults together with the error, allowing the application to start safely.
 func Open(path, defaultStoragePath, defaultMCPToken string) (*Store, error) {
-	defaults := Config{StoragePath: filepath.Clean(defaultStoragePath), FontSize: DefaultFontSize, MCPToken: defaultMCPToken}
+	defaults := Config{StoragePath: filepath.Clean(defaultStoragePath), FontSize: DefaultFontSize, BatchScreenConcurrency: DefaultBatchScreenConcurrency, MCPToken: defaultMCPToken}
 	store := &Store{path: path, config: defaults}
 	if err := Validate(defaults); err != nil {
 		return store, fmt.Errorf("invalid default settings: %w", err)
@@ -155,6 +157,9 @@ func Open(path, defaultStoragePath, defaultMCPToken string) (*Store, error) {
 	if config.FontSize == 0 {
 		config.FontSize = DefaultFontSize
 	}
+	if config.BatchScreenConcurrency == 0 {
+		config.BatchScreenConcurrency = DefaultBatchScreenConcurrency
+	}
 	if config.MCPToken == "" {
 		config.MCPToken = defaults.MCPToken
 	}
@@ -174,6 +179,9 @@ func (s *Store) Get() Config {
 
 // Save validates and atomically replaces the settings file.
 func (s *Store) Save(config Config) error {
+	if config.BatchScreenConcurrency == 0 {
+		config.BatchScreenConcurrency = DefaultBatchScreenConcurrency
+	}
 	config.StoragePath = filepath.Clean(strings.TrimSpace(config.StoragePath))
 	config.MCPToken = strings.TrimSpace(config.MCPToken)
 	config.NCBIAPIKey = strings.TrimSpace(config.NCBIAPIKey)
@@ -237,6 +245,10 @@ func Validate(config Config) error {
 	}
 	if config.FontSize < MinFontSize || config.FontSize > MaxFontSize {
 		return fmt.Errorf("font size must be between %d and %d pixels", MinFontSize, MaxFontSize)
+	}
+	// Zero is accepted from older settings files and clients, then defaults to 3.
+	if config.BatchScreenConcurrency != 0 && (config.BatchScreenConcurrency < 1 || config.BatchScreenConcurrency > 8) {
+		return errors.New("batch screening concurrency must be between 1 and 8")
 	}
 	if config.MCPToken != "" {
 		if err := ValidateMCPToken(config.MCPToken); err != nil {

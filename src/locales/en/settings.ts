@@ -1,5 +1,7 @@
 // English strings for settings and Sources & updates.
 export const settings: Record<string, string> = {
+  "批量筛选默认并发数": "Default batch screening concurrency",
+  "同时筛查的文献数，默认 3，最多 8。保存后用于新任务，也可在启动批量筛选时临时调整。": "Number of papers screened at once: 3 by default, up to 8. Save to apply to new runs; you can override it when starting a batch.",
   // models.ts and the AI model section
   "AI 对话": "AI chat",
   "内置助手，通过 MCP 工具操作正式数据库": "The built-in assistant, working on the real database through MCP tools",

@@ -72,6 +72,7 @@ function aiSection(settings: Config, disabled: string): string {
   return `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("sparkle", 21)}</span><div><h2>${t("AI 模型")}</h2><p>${t("添加一个或多个模型服务，再为每项 AI 功能选择用哪个。")}</p></div>${badge(list.length ? t("{n} 个模型", { n: list.length }) : t("未配置"), list.length ? "green" : "gray")}</div>`
     + `<div class="model-list">${cards}</div><button class="btn btn-secondary" type="button" data-action="model-add" ${disabled}>${I("plus", 16)} ${t("添加模型")}</button>`
     + `<h3 class="settings-subheading">${t("各功能使用的模型")}</h3><div class="settings-grid settings-grid-3">${bindings}</div>`
+    + `<div class="settings-field"><label for="settings-batch-concurrency">${t("批量筛选默认并发数")}</label><select class="input" id="settings-batch-concurrency" name="batchScreenConcurrency" ${disabled}>${[1, 2, 3, 4, 5, 6, 7, 8].map(n => option(String(n), String(n), String(settings.batchScreenConcurrency || 3))).join("")}</select><p class="form-hint">${t("同时筛查的文献数，默认 3，最多 8。保存后用于新任务，也可在启动批量筛选时临时调整。")}</p></div>`
     + `<div class="settings-inline-note">${I("info", 16)}<span>${t("模型的添加、编辑和删除会立即保存；各功能的选择点“保存设置”后生效。Key 和地址只保存在本机 settings.json，不随存放文件夹迁移，也不会通过 MCP 返回。")}</span></div></section>`;
 }
 
@@ -157,7 +158,11 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   const data = new FormData(form);
   const button = $<HTMLButtonElement>("button[type=submit]", form);
   const tasks: TaskModels = { chat: text(data, "task-chat"), screen: text(data, "task-screen"), translate: text(data, "task-translate") };
-  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), mcpToken: text(data, "mcpToken"), tasks };
+  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), batchScreenConcurrency: Number(data.get("batchScreenConcurrency")), mcpToken: text(data, "mcpToken"), tasks };
+  if (!Number.isInteger(next.batchScreenConcurrency) || next.batchScreenConcurrency < 1 || next.batchScreenConcurrency > 8) {
+    setStatus(t("并发文献数应为 1 到 8。"));
+    return;
+  }
   if (!next.storagePath) {
     setStatus(t("请填写存放文件夹的绝对路径。"));
     return;
