@@ -54,6 +54,8 @@ type Drawer = { type: "paper" | "dataset"; id: string };
 type Action = (el: HTMLElement, id: string) => void;
 
 const DEMO_ONLY_ACTIONS = new Set(["import-json", "confirm-import", "reset-demo", "confirm-reset", "add-resource"]);
+/** wideWindow: room for the screening queue rail beside the paper (the stylesheet folds it at 1250px). */
+const wideWindow = (): boolean => typeof window !== "undefined" && window.innerWidth > 1250;
 /** Pages whose heading shows no "import / add paper" buttons, because they are not about the library's records. */
 export const HEADING_ACTIONS_HIDDEN: ReadonlySet<Page> = new Set<Page>(["settings", "agent", "sources"]);
 
@@ -89,6 +91,8 @@ export class App {
   abstractTranslations = new Map<string, AbstractTranslation>();
   /** Screening mode shows the stored PDF beside the paper unless hidden. */
   screenPdf = localStorage.getItem("bibliocell-screen-pdf") !== "off";
+  /** Screening mode: the queue rail is open by default on wide windows; narrow ones show it as an overlay on request. */
+  screenQueueOpen = wideWindow();
   private translationAnchor: DOMRect | null = null;
   private selectionTimer: ReturnType<typeof setTimeout> | undefined;
   agent: AgentState = emptyAgentState();
@@ -300,6 +304,7 @@ export class App {
         this.loadCachedAbstract(current);
         if (this.screen.ai) this.requestJudgement(current.id);
       }
+      $(".screen-queue-item[aria-current]")?.scrollIntoView({ block: "nearest" });
     }
     document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
     if (this.page === "agent") {
@@ -625,13 +630,23 @@ export class App {
   }
   moveScreening(delta: number): void {
     if (!this.screen) return;
+    this.goToScreening(this.screen.index + delta);
+  }
+  /** goToScreening opens the paper at a position of the run, from the arrows or the queue rail. */
+  goToScreening(index: number): void {
+    if (!this.screen) return;
     const papers = screenPapers(this);
-    const next = this.screen.index + delta;
-    if (next < 0 || next >= papers.length) return;
-    this.screen.index = next;
+    if (!Number.isInteger(index) || index < 0 || index >= papers.length || index === this.screen.index) return;
+    this.screen.index = index;
     this.clearTranslation();
+    // On a narrow window the rail is an overlay: picking a paper there closes it.
+    if (this.screenQueueOpen && !wideWindow()) this.screenQueueOpen = false;
     this.render();
     window.scrollTo({ top: 0 });
+  }
+  toggleScreenQueue(): void {
+    this.screenQueueOpen = !this.screenQueueOpen;
+    this.render();
   }
   /** decideInScreening records the decision and moves on; an exclusion without a reason asks for one first. */
   decideInScreening(id: string, status: string): void {

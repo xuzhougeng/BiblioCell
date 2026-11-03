@@ -311,3 +311,43 @@ test("arrow keys move between papers and each paper shows its own PDF", () => {
   assert.ok($(".screen-pdf-empty [data-action=import-file]"));
   assert.equal($$(".screen-pdf-frame").length, 0);
 });
+
+test("the queue rail lists the run, jumps between papers and tracks decisions without reloading the PDF", () => {
+  const { app, ids, state } = screeningApp();
+  app.screenQueueOpen = true;
+  app.render();
+  const check = reader($(".screen-pdf-frame"));
+  const items = $$(".screen-queue-item");
+  assert.equal(items.length, 2);
+  assert.equal(items[0]!.getAttribute("aria-current"), "true");
+  assert.ok($(".screen-queue-item.is-current .screen-queue-dot").classList.length === 1, "a pending paper has a plain dot");
+
+  // The AI region sits in the action bar, next to the decision buttons.
+  assert.ok($(".screen-actionbar #screen-ai"));
+
+  // Deciding colours the dot but keeps the frame (one paper left in the run, so no move).
+  app.screen!.ids = [ids[0]!];
+  $("#app-content").focus();
+  keydown("y");
+  assert.equal(state.papers[0]!.screening, "included");
+  assert.ok($(".screen-queue-item.is-current .screen-queue-dot").classList.contains("green"));
+  check("after a decision");
+
+  // Jumping from the rail opens that paper with its own PDF; the current item follows.
+  app.screen!.ids = ids;
+  app.render();
+  $$(".screen-queue-item")[1]!.click();
+  assert.equal(app.screen?.index, 1);
+  assert.equal($(".screen-queue-item[aria-current]").dataset.index, "1");
+  assert.match($(".screen-pdf-frame").getAttribute("src") ?? "", /pdf-1$/);
+  // jsdom's window is 1024px wide, where the rail is an overlay: picking a paper closes it.
+  assert.equal(app.screenQueueOpen, false);
+  assert.ok(!$(".screen-queue").classList.contains("is-open"));
+
+  // The toolbar button shows and hides the rail.
+  $(".screen-queue-toggle").click();
+  assert.equal(app.screenQueueOpen, true);
+  assert.ok($(".screen-queue").classList.contains("is-open"));
+  $(".screen-queue-head [data-action=screen-queue-toggle]").click();
+  assert.ok(!$(".screen-queue").classList.contains("is-open"));
+});
