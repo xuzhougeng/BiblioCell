@@ -2,6 +2,7 @@ import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } from "./screen-batch.ts";
 import { calibrationActions, calibrationChange, emptyCalibration, type CalibrationState } from "./calibration.ts";
 import { pruneSelection, selectionActions, selectionChange } from "./selection.ts";
+import { shortcutsModal } from "./shortcuts.ts";
 import type { ScreeningBatch } from "./screen-batch-queue.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
@@ -157,6 +158,19 @@ export class App {
     document.addEventListener("change", (e) => this.onChange(e));
     document.addEventListener("input", (e) => this.onInput(e));
     document.addEventListener("keydown", (e) => this.onKeydown(e));
+    // A "?" in the top bar opens the same shortcut sheet as the key, for people who never press it.
+    const topbar = $(".topbar-right");
+    if (topbar && !$("#shortcuts-help")) {
+      const help = document.createElement("button");
+      help.type = "button";
+      help.id = "shortcuts-help";
+      help.className = "topbar-link shortcuts-link";
+      help.dataset.action = "shortcuts-help";
+      help.textContent = "?";
+      help.title = t("快捷键");
+      help.setAttribute("aria-label", t("快捷键"));
+      topbar.prepend(help);
+    }
     // Selecting text while screening translates it: the card appears once the selection settles.
     document.addEventListener("selectionchange", () => {
       clearTimeout(this.selectionTimer);
@@ -441,6 +455,21 @@ export class App {
     $("#app-content")?.focus({ preventScroll: true });
     // Offer suggestions once per entry, only where a model service can be reached; a standing choice turns the question off.
     if (ids.length && this.canScreenWithAI() && !askAIDisabled()) screenAIModal(this);
+  }
+  /** resumeScreening opens screening on the whole library at the first paper still undecided. */
+  resumeScreening(): void {
+    const list = filterPapers(this.state.papers, emptyFilters());
+    const index = list.findIndex((p) => p.screening === "pending");
+    if (index < 0) {
+      this.toast(t("没有待判断的文献。"));
+      return;
+    }
+    this.filters = emptyFilters();
+    this.calibrationView = false;
+    this.paperPage = Math.floor(index / this.paperPageSize) + 1;
+    this.paperCursor = index % this.paperPageSize;
+    this.navigate("papers");
+    this.startScreening();
   }
   /** canScreenWithAI: a model is bound to screening and the backend can reach it. */
   canScreenWithAI(): boolean {
@@ -897,6 +926,9 @@ export class App {
       this.taskFilter = value === "screen" || value === "fulltext" || value === "data" ? value : "all";
       this.render();
     },
+    "shortcuts-help": () => shortcutsModal(this),
+    "resume-screening": () => this.resumeScreening(),
+    "review-papers-nav": () => { this.navigate("papers"); this.actions["review-papers"]!(document.body, ""); },
     "stat-nav": (el) => {
       const target = el.dataset.target ?? "";
       if (target === "screen" || target === "fulltext") {
@@ -1175,7 +1207,14 @@ export class App {
       if (this.page === "papers" || (this.page === "datasets" && this.datasetView === "table")) this.arrowTable(e);
       return;
     }
-    if ((e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "k")) && !target?.matches("input,textarea,select")) {
+    // A checkbox or radio under the focus is not a place to type, so the sheet and search keys still work there.
+    const typing = Boolean(target?.matches("input:not([type=checkbox]):not([type=radio]),textarea,select"));
+    if (e.key === "?" && !typing && !$("#modal-root .modal")) {
+      e.preventDefault();
+      shortcutsModal(this);
+      return;
+    }
+    if ((e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "k")) && !typing) {
       e.preventDefault();
       $("#global-search")?.focus();
       return;

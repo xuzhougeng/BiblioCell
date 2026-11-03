@@ -273,6 +273,27 @@ export const views: Record<string, string> = {
   "显示列": "Columns",
   "导出": "Export",
   "导出进度报告": "Export progress report",
+
+  // views.ts: overview dashboard
+  "筛选进度": "Screening progress",
+  "已判断 {done} / {total} 篇": "{done} of {total} decided",
+  "继续筛选": "Continue screening",
+  "本周新增": "Added this week",
+  "没有待判断的文献。": "No papers are waiting for a decision.",
+
+  // shortcuts.ts
+  "快捷键": "Keyboard shortcuts",
+  "全局": "Everywhere",
+  "文献列表": "Paper list",
+  "打开快捷键面板": "Open this shortcut sheet",
+  "关闭弹窗或抽屉，退出筛选": "Close the dialog or drawer, leave screening",
+  "上一行 / 下一行": "Previous / next row",
+  "上一页 / 下一页": "Previous / next page",
+  "查看详情": "Open details",
+  "上一篇 / 下一篇": "Previous / next paper",
+  "采纳 AI 建议": "Adopt the AI suggestion",
+  "发送消息": "Send the message",
+  "Windows 上 ⌘ 对应 Ctrl。": "On Windows, ⌘ means Ctrl.",
   "搜索题目、物种、作者或 DOI…": "Search title, species, authors or DOI…",
   "搜索文献": "Search papers",
   "排序方式": "Sort order",

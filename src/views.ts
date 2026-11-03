@@ -1,5 +1,4 @@
 // Page renderers for overview, papers, datasets and tasks.
-import { AGENT_EXAMPLES } from "./agent.ts";
 import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
@@ -115,6 +114,32 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
   return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 
+const WEEK = 7 * 24 * 60 * 60 * 1000;
+
+/** screeningDashboard shows how far screening has come and where to pick it up:
+ * a bar of decisions, what arrived this week, what waits for review, and a
+ * button that opens screening on the first undecided paper. */
+export function screeningDashboard(app: App, now = Date.now()): string {
+  const papers = app.state.papers;
+  const total = papers.length;
+  const by = (status: string) => papers.filter((p) => p.screening === status).length;
+  const undecided = by("pending");
+  const decided = total - undecided;
+  const thisWeek = papers.filter((p) => Date.parse(p.addedAt) >= now - WEEK).length;
+  const concerns = papers.filter((p) => reviewConcern(p)).length;
+  const segments = (["included", "excluded", "uncertain", "pending"] as const).map((status) => {
+    const n = by(status);
+    return n ? `<span class="screen-bar-seg ${status}" style="width:${(n / total) * 100}%" title="${esc(SCREEN[status]!)} ${n}"></span>` : "";
+  }).join("");
+  const legend = (["included", "excluded", "uncertain", "pending"] as const).map((status) =>
+    `<span class="screen-bar-key"><span class="screen-queue-dot ${status === "included" ? "green" : status === "excluded" ? "red" : status === "uncertain" ? "amber" : ""}"></span>${esc(SCREEN[status]!)} <strong>${by(status)}</strong></span>`).join("");
+  const metric = (label: string, value: number, action: string, target = ""): string =>
+    `<button class="dashboard-metric" data-action="${action}"${target ? ` data-target="${target}"` : ""}><span class="dashboard-metric-label">${label}</span><strong>${value}</strong></button>`;
+  return `<section class="panel dashboard-panel" aria-label="${t("筛选进度")}"><div class="panel-header"><div><h2>${t("筛选进度")}</h2><p class="muted">${t("已判断 {done} / {total} 篇", { done: decided, total })}</p></div><div class="section-actions"><button class="text-link" data-action="export-report">${I("download", 15)} ${t("导出进度报告")}</button><button class="btn btn-primary" data-action="resume-screening"${undecided ? "" : " disabled"}>${I("check-circle", 16)} ${t("继续筛选")}</button></div></div>`
+    + `<div class="panel-body"><div class="screen-bar" role="img" aria-label="${t("已判断 {done} / {total} 篇", { done: decided, total })}">${segments}</div><div class="screen-bar-legend">${legend}</div>`
+    + `<div class="dashboard-metrics">${metric(t("本周新增"), thisWeek, "stat-nav", "papers")}${metric(t("需核对"), concerns, "review-papers-nav")}${metric(t("待判断"), undecided, "stat-nav", "screen")}${metric(t("全文待补"), papers.filter((p) => p.screening === "included" && p.fulltext !== "stored").length, "stat-nav", "fulltext")}</div></div></section>`;
+}
+
 export function renderOverview(app: App): string {
   const papers = app.state.papers;
   const total = papers.length;
@@ -145,8 +170,9 @@ export function renderOverview(app: App): string {
   const speciesBars = species.map(([label, count]) =>
     `<button class="species-bar-row" data-action="species-filter" data-label="${esc(label)}"><span>${esc(label)}</span><div class="species-bar-track"><div style="width:${Math.round((count / maxCount) * 100)}%"></div></div><strong>${count}</strong></button>`,
   ).join("");
-  const agentEntry = `<section class="panel agent-entry"><span class="agent-entry-icon">${I("sparkle", 22)}</span><div class="agent-entry-body"><h2>${t("AI 助手")}</h2><p class="muted">${t("用自己的模型，通过 MCP 工具检索、导入、补元数据、提收录建议。")}</p><div class="agent-entry-prompts">${AGENT_EXAMPLES.map((p) => `<button type="button" class="agent-entry-prompt" data-action="agent-open" data-prompt="${esc(p)}">${esc(p)}</button>`).join("")}</div></div><button class="btn btn-primary" data-action="agent-open">${I("sparkle", 15)} ${t("打开助手")}</button></section>`;
-  return `<div class="stat-grid">${statCards}</div>${agentEntry}`
+  // The assistant is one line here; its example prompts live on its own page.
+  const agentEntry = `<section class="panel agent-entry compact"><span class="agent-entry-icon">${I("sparkle", 18)}</span><div class="agent-entry-body"><h2>${t("AI 助手")}</h2><p class="muted">${t("用自己的模型，通过 MCP 工具检索、导入、补元数据、提收录建议。")}</p></div><button class="btn btn-secondary" data-action="agent-open">${I("sparkle", 15)} ${t("打开助手")}</button></section>`;
+  return `<div class="stat-grid">${statCards}</div>${screeningDashboard(app)}${agentEntry}`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>${t("最近收录")}</h2><p class="muted">${t("新线索先留下，整理慢慢来")}</p></div><button class="text-link" data-page="papers">${t("查看全部")} ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} ${t("当前条目为原型示例，可通过新增或导入建立自己的目录。")}</div></section>`
     + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>${t("接下来整理")}</h2><p class="muted">${t("按需要补齐信息")}</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">${t("查看全部待补事项")} ${I("arrow-right", 16)}</button></section></div>`
     + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><div><h2>${t("整理覆盖")}</h2><p class="muted">${t("收录与完善，各自向前一步")}</p></div><button class="text-link" data-action="export-report">${I("download", 15)} ${t("导出进度报告")}</button></div><div class="panel-body progress-list">${progressRow(t("收录范围已判断"), total - pending, total)}${progressRow(t("已关联数据集"), withData, total, "blue")}${progressRow(t("已记录全文入口"), withFulltext, total, "gold")}</div></section>`
