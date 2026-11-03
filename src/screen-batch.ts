@@ -28,10 +28,16 @@ function candidates(app: App): Paper[] {
 
 export function openBatch(app: App): void {
   if (app.batch) { showBatchProgress(app); return; }
-  if (!app.batchDraft) {
-    const current = filterPapers(app.state.papers, app.filters).map(p => p.id);
-    app.batchDraft = { current, selected: new Set(current), scope: "current", search: "", requirement: lastRequirement(), modelId: modelFor(app.env.settings, "screen")?.id ?? "", concurrency: app.env.settings.batchScreenConcurrency || 3 };
-  }
+  // Each entry from the library takes a fresh snapshot of its filtered results.
+  // Returning from configuration uses showCandidates directly, retaining manual choices.
+  const current = filterPapers(app.state.papers, app.filters).map(p => p.id);
+  const previous = app.batchDraft;
+  app.batchDraft = {
+    current, selected: new Set(current), scope: "current", search: "",
+    requirement: previous?.requirement ?? lastRequirement(),
+    modelId: previous?.modelId ?? modelFor(app.env.settings, "screen")?.id ?? "",
+    concurrency: previous?.concurrency ?? (app.env.settings.batchScreenConcurrency || 3),
+  };
   showCandidates(app);
 }
 
