@@ -2,7 +2,7 @@
 import type { App } from "./app.ts";
 import { editableDetail } from "./paper-fields.ts";
 import type { DatasetPaperLink, Evidence, Paper } from "./mygo.ts";
-import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, datasetLocation, dateText, esc, fileSize, joinList, repositoryURL, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
+import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, datasetLocation, dateText, esc, fileSize, joinList, repositoryLabel, repositoryURL, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, options, screenBadge } from "./ui.ts";
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 
@@ -126,7 +126,7 @@ export function renderDrawer(app: App): string | null {
     return p ? `<button class="related-dataset" data-action="open-paper" data-id="${esc(p.id)}"><span class="icon-wrap blue">${I("book", 18)}</span><span><strong>${esc(p.title)}</strong><small>${esc(p.year || t("年份待补"))}</small></span>${badge(ROLE[l.role] ?? t("关联"))}</button>${linkReview(app, d.id, l)}` : "";
   }).join("");
   const repositories = arr(d.repositories).map((r) =>
-    `<div class="evidence-item"><div class="evidence-head"><strong>${esc(r.repository.toUpperCase())} ${esc(r.accession)}</strong>${badge(r.verified ? t("已核实") : t("待核实"), r.verified ? "green" : "amber")}</div>${r.evidenceText ? `<blockquote>${esc(r.evidenceText)}</blockquote>` : ""}<div class="evidence-foot"><span class="evidence-source">${sourceLink(safeURL(r.url) || repositoryURL(r))}${r.evidenceUrl && r.evidenceUrl !== r.url ? sourceLink(r.evidenceUrl) : ""}</span><span class="section-actions"><button class="text-link" data-action="verify-repository" data-id="${esc(d.id)}" data-record="${esc(r.id)}" data-verified="${!r.verified}">${r.verified ? t("撤销核实") : t("核实编号")}</button></span></div></div>`,
+    `<div class="evidence-item"><div class="evidence-head"><strong>${esc(repositoryLabel(r.repository))} ${esc(r.accession)}</strong>${badge(r.verified ? t("已核实") : t("待核实"), r.verified ? "green" : "amber")}</div>${r.evidenceText ? `<blockquote>${esc(r.evidenceText)}</blockquote>` : ""}<div class="evidence-foot"><span class="evidence-source">${sourceLink(safeURL(r.url) || repositoryURL(r))}${r.evidenceUrl && r.evidenceUrl !== r.url ? sourceLink(r.evidenceUrl) : ""}</span><span class="section-actions"><button class="text-link" data-action="verify-repository" data-id="${esc(d.id)}" data-record="${esc(r.id)}" data-verified="${!r.verified}">${r.verified ? t("撤销核实") : t("核实编号")}</button></span></div></div>`,
   ).join("");
   const datasetHome = datasetLocation(d);
   const accessionValue = datasetHome

@@ -310,6 +310,13 @@ export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (
   ].join(" ").toLocaleLowerCase().includes(q));
 }
 
+export const REPOSITORIES: Record<string, string> = { geo: "GEO", gsa: "GSA / CNCB", sra: "SRA", ena: "ENA", bioproject: "BioProject", biosample: "BioSample", biostudies: "BioStudies", stomics: "STOmics DB", zenodo: "Zenodo", figshare: "Figshare", dryad: "Dryad", other: t("其他") };
+
+export const repositoryLabel = (repository: string): string => {
+  const key = repository.trim().toLowerCase();
+  return Object.hasOwn(REPOSITORIES, key) ? REPOSITORIES[key]! : repository;
+};
+
 const REPOSITORY_LINKS: Record<string, (accession: string) => string> = {
   geo: (a) => `https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${a}`,
   sra: (a) => `https://www.ncbi.nlm.nih.gov/sra/?term=${a}`,
@@ -317,6 +324,8 @@ const REPOSITORY_LINKS: Record<string, (accession: string) => string> = {
   bioproject: (a) => `https://www.ncbi.nlm.nih.gov/bioproject/${a}`,
   biosample: (a) => `https://www.ncbi.nlm.nih.gov/biosample/${a}`,
   biostudies: (a) => `https://www.ebi.ac.uk/biostudies/studies/${a}`,
+  // STOmics hosts several databases; use a recorded dataset URL for a direct link.
+  stomics: () => "https://db.cngb.org/stomics/",
   gsa: (a) => `https://ngdc.cncb.ac.cn/search/all?q=${a}`,
   zenodo: (a) => `https://zenodo.org/records/${a}`,
   figshare: (a) => `https://figshare.com/search?q=${a}`,
@@ -328,7 +337,8 @@ export function repositoryURL(record: { repository: string; accession: string; u
   const direct = safeURL(record.url);
   if (direct) return direct;
   const accession = record.accession.trim();
-  const build = REPOSITORY_LINKS[record.repository.trim().toLowerCase()];
+  const key = record.repository.trim().toLowerCase();
+  const build = Object.hasOwn(REPOSITORY_LINKS, key) ? REPOSITORY_LINKS[key] : undefined;
   return accession && build ? build(encodeURIComponent(accession)) : "";
 }
 

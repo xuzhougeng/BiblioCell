@@ -1,5 +1,10 @@
 // English strings for forms.
 export const forms: Record<string, string> = {
+  "新增并选中": "Add and select",
+  "新增仓库名称": "New repository name",
+  "选择植物物种": "Select a plant species",
+  "选择常见植物，或在下方填写其他物种": "Select a common plant, or enter another species below",
+  "仓库名称不能超过 100 个字符。": "Repository names must be at most 100 characters.",
   "编辑{field}": "Edit {field}",
   "已关联：{names}": "Linked: {names}",
   "检索并关联": "Find and link",

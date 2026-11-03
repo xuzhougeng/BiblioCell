@@ -4,7 +4,7 @@ import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
+  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
   reviewConcern, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
@@ -41,7 +41,7 @@ function datasetChips(app: App, p: Paper): string {
   const linked = app.paperDatasets(p.id);
   if (!linked.length) return `<span class="muted">${t("未关联")}</span>`;
   const chips = linked.slice(0, 2).map((d) => {
-    const label = d.accession || (d.repository ? d.repository.toUpperCase() : "") || d.title;
+    const label = d.accession || (d.repository ? repositoryLabel(d.repository) : "") || d.title;
     const url = datasetLocation(d);
     return url
       ? `<a class="link-chip" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${t("{title} · 在仓库中打开", { title: esc(d.title) })}"><span class="link-chip-title">${esc(label)}</span>${I("arrow-up-right", 12)}</a>`
@@ -203,7 +203,7 @@ export function datasetTable(items: Dataset[], app: App, none = empty(t("暂无�
     ).join("");
     const repos = arr(d.repositories);
     const repoLine = (r: DatasetRepository): string => {
-      const line = `<span>${esc(r.repository ? r.repository.toUpperCase() : t("仓库待补"))}</span><code>${esc(r.accession || t("编号待补"))}</code>`;
+      const line = `<span>${esc(r.repository ? repositoryLabel(r.repository) : t("仓库待补"))}</span><code>${esc(r.accession || t("编号待补"))}</code>`;
       const url = repositoryURL(r);
       return url
         ? `<a class="repo-line" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${t("在仓库中打开")}">${line}</a>`
@@ -238,7 +238,7 @@ export function renderDatasets(app: App): string {
     + `<div class="toolbar standalone-toolbar"><label class="table-search">${I("search", 18)}<input id="dataset-search" class="search-input" type="search" placeholder="${t("搜索物种、组织、accession 或关联文献…")}" value="${esc(app.datasetSearch)}" aria-label="${t("搜索数据集")}"></label></div>`;
   if (app.datasetView === "cards") {
     const cards = items.map((d) =>
-      `<button class="dataset-card" data-action="open-dataset" data-id="${esc(d.id)}"><div class="dataset-top"><span class="icon-wrap green">${I("database", 20)}</span><span class="dataset-badges">${d.awaitingReview ? badge(t("待核查"), "amber") : ""}${datasetStatusBadge(d)}</span></div><h3>${esc(d.title)}</h3><p class="species-name">${esc(speciesDisplay(d) || t("物种待补"))}</p><div class="tag-list">${badge(displayList(d.organs) || t("组织待补"))}${badge(displayList(d.modalities) || t("技术待补"), "blue")}${demoBadge(d)}</div><div class="dataset-accession"><span>${esc(d.repository ? d.repository.toUpperCase() : t("仓库待补"))}</span><code>${esc(d.accession || t("编号待补"))}</code></div><div class="dataset-footer"><span>${I("book", 15)} ${t("{n} 篇关联文献", { n: arr(d.paperLinks).length })}</span>${I("arrow-up-right", 17)}</div></button>`,
+      `<button class="dataset-card" data-action="open-dataset" data-id="${esc(d.id)}"><div class="dataset-top"><span class="icon-wrap green">${I("database", 20)}</span><span class="dataset-badges">${d.awaitingReview ? badge(t("待核查"), "amber") : ""}${datasetStatusBadge(d)}</span></div><h3>${esc(d.title)}</h3><p class="species-name">${esc(speciesDisplay(d) || t("物种待补"))}</p><div class="tag-list">${badge(displayList(d.organs) || t("组织待补"))}${badge(displayList(d.modalities) || t("技术待补"), "blue")}${demoBadge(d)}</div><div class="dataset-accession"><span>${esc(d.repository ? repositoryLabel(d.repository) : t("仓库待补"))}</span><code>${esc(d.accession || t("编号待补"))}</code></div><div class="dataset-footer"><span>${I("book", 15)} ${t("{n} 篇关联文献", { n: arr(d.paperLinks).length })}</span>${I("arrow-up-right", 17)}</div></button>`,
     ).join("");
     return head + (items.length ? `<div class="dataset-grid">${cards}</div>` : reviewDone ?? empty(t("暂无匹配数据集"), t("从文献详情关联数据，或先创建一条数据集记录。")));
   }

@@ -1,4 +1,4 @@
--- BiblioCell · schema v11
+-- BiblioCell · schema v13
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -195,8 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_dataset_relations_target ON dataset_relations(tar
 
 CREATE TABLE IF NOT EXISTS repository_records (
     id TEXT PRIMARY KEY NOT NULL,
-    repository TEXT NOT NULL CHECK (repository IN
-        ('geo','sra','ena','gsa','bioproject','biosample','biostudies','zenodo','figshare','dryad','other')),
+    repository TEXT NOT NULL CHECK (length(trim(repository)) BETWEEN 1 AND 100 AND repository = trim(repository)),
     accession TEXT NOT NULL CHECK (length(trim(accession)) > 0 AND accession = trim(accession)),
     record_kind TEXT NOT NULL DEFAULT 'unknown'
         CHECK (record_kind IN ('unknown','project','study','sample','experiment','run','analysis','collection','other')),
@@ -524,7 +523,9 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (7, 'agent 导入批次与数据集人工核实时间'),
        (9, '内置助手对话记录'),
        (10, '来源更新新增的文献与数据集进入待核查'),
-       (11, '检索式修改记录：助手可试检索、评估并更新检索式');
+       (11, '检索式修改记录：助手可试检索、评估并更新检索式'),
+       (12, '数据仓库支持 STOmics DB'),
+       (13, '支持自定义数据仓库名称');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 11;
+PRAGMA user_version = 13;
 COMMIT;

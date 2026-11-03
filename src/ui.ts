@@ -4,6 +4,8 @@ import type { Dataset, SpeciesEntry } from "./mygo.ts";
 import { icon } from "./icons.ts";
 import { FULL, SCREEN, arr, esc, splitList, type Filters } from "./model.ts";
 import { t, tv } from "./i18n.ts";
+import { distinctChoices, plantChoices, rememberChoices, repositoryChoices, type ChoiceKind } from "./research-options.ts";
+import type { LibraryState } from "./model.ts";
 
 export const I = icon;
 export const $ = <T extends Element = HTMLElement>(selector: string, root: ParentNode = document): T | null => root.querySelector<T>(selector);
@@ -66,10 +68,55 @@ export function checkboxGroup(name: string, values: string[], selected: string[]
 }
 
 export const customField = (name: string, placeholder: string): string =>
-  `<input class="input checkbox-custom" type="text" name="${name}" placeholder="${esc(placeholder)}" maxlength="500" aria-label="${t("自定义补充")}">`;
+  `<div class="metadata-custom" data-choice-kind="${name.startsWith("modalities") ? "modalities" : "platforms"}"><input class="input checkbox-custom" type="text" name="${name}" placeholder="${esc(placeholder)}" maxlength="500" aria-label="${t("自定义补充")}"><button type="button" class="btn btn-secondary" data-action="add-metadata-choice">${t("新增并选中")}</button></div>`;
 
-export const speciesRow = (entry: Partial<SpeciesEntry> = {}): string =>
-  `<div class="species-row"><input class="input" name="speciesName" type="text" value="${esc(entry.name ?? "")}" placeholder="${t("例如 Arabidopsis thaliana")}" maxlength="500" aria-label="${t("物种学名")}"><input class="input" name="speciesLabel" type="text" value="${esc(entry.label ?? "")}" placeholder="${t("例如 拟南芥")}" maxlength="500" aria-label="${t("物种中文名")}"><button type="button" class="btn-icon" data-action="remove-species-row" aria-label="${t("移除该物种")}">${I("x", 16)}</button></div>`;
+export function speciesRow(entry: Partial<SpeciesEntry> = {}, choices = plantChoices()): string {
+  const selected = choices.find(s => s.name.toLowerCase() === entry.name?.trim().toLowerCase());
+  return `<div class="species-row"><select class="input species-picker" data-species-picker aria-label="${t("选择植物物种")}">${option("", t("选择常见植物，或在下方填写其他物种"), selected?.name ?? "")}${choices.map(s => `<option value="${esc(s.name)}" data-label="${esc(s.label)}"${s === selected ? " selected" : ""}>${esc(s.label ? `${s.label} · ${s.name}` : s.name)}</option>`).join("")}</select><input class="input" name="speciesName" type="text" value="${esc(entry.name ?? "")}" placeholder="${t("例如 Arabidopsis thaliana")}" maxlength="500" aria-label="${t("物种学名")}"><input class="input" name="speciesLabel" type="text" value="${esc(entry.label ?? "")}" placeholder="${t("例如 拟南芥")}" maxlength="500" aria-label="${t("物种中文名")}"><button type="button" class="btn-icon" data-action="remove-species-row" aria-label="${t("移除该物种")}">${I("x", 16)}</button></div>`;
+}
+
+export function selectPlant(select: HTMLSelectElement): void {
+  if (!select.value) return; // Returning to manual entry keeps the current draft.
+  const row = select.closest(".species-row");
+  if (!row) return;
+  $<HTMLInputElement>("[name=speciesName]", row)!.value = select.value;
+  $<HTMLInputElement>("[name=speciesLabel]", row)!.value = select.selectedOptions[0]?.dataset.label ?? "";
+}
+
+export function repositoryField(state: LibraryState, name: string, selected = ""): string {
+  return `<div class="form-field repository-field"><label><span>${t("数据仓库")}</span><select class="input" name="${name}">${option("", t("待补充"), selected)}${options(repositoryChoices(state, selected), selected.toLowerCase())}</select></label><div class="metadata-custom" data-choice-kind="repositories"><input class="input" name="${name}Custom" maxlength="100" placeholder="${t("新增仓库名称")}" aria-label="${t("新增仓库名称")}"><button type="button" class="btn btn-secondary" data-action="add-metadata-choice">${t("新增并选中")}</button></div></div>`;
+}
+
+export function readRepository(data: FormData, name: string): string {
+  return (text(data, `${name}Custom`) || text(data, name)).toLowerCase();
+}
+
+/** Add in place so the current modal and every draft field remain mounted. */
+export function addMetadataChoice(button: HTMLElement): void {
+  const group = button.closest<HTMLElement>(".metadata-custom");
+  const input = group?.querySelector<HTMLInputElement>("input");
+  const kind = group?.dataset.choiceKind as ChoiceKind | undefined;
+  if (!input || !kind || !input.value.trim()) return;
+  const values = kind === "repositories" ? [input.value.trim()] : distinctChoices(splitList(input.value));
+  if (kind === "repositories") {
+    const select = group!.parentElement!.querySelector("select")!;
+    for (const value of values) {
+      const key = value.toLowerCase();
+      if (!Array.from(select.options).some(option => option.value === key)) select.add(new Option(value, key));
+      select.value = key;
+    }
+  } else {
+    const checkboxes = group!.previousElementSibling!;
+    for (const value of values) {
+      const existing = Array.from(checkboxes.querySelectorAll<HTMLInputElement>("input")).find(input => input.value.toLowerCase() === value.toLowerCase());
+      if (existing) existing.checked = true;
+      else checkboxes.insertAdjacentHTML("beforeend", `<label class="checkbox-choice"><input type="checkbox" name="${kind}" value="${esc(value)}" checked><span>${esc(value)}</span></label>`);
+    }
+  }
+  rememberChoices(kind, values);
+  input.value = "";
+  input.focus();
+}
 
 /** readSpeciesRows collects the dynamic species rows of a form, dropping rows without a scientific name. */
 export function readSpeciesRows(form: HTMLFormElement): SpeciesEntry[] {
@@ -83,7 +130,7 @@ export function readSpeciesRows(form: HTMLFormElement): SpeciesEntry[] {
 
 /** mergeChecked joins checkbox values with the comma-separated custom input, deduplicated, at most 50. */
 export function mergeChecked(data: FormData, name: string, custom: string): string[] {
-  return [...new Set([...data.getAll(name).map(String), ...splitList(data.get(custom))])].slice(0, 50);
+  return distinctChoices([...data.getAll(name).map(String), ...splitList(data.get(custom))]).slice(0, 50);
 }
 
 export const text = (data: FormData, name: string): string => String(data.get(name) ?? "").trim();

@@ -1,9 +1,10 @@
 // Focused paper editing. Panels stay mounted so navigation never loses a draft.
+import { plantChoices, researchChoices } from "./research-options.ts";
 import type { App } from "./app.ts";
 import type { Dataset, Paper } from "./mygo.ts";
-import { ARTICLE_TYPES, MODALITY_CHOICES, PLATFORM_CHOICES, ROLE, arr, clone, esc, filterDatasets, joinList, normalizeDataset, nowISO, splitList, uid } from "./model.ts";
+import { ARTICLE_TYPES, ROLE, repositoryLabel, arr, clone, esc, filterDatasets, joinList, normalizeDataset, nowISO, splitList, uid } from "./model.ts";
 import { t } from "./i18n.ts";
-import { $, $$, I, checkboxGroup, customField, field, mergeChecked, options, readSpeciesRows, setFormError, speciesRow, text } from "./ui.ts";
+import { $, $$, I, checkboxGroup, customField, field, mergeChecked, options, readRepository, repositoryField, readSpeciesRows, setFormError, speciesRow, text } from "./ui.ts";
 
 const fields = [
   ["species", t("研究物种")], ["organs", t("组织 / 部位")], ["modalities", t("测序类型")],
@@ -12,7 +13,6 @@ const fields = [
 ] as const;
 type FieldKey = typeof fields[number][0];
 const publicationStatuses = { unknown: t("尚未确认"), preprint: t("预印本"), published: t("正式发表"), unpublished: t("未发表") };
-const repositories = { geo: "GEO", gsa: "GSA / CNCB", sra: "SRA", ena: "ENA", bioproject: "BioProject", biosample: "BioSample", biostudies: "BioStudies", zenodo: "Zenodo", figshare: "Figshare", dryad: "Dryad", other: t("其他") };
 const snapshots = new WeakMap<HTMLFormElement, Partial<Paper>>();
 
 export function editableDetail(paperId: string, key: FieldKey, label: string, value: string, small = ""): string {
@@ -30,9 +30,9 @@ function datasetPicker(app: App, paperId: string): string {
   return (linked.length ? `<p class="muted">${t("已关联：{names}", { names: esc(linked.map(d => d.accession || d.title).join(" · ")) })}</p>` : "")
     + `<div class="field-mode"><button type="button" class="btn btn-secondary" data-action="field-dataset-mode" data-mode="existing" aria-pressed="true">${t("检索并关联")}</button><button type="button" class="btn btn-secondary" data-action="field-dataset-mode" data-mode="new" aria-pressed="false">${t("新建并关联")}</button></div>`
     + `<input type="hidden" name="datasetMode" value="existing"><fieldset data-dataset-mode="existing"><label class="form-field"><span>${t("检索数据集")}</span><input class="input" type="search" id="field-dataset-search" placeholder="${t("名称、Accession、物种或组织")}"></label><div class="dataset-picker">`
-    + available.map(d => `<label class="dataset-choice" data-dataset-choice="${esc(d.id)}"><input type="checkbox" name="datasetIds" value="${esc(d.id)}"><span><strong>${esc(d.title)}</strong><small>${esc(arr(d.repositories).map(r => [r.repository.toUpperCase(), r.accession].filter(Boolean).join(" ")).join(" · ") || d.id)}</small></span></label>`).join("")
+    + available.map(d => `<label class="dataset-choice" data-dataset-choice="${esc(d.id)}"><input type="checkbox" name="datasetIds" value="${esc(d.id)}"><span><strong>${esc(d.title)}</strong><small>${esc(arr(d.repositories).map(r => [repositoryLabel(r.repository), r.accession].filter(Boolean).join(" ")).join(" · ") || d.id)}</small></span></label>`).join("")
     + `</div><p class="muted" id="field-dataset-empty" ${available.length ? "hidden" : ""}>${t("没有匹配的数据集，可以新建并关联。")}</p></fieldset>`
-    + `<fieldset data-dataset-mode="new" hidden disabled>${field(t("数据集名称"), "datasetTitle", "", t("例如：拟南芥根尖发育数据"))}<label class="form-field"><span>${t("数据仓库")}</span><select class="input" name="datasetRepository"><option value="">${t("待补充")}</option>${options(repositories, "")}</select></label>${field("Accession", "datasetAccession", "", t("可先留空"))}<p class="muted small">${t("物种、组织和测序信息将沿用当前文献，之后可在数据集详情继续完善。")}</p></fieldset>`
+    + `<fieldset data-dataset-mode="new" hidden disabled>${field(t("数据集名称"), "datasetTitle", "", t("例如：拟南芥根尖发育数据"))}${repositoryField(app.state, "datasetRepository")}${field("Accession", "datasetAccession", "", t("可先留空"))}<p class="muted small">${t("物种、组织和测序信息将沿用当前文献，之后可在数据集详情继续完善。")}</p></fieldset>`
     + `<label class="form-field"><span>${t("这篇论文与数据的关系")}</span><select class="input" name="datasetRole">${options(ROLE, "reused")}</select></label>`;
 }
 
@@ -45,10 +45,10 @@ export function paperFieldModal(app: App, id: string, selected = "species"): voi
   const p = app.paperById(id);
   if (!p) return;
   const content: Record<FieldKey, string> = {
-    species: `<div class="species-rows" id="species-rows">${(arr(p.species).length ? p.species : [{}]).map(speciesRow).join("")}</div><button type="button" class="text-link" data-action="add-species-row">${I("plus", 15)} ${t("添加物种")}</button>`,
+    species: `<div class="species-rows" id="species-rows">${(arr(p.species).length ? p.species : [{}]).map(s => speciesRow(s, plantChoices(app.state))).join("")}</div><button type="button" class="text-link" data-action="add-species-row">${I("plus", 15)} ${t("添加物种")}</button>`,
     organs: field(t("组织 / 部位（逗号分隔）"), "organs", joinList(p.organs, ", "), t("例如 根, 叶")),
-    modalities: checkboxGroup("modalities", MODALITY_CHOICES, p.modalities, customField("modalitiesCustom", t("其他类型，逗号分隔"))),
-    platforms: checkboxGroup("platforms", PLATFORM_CHOICES, p.platforms, customField("platformsCustom", t("其他平台，逗号分隔"))),
+    modalities: checkboxGroup("modalities", researchChoices(app.state, "modalities"), p.modalities, customField("modalitiesCustom", t("其他类型，逗号分隔"))),
+    platforms: checkboxGroup("platforms", researchChoices(app.state, "platforms"), p.platforms, customField("platformsCustom", t("其他平台，逗号分隔"))),
     articleTypes: checkboxGroup("articleTypes", ARTICLE_TYPES, p.articleTypes),
     datasets: datasetPicker(app, id),
     source: field(t("发现来源"), "source", p.source),
@@ -139,8 +139,9 @@ export function savePaperFields(app: App, form: HTMLFormElement): void {
   const create = text(data, "datasetMode") === "new";
   let created: Dataset | undefined;
   if (create) {
-    const title = text(data, "datasetTitle"), repository = text(data, "datasetRepository"), accession = text(data, "datasetAccession");
+    const title = text(data, "datasetTitle"), repository = readRepository(data, "datasetRepository"), accession = text(data, "datasetAccession");
     if (!title) return fail("datasets", t("请填写数据集名称。"));
+    if ([...repository].length > 100) return fail("datasets", t("仓库名称不能超过 100 个字符。"));
     if (accession && !repository) return fail("datasets", t("填写 Accession 时，请同时选择数据仓库。"));
     if (accession && app.state.datasets.some(d => normalizeDataset(d).repositories.some(r => r.repository === repository && r.accession.toLowerCase() === accession.toLowerCase()))) return fail("datasets", t("这个仓库编号已存在，请检索并关联已有数据集。"));
     created = normalizeDataset({ id: uid("DS"), title, repository, accession, species: clone(nextPaper.species), organs: clone(nextPaper.organs), modalities: clone(nextPaper.modalities), platforms: clone(nextPaper.platforms), paperLinks: [{ paperId: paper.id, role, evidenceUrl: "", evidenceText: "", verified: false }], addedAt: nowISO(), updatedAt: nowISO() });
