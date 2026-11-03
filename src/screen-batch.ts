@@ -37,10 +37,18 @@ const batchTitle = (kind: BatchKind): string => (kind === "rerun" ? t("重跑 AI
 
 export function openBatch(app: App, kind: BatchKind = "batch"): void {
   if (app.batch) { showBatchProgress(app); return; }
-  if (!app.batchDraft || app.batchDraft.kind !== kind) {
-    const current = kind === "rerun" ? app.state.papers.filter(decided).map(p => p.id) : filterPapers(app.state.papers, app.filters).map(p => p.id);
-    app.batchDraft = { current, selected: new Set(current), scope: kind === "rerun" ? "decided" : "current", search: "", requirement: lastRequirement(), modelId: modelFor(app.env.settings, "screen")?.id ?? "", concurrency: app.env.settings.batchScreenConcurrency || 3, kind };
-  }
+  // Each entry from the library takes a fresh snapshot of its candidates: the
+  // current filtered results for a batch, every decided paper for a rerun.
+  // Returning from configuration uses showCandidates directly, retaining manual choices.
+  const current = kind === "rerun" ? app.state.papers.filter(decided).map(p => p.id) : filterPapers(app.state.papers, app.filters).map(p => p.id);
+  const previous = app.batchDraft;
+  app.batchDraft = {
+    current, selected: new Set(current), scope: kind === "rerun" ? "decided" : "current", search: "",
+    requirement: previous?.requirement ?? lastRequirement(),
+    modelId: previous?.modelId ?? modelFor(app.env.settings, "screen")?.id ?? "",
+    concurrency: previous?.concurrency ?? (app.env.settings.batchScreenConcurrency || 3),
+    kind,
+  };
   showCandidates(app);
 }
 
