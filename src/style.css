@@ -283,6 +283,23 @@ th { font-weight: 600 }
 .topbar-link:hover { background: rgba(42, 64, 47, 0.08); color: #4c5342 }
 .topbar-link svg { width: 20px; height: 20px }
 .topbar-link[hidden] { display: none }
+/* 新版本下载好后才出现的更新胶囊（update.ts），× 在悬停时露出，隐藏到下一个版本 */
+.update-wrap { position: relative; display: inline-flex; align-items: center; margin-right: 12px }
+.update-wrap[hidden] { display: none }
+.update-pill { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 12px 0 10px; border: 0; border-radius: 999px; background: var(--green-soft); box-shadow: inset 0 0 0 1px rgba(42, 106, 73, 0.28); color: var(--primary); font: inherit; font-size: calc(13px * var(--font-scale, 1)); font-weight: 600; white-space: nowrap; cursor: pointer; animation: update-in 450ms ease; transition: background 150ms ease, color 150ms ease, transform 120ms ease, opacity 150ms ease }
+.update-pill svg { flex: 0 0 auto; stroke-width: 2.2 }
+.update-pill:hover { background: var(--primary); color: #fff }
+.update-pill:active { transform: scale(0.96) }
+.update-pill.busy { pointer-events: none; opacity: 0.65 }
+.update-pill.failed { background: var(--amber-soft); box-shadow: inset 0 0 0 1px rgba(138, 93, 30, 0.3); color: var(--amber) }
+.update-pill.failed:hover { background: var(--amber); color: #fff }
+.update-hide { position: absolute; top: -6px; right: -6px; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgba(0, 0, 0, 0.12); color: var(--muted); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 120ms ease, color 120ms ease }
+.update-wrap:hover .update-hide, .update-hide:focus-visible { opacity: 1; pointer-events: auto }
+.update-hide:hover { color: var(--text-strong) }
+.update-pill.busy + .update-hide { display: none }
+.update-notes { max-height: 320px; overflow: auto; margin: 12px 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-deep) }
+@keyframes update-in { from { opacity: 0; transform: translateY(-3px) } to { opacity: 1; transform: none } }
+@media (prefers-reduced-motion: reduce) { .update-pill { animation: none } }
 .locale-toggle { margin-right: 6px; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.02em }
 .global-search { width: 320px; display: flex; gap: 10px; align-items: center; color: #76715e; border-bottom: 1.5px solid var(--line-strong); padding: 6px 2px }
 .global-search input { width: 100%; min-width: 0; border: 0; background: transparent; font-size: calc(14.5px * var(--font-scale, 1)); padding: 4px 0; color: var(--text-strong); outline: none }

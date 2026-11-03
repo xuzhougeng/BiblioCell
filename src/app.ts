@@ -4,6 +4,7 @@ import { calibrationActions, calibrationChange, emptyCalibration, type Calibrati
 import { pruneSelection, selectionActions, selectionChange } from "./selection.ts";
 import { shortcutsModal } from "./shortcuts.ts";
 import { icon } from "./icons.ts";
+import { initUpdate, updateActions } from "./update.ts";
 import type { ScreeningBatch } from "./screen-batch-queue.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
@@ -173,6 +174,7 @@ export class App {
       help.setAttribute("aria-label", t("快捷键"));
       topbar.prepend(help);
     }
+    initUpdate(this);
     // Selecting text while screening translates it: the card appears once the selection settles.
     document.addEventListener("selectionchange", () => {
       clearTimeout(this.selectionTimer);
@@ -988,6 +990,7 @@ export class App {
     ...batchActions(this),
     ...calibrationActions(this),
     ...selectionActions(this),
+    ...updateActions(this),
   };
 
   private onClick(e: MouseEvent): void {

@@ -27,7 +27,11 @@ func main() {
 	var store *library.Store
 	var mcpServer *library.MCPServer
 	var stopUpdates func()
+	updateCtx, stopAppUpdates := context.WithCancel(context.Background())
 	mygo.App.WhenReady(func() {
+		libraryService.updates = newAppUpdater()
+		libraryService.updates.start(updateCtx)
+
 		dataDir, err := mygo.App.Path(mygo.PathUserData)
 		if err != nil {
 			log.Fatalf("locate application data directory: %v", err)
@@ -89,6 +93,7 @@ func main() {
 	// OnQuit, not after Run: a relaunch starts the next instance before Run
 	// returns, and that instance needs the MCP port.
 	mygo.App.OnQuit(func() {
+		stopAppUpdates() // A download cut short is fetched again at the next launch.
 		if stopUpdates != nil {
 			stopUpdates() // Before the store closes: a run may be writing its result.
 		}

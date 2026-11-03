@@ -34,6 +34,7 @@ const paths: Record<string, string> = {
   alert: '<path d="m12 3 10 18H2Z"/><path d="M12 9v5m0 3v.1"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>',
   trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
+  arrowUp: '<path d="M12 19V5m-6.5 6.5L12 5l6.5 6.5"/>',
   keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/>',
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1.5M5.5 11h1.5"/>',
   // GitHub 的品牌标志是填充图形，自带 fill/stroke 覆盖描边默认值。

@@ -27,6 +27,7 @@ type Library struct {
 	mcpEndpoint        string
 	mcpToken           string
 	translationFlights singleflight.Group
+	updates            *appUpdater
 }
 
 // SettingsSaveResult tells the frontend which configuration changes need a restart.

@@ -34,4 +34,11 @@ export default defineConfig({
   windows: {
     signCommand: windowsSignCommand || undefined,
   },
+  // 自动更新：已安装的应用读最新 Release 里的 update-<平台>.json，只接受用这把公钥对应私钥签名的更新。
+  // 私钥由 `mygo keygen` 生成，存在 CI 的 MYGO_UPDATER_PRIVATE_KEY secret 里，不进仓库；
+  // 没有私钥时 `mygo build` 照常打包，只是不写更新文件。
+  updates: {
+    publicKey: "+xl0Y5UK0PG1v2kABam1m8iATF05OL/X8J3R07oZAYo=",
+    github: "xuzhougeng/BiblioCell",
+  },
 });
