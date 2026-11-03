@@ -20,7 +20,7 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
@@ -84,6 +84,7 @@ export class App {
   calibration: CalibrationState = emptyCalibration();
   /** The translation card floating by the selection in screening mode, if any. */
   translation: Translation | null = null;
+  abstractTranslations = new Map<string, AbstractTranslation>();
   /** Screening mode shows the stored PDF beside the paper unless hidden. */
   screenPdf = localStorage.getItem("bibliocell-screen-pdf") !== "off";
   private translationAnchor: DOMRect | null = null;
@@ -291,9 +292,12 @@ export class App {
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
     if (!this.screen) this.clearTranslation();
     updateScreeningContent(content, renderers[this.page]());
-    if (this.screen?.ai) {
+    if (this.screen) {
       const current = screenPapers(this)[this.screen.index];
-      if (current) this.requestJudgement(current.id);
+      if (current) {
+        this.loadCachedAbstract(current);
+        if (this.screen.ai) this.requestJudgement(current.id);
+      }
     }
     document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
     if (this.page === "agent") {
@@ -444,21 +448,57 @@ export class App {
     if (this.translation?.paperId === current.id && this.translation.source === selected.text) return;
     this.translate(current.id, selected.text, selected.rect);
   }
-  /** translateInScreening (button or T) renders the selection, or the whole abstract when nothing is selected. */
+  /** Restore a saved translation on entry, keeping the original visible until toggled. */
+  private loadCachedAbstract(paper: Paper): void {
+    if (!this.env.desktop || !this.env.real || !paper.abstract.trim() || currentAbstractTranslation(this, paper)) return;
+    const result: AbstractTranslation = { paperId: paper.id, source: paper.abstract.trim(), prompt: this.env.settings.translationPrompt ?? "", showOriginal: true, state: "checking" };
+    this.abstractTranslations.set(paper.id, result);
+    Library.cachedTranslation(result.source).then((text) => {
+      if (this.abstractTranslations.get(paper.id) !== result) return;
+      this.abstractTranslations.set(paper.id, text ? { ...result, state: "done", text } : { ...result, state: "uncached" });
+      updateScreenAbstract(this, paper.id);
+    }, () => {
+      if (this.abstractTranslations.get(paper.id) === result) this.abstractTranslations.set(paper.id, { ...result, state: "uncached" });
+    });
+  }
+  /** Translate the original abstract in place; cache it for switching back and forth. */
   translateInScreening(id: string): void {
     const p = this.paperById(id);
     if (!p || !this.canTranslate()) return;
-    const selected = this.screeningSelection();
-    if (selected) {
-      this.translate(id, selected.text, selected.rect);
-      return;
-    }
-    const abstract = $(".screen-body .abstract-text");
-    if (!p.abstract.trim() || !abstract) {
+    if (!p.abstract.trim()) {
       this.toast(t("先划选要翻译的文字，或为文献补充摘要。"), true);
       return;
     }
-    this.translate(id, p.abstract.trim(), abstract.getBoundingClientRect());
+    this.clearTranslation();
+    const cached = currentAbstractTranslation(this, p);
+    if (cached?.state === "loading") return;
+    if (cached?.state === "done") {
+      cached.showOriginal = false;
+      updateScreenAbstract(this, id);
+      return;
+    }
+    const result: AbstractTranslation = { paperId: id, source: p.abstract.trim(), prompt: this.env.settings.translationPrompt ?? "", showOriginal: false, state: "loading" };
+    this.abstractTranslations.set(id, result);
+    updateScreenAbstract(this, id);
+    Library.translateText(result.source).then((text) => {
+      if (this.abstractTranslations.get(id) !== result) return;
+      this.abstractTranslations.set(id, { ...result, state: "done", text });
+      updateScreenAbstract(this, id);
+    }, (error: unknown) => {
+      if (this.abstractTranslations.get(id) !== result) return;
+      this.abstractTranslations.set(id, { ...result, state: "error", message: errorMessage(error, t("翻译失败，请重试。")) });
+      updateScreenAbstract(this, id);
+    });
+  }
+  toggleAbstractTranslation(id: string): void {
+    const paper = this.paperById(id);
+    const result = paper && currentAbstractTranslation(this, paper);
+    if (result?.state !== "done") return;
+    result.showOriginal = !result.showOriginal;
+    updateScreenAbstract(this, id);
+  }
+  retrySelectionTranslation(): void {
+    if (this.translation && this.translationAnchor) this.translate(this.translation.paperId, this.translation.source, this.translationAnchor);
   }
   private translate(id: string, source: string, anchor: DOMRect): void {
     const translation: Translation = { paperId: id, source, state: "loading" };

@@ -8,7 +8,7 @@ import { filterPapers, type LibraryState, type Paper } from "../src/model.ts";
 
 const previewEnv = (): Env => ({
   desktop: false, real: false,
-  settings: { storagePath: "", fontSize: 15, batchScreenConcurrency: 3, mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
+  settings: { storagePath: "", fontSize: 15, batchScreenConcurrency: 3, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],
   automation: { enabled: false, intervalHours: 24, running: false, lastRunAt: "", nextRunAt: "", added: 0, skipped: 0, failures: [] },

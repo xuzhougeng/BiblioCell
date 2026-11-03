@@ -76,6 +76,24 @@ func TestTranslateReturnsTheModelsText(t *testing.T) {
 	}
 }
 
+func TestTranslateWithCustomPrompt(t *testing.T) {
+	provider := answering("Root atlas")
+	prompt := "Translate into English. Output only the translation."
+	if _, err := TranslateWithPrompt(context.Background(), provider, "根图谱", prompt); err != nil {
+		t.Fatal(err)
+	}
+	if provider.requests[0].System != prompt || provider.requests[0].Messages[0].Content != "根图谱" {
+		t.Fatalf("translation request = %+v", provider.requests[0])
+	}
+	provider = answering("根图谱")
+	if _, err := TranslateWithPrompt(context.Background(), provider, "Root atlas", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if provider.requests[0].System != DefaultTranslationPrompt {
+		t.Fatal("blank prompt must use the default Simplified Chinese instructions")
+	}
+}
+
 func TestParseJudgementReadsConfidenceAndExcerpt(t *testing.T) {
 	j, err := parseJudgement("```json\n{\"verdict\":\"Include\",\"reason\":\"roots\",\"excerpt\":\" Root cells were sequenced. \",\"confidence\":0.75}\n```")
 	if err != nil || j.Verdict != "included" || j.Reason != "roots" || j.Excerpt != "Root cells were sequenced." || j.Confidence == nil || *j.Confidence != 0.75 {

@@ -1,4 +1,4 @@
--- BiblioCell · schema v14
+-- BiblioCell · schema v15
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -449,6 +449,12 @@ CREATE INDEX IF NOT EXISTS idx_agent_conversations_updated ON agent_conversation
 
 -- AI 筛选建议：每次让模型判断一篇文献都留一条记录（生成时间、模型配置、结论、置信度、理由），
 -- 只用于和人的收录判断对照，不改变 paper_curation。人的决定仍只在 screening_status。
+CREATE TABLE IF NOT EXISTS translation_cache (
+    cache_key TEXT PRIMARY KEY NOT NULL,
+    translated_text TEXT NOT NULL CHECK (length(trim(translated_text)) > 0),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE TABLE IF NOT EXISTS screening_suggestions (
     id TEXT PRIMARY KEY NOT NULL,
     paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
@@ -555,7 +561,8 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (11, '检索式修改记录：助手可试检索、评估并更新检索式'),
        (12, '数据仓库支持 STOmics DB'),
        (13, '支持自定义数据仓库名称'),
-       (14, 'AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照');
+       (14, 'AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照'),
+       (15, '按原文与提示词缓存翻译结果');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 14;
+PRAGMA user_version = 15;
 COMMIT;

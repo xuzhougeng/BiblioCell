@@ -42,12 +42,35 @@ export type Translation =
   | { paperId: string; source: string; state: "done"; text: string }
   | { paperId: string; source: string; state: "error"; message: string };
 
+export type AbstractTranslation = (Translation | { paperId: string; source: string; state: "checking" | "uncached" }) & { prompt: string; showOriginal: boolean };
+
+export function currentAbstractTranslation(app: App, p: Paper): AbstractTranslation | undefined {
+  const result = app.abstractTranslations.get(p.id);
+  return result?.source === p.abstract.trim() && result.prompt === (app.env.settings.translationPrompt ?? "") ? result : undefined;
+}
+
+function abstractSection(app: App, p: Paper): string {
+  const result = currentAbstractTranslation(app, p);
+  let controls = "";
+  if (result?.state === "done") controls = `<button class="btn btn-secondary" data-action="screen-abstract-toggle" data-id="${esc(p.id)}">${result.showOriginal ? t("显示译文") : t("显示原文")}</button>`;
+  if (result?.state === "loading") controls = `<span class="muted" role="status">${t("正在翻译…")}</span>`;
+  if (result?.state === "error") controls = `<span class="form-error" role="alert">${esc(result.message)}</span><button class="text-link" data-action="screen-translate" data-id="${esc(p.id)}">${t("重试")}</button>`;
+  const text = result?.state === "done" && !result.showOriginal ? result.text : p.abstract;
+  return `<section class="detail-section" id="screen-abstract" data-paper-id="${esc(p.id)}"><div class="screen-abstract-heading"><h3>${t("摘要")}</h3><div class="section-actions">${controls}</div></div><p class="abstract-text">${esc(text || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`;
+}
+
+export function updateScreenAbstract(app: App, id: string): void {
+  const region = $("#screen-abstract");
+  const paper = app.paperById(id);
+  if (region?.dataset.paperId === id && paper) region.outerHTML = abstractSection(app, paper);
+}
+
 /** translationPop is the floating card that follows a selection: the original in brief, then the Chinese. */
 export function translationPop(tr: Translation): string {
   const brief = tr.source.length > 80 ? `${tr.source.slice(0, 80)}…` : tr.source;
   const head = `<div class="translate-pop-head"><span class="ai-box-label">${I("sparkle", 14)} ${t("译文")}</span><button class="btn-icon" data-action="screen-translate-clear" aria-label="${t("收起译文")}">${I("x", 16)}</button></div><p class="translate-pop-source" title="${esc(tr.source)}">${esc(brief)}</p>`;
   if (tr.state === "loading") return `${head}<p class="muted translate-pop-wait"><span class="ai-spinner"></span>${t("正在翻译…")}</p>`;
-  if (tr.state === "error") return `${head}<p class="translate-pop-error">${esc(tr.message)}</p><button class="text-link" data-action="screen-translate" data-id="${esc(tr.paperId)}">${t("重试")}</button>`;
+  if (tr.state === "error") return `${head}<p class="translate-pop-error">${esc(tr.message)}</p><button class="text-link" data-action="screen-translate-selection">${t("重试")}</button>`;
   return `${head}<p class="translate-pop-text">${esc(tr.text)}</p>`;
 }
 
@@ -258,7 +281,7 @@ export function renderScreening(app: App): string {
     + `<div class="screen-toolbar"><button class="btn btn-secondary" data-action="exit-screening">${I("x", 16)} ${t("退出筛选")} ${kbd("Esc")}</button><div class="screen-progress"><strong>${t("第 {n} / {total} 篇", { n: screen.index + 1, total })}</strong><span class="muted">${t("已判断 {done} 篇", { done: decided })}</span></div><div class="screen-nav">${pdfToggle}${aiToggle}<button class="btn btn-secondary" data-action="screen-prev" ${screen.index === 0 ? "disabled" : ""} aria-label="${t("上一篇")}">${I("chevron-left", 16)} ${t("上一篇")}</button><button class="btn btn-secondary" data-action="screen-next" ${screen.index >= total - 1 ? "disabled" : ""} aria-label="${t("下一篇")}">${t("下一篇")} ${I("chevron-right", 16)}</button></div></div>`
     + `<div class="screen-counts">${counts}</div>`
     + `<div class="screen-split${pdf ? " has-pdf" : ""}"><div class="screen-body">`
-    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("划选文字会自动翻译；没有划选时翻译整段摘要")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · 判断后自动跳到下一篇")}</span></div></div>`
+    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("翻译整段摘要并原位显示；划选文字可单独翻译")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · 判断后自动跳到下一篇")}</span></div></div>`
     + `<div class="screen-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? t("未读"))}${p.publicationStatus === "preprint" ? badge(t("预印本"), "amber") : ""}${demoBadge(p)}${p.starred ? badge(t("已收藏"), "amber") : ""}<span class="muted screen-id">${esc(p.id)}</span></div>`
     + `<h2 class="screen-title">${esc(p.title)}</h2>`
     + `<p class="paper-meta">${esc(p.authors || t("作者待补"))} · ${esc(p.journal || t("期刊待补"))} · ${esc(p.year || t("年份待补"))}</p>`
@@ -267,7 +290,7 @@ export function renderScreening(app: App): string {
     + `<div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>`
     + metadataButton(app, p)
     + `<div class="detail-grid screen-grid">${editableDetail(p.id, "species", t("研究物种"), esc(speciesDisplay(p) || t("待补")) + (speciesNames(p).length ? `<small class="muted"> ${esc(joinList(speciesNames(p), listSeparator))}</small>` : ""))}${editableDetail(p.id, "organs", t("组织 / 部位"), esc(displayList(p.organs) || t("待补")))}${editableDetail(p.id, "modalities", t("测序类型"), esc(displayList(p.modalities) || t("待补")))}${editableDetail(p.id, "platforms", t("测序平台"), esc(displayList(p.platforms) || t("待补")))}${editableDetail(p.id, "articleTypes", t("文献类型"), esc(displayList(p.articleTypes) || t("待判断")))}${editableDetail(p.id, "datasets", t("关联数据集"), ds.length ? esc(ds.map((d) => d.accession || d.title).join(listSeparator)) : `<span class="muted">${t("未关联")}</span>`)}${editableDetail(p.id, "source", t("发现来源"), esc(tv(p.source || "手动添加")))}${editableDetail(p.id, "addedAt", t("加入时间"), dateText(p.addedAt))}</div>`
-    + `<section class="detail-section"><h3>${t("摘要")}</h3><p class="abstract-text">${esc(p.abstract || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`
+    + abstractSection(app, p)
     + fulltextEvidence(app, p)
     + (arr(p.tags).length ? `<section class="detail-section"><h3>${t("主题标签")}</h3><div class="tag-list">${arr(p.tags).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}</div></section>` : "")
     + (p.notes ? `<section class="detail-section"><h3>${t("研究笔记")}</h3><p class="abstract-text">${esc(p.notes)}</p></section>` : "")
@@ -288,6 +311,8 @@ export const screenActions = (app: App): Record<string, (el: HTMLElement, id: st
   "screen-ai-retry": (_el, id) => app.requestJudgement(id, true),
   "screen-ai-adopt": (_el, id) => app.adoptJudgement(id),
   "screen-translate": (_el, id) => app.translateInScreening(id),
+  "screen-abstract-toggle": (_el, id) => app.toggleAbstractTranslation(id),
+  "screen-translate-selection": () => app.retrySelectionTranslation(),
   "screen-translate-clear": () => app.clearTranslation(),
   "screen-pdf-toggle": () => app.toggleScreenPdf(),
   "screen-jump-page": (el, id) => { void jumpToPdfPage(app, id, Number(el.dataset.page ?? 0), el.dataset.excerpt ?? ""); },

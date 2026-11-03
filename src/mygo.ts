@@ -81,6 +81,7 @@ export interface Config {
   storagePath: string;
   fontSize: number;
   batchScreenConcurrency: number;
+  translationPrompt: string;
   mcpToken: string;
   ncbiApiKey: string;
   contactEmail: string;
@@ -497,6 +498,10 @@ export const Library = {
   applyPaperMetadata(before: Paper, proposal: MetadataProposal): Promise<void> {
     return call("Library.ApplyPaperMetadata", before, proposal);
   },
+  /** CachedTranslation reads a saved result without invoking the model. */
+  cachedTranslation(text: string): Promise<string> {
+    return call("Library.CachedTranslation", text);
+  },
   /**
    * CalibrationReport compares recorded AI suggestions with the person's
    * decisions: agreement rate, confusion matrix and the papers they disagree on.
@@ -699,7 +704,7 @@ export const Library = {
   syncSource(id: string): Promise<SyncResult> {
     return call("Library.SyncSource", id);
   },
-  /** TranslateText renders text in Chinese with the model bound to translation. */
+  /** TranslateText uses the saved prompt and the model bound to translation. */
   translateText(text: string): Promise<string> {
     return call("Library.TranslateText", text);
   },

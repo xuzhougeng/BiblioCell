@@ -10,12 +10,106 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"bibliocell/internal/agent"
 	"bibliocell/internal/library"
 	"bibliocell/internal/settings"
 )
+
+func TestTranslateTextUsesSavedPrompt(t *testing.T) {
+	requests := make(chan string, 32)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct{ Content string } `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Messages) < 2 {
+			t.Error("invalid translation request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		requests <- body.Messages[0].Content
+		if body.Messages[1].Content == "empty reply" {
+			fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":""}}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"Root atlas"}}]}`)
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	preferences, err := settings.Open(filepath.Join(dir, "settings.json"), dir, strings.Repeat("t", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := preferences.Get()
+	config.Models = []settings.ModelProfile{{ID: "translation", Name: "Translation", Config: agent.Config{Protocol: "openai", Model: "test-model", BaseURL: server.URL}}}
+	config.TranslationPrompt = "Translate into English. Preserve scientific names."
+	if err := preferences.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "library.sqlite")
+	store, err := library.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Library{settings: preferences, store: store}
+	t.Cleanup(func() { service.store.Close() })
+	if text, err := service.TranslateText("根图谱"); err != nil || text != "Root atlas" {
+		t.Fatalf("TranslateText = %q, %v", text, err)
+	}
+	if prompt := <-requests; prompt != config.TranslationPrompt {
+		t.Fatalf("system prompt = %q", prompt)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = library.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service = &Library{settings: preferences, store: store}
+	if text, err := service.CachedTranslation("根图谱"); err != nil || text != "Root atlas" {
+		t.Fatalf("restored cache = %q, %v", text, err)
+	}
+	if _, err := service.TranslateText("根图谱"); err != nil || len(requests) != 0 {
+		t.Fatalf("cache hit called the model: %v", err)
+	}
+	config.TranslationPrompt = "Translate into French."
+	if err := preferences.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := service.CachedTranslation("根图谱"); err != nil || text != "" {
+		t.Fatalf("changed prompt reused stale text: %q, %v", text, err)
+	}
+	var group sync.WaitGroup
+	for range 12 {
+		group.Go(func() {
+			if _, err := service.TranslateText("根图谱"); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	group.Wait()
+	if len(requests) != 1 {
+		t.Fatalf("concurrent translations made %d requests, want 1", len(requests))
+	}
+	<-requests
+	if text, err := service.CachedTranslation("different abstract"); err != nil || text != "" {
+		t.Fatalf("changed source reused stale text: %q, %v", text, err)
+	}
+	for range 2 {
+		if _, err := service.TranslateText("empty reply"); err == nil {
+			t.Fatal("empty model result succeeded")
+		}
+	}
+	if len(requests) != 2 {
+		t.Fatal("failed translations must be retried")
+	}
+	if text, err := service.CachedTranslation("empty reply"); err != nil || text != "" {
+		t.Fatalf("failed translation cached: %q, %v", text, err)
+	}
+}
 
 func TestScreenPaperUsesSelectedModelWithoutChangingLibrary(t *testing.T) {
 	requests := make(chan string, 4)

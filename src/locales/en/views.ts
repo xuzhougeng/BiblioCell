@@ -1,5 +1,11 @@
 // English strings for views.
 export const views: Record<string, string> = {
+  "显示原文": "Show original",
+  "显示译文": "Show translation",
+  "翻译整段摘要并原位显示；划选文字可单独翻译": "Translate the entire abstract in place; select text to translate a passage separately",
+  "翻译提示词": "Translation prompt",
+  "默认翻译为简体中文。可在提示词中指定其他目标语言、术语和输出要求；留空保存可恢复默认。摘要与划选翻译均使用此提示词。": "Defaults to Simplified Chinese. Specify another target language, terminology, or output requirements in the prompt. Save an empty prompt to restore the default. Applies to abstracts and selected text.",
+  "按翻译提示词翻译摘要或划选段落": "Translate abstracts or selected passages using the translation prompt",
   "PDF 目录": "PDF outline",
   "PDF 页码": "PDF page number",
   "缩小 PDF": "Zoom out",
