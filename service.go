@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"golang.org/x/sync/singleflight"
 
 	"bibliocell/internal/agent"
 	"bibliocell/internal/library"
@@ -21,10 +22,11 @@ import (
 
 // Library exposes local library operations to the frontend.
 type Library struct {
-	store       *library.Store
-	settings    *settings.Store
-	mcpEndpoint string
-	mcpToken    string
+	store              *library.Store
+	settings           *settings.Store
+	mcpEndpoint        string
+	mcpToken           string
+	translationFlights singleflight.Group
 }
 
 // SettingsSaveResult tells the frontend which configuration changes need a restart.
@@ -524,18 +526,55 @@ func (l *Library) provider(task string) (agent.Provider, error) {
 	return agent.NewProvider(profile.Config)
 }
 
-// TranslateText renders text in Chinese with the model bound to translation.
+// TranslateText uses the saved prompt and the model bound to translation.
 func (l *Library) TranslateText(text string) (string, error) {
 	if l.settings == nil {
 		return "", errors.New("settings are not ready")
 	}
-	provider, err := l.provider(settings.TaskTranslate)
+	text = strings.TrimSpace(text)
+	config := l.settings.Get()
+	key := library.TranslationCacheKey(text, config.TranslationPrompt)
+	result, err, _ := l.translationFlights.Do(key, func() (any, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if l.store != nil {
+			cached, err := l.store.CachedTranslation(ctx, key)
+			if err != nil || cached != "" {
+				return cached, err
+			}
+		}
+		profile, err := config.ModelFor(settings.TaskTranslate)
+		if err != nil {
+			return "", err
+		}
+		provider, err := agent.NewProvider(profile.Config)
+		if err != nil {
+			return "", err
+		}
+		translated, err := agent.TranslateWithPrompt(ctx, provider, text, config.TranslationPrompt)
+		if err != nil {
+			return "", err
+		}
+		if l.store != nil {
+			if err := l.store.CacheTranslation(ctx, key, translated); err != nil {
+				return "", err
+			}
+		}
+		return translated, nil
+	})
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	return agent.Translate(ctx, provider, text)
+	return result.(string), nil
+}
+
+// CachedTranslation reads a saved result without invoking the model.
+func (l *Library) CachedTranslation(text string) (string, error) {
+	if l.settings == nil || l.store == nil {
+		return "", errors.New("library settings and database are not ready")
+	}
+	key := library.TranslationCacheKey(text, l.settings.Get().TranslationPrompt)
+	return l.store.CachedTranslation(context.Background(), key)
 }
 
 // Restart relaunches the app, which then opens the saved storage folder.

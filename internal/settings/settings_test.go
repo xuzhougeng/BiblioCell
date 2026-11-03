@@ -15,6 +15,39 @@ import (
 
 var testToken = strings.Repeat("t", 64)
 
+func TestTranslationPromptDefaultsAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	legacy := Config{StoragePath: dir, FontSize: 15, MCPToken: testToken}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path, dir, testToken)
+	if err != nil || store.Get().TranslationPrompt != agent.DefaultTranslationPrompt {
+		t.Fatalf("legacy translation prompt: %v", err)
+	}
+	config := store.Get()
+	config.TranslationPrompt = "Translate into French. Output only the translation."
+	if err := store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path, dir, testToken)
+	if err != nil || reopened.Get().TranslationPrompt != config.TranslationPrompt {
+		t.Fatalf("custom prompt did not persist: %v", err)
+	}
+	config.TranslationPrompt = "  "
+	if err := reopened.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Get().TranslationPrompt != agent.DefaultTranslationPrompt {
+		t.Fatal("saving a blank prompt must restore the default")
+	}
+}
+
 func TestBatchScreenConcurrencyDefaultsPersistsAndRejectsInvalidValues(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "settings.json")
@@ -69,6 +102,7 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	}
 
 	want := Config{StoragePath: filepath.Join(directory, "research"), FontSize: 18, BatchScreenConcurrency: DefaultBatchScreenConcurrency, MCPToken: testToken}
+	want.TranslationPrompt = agent.DefaultTranslationPrompt
 	if err := store.Save(want); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}

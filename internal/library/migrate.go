@@ -69,6 +69,15 @@ var migrations = []Migration{
 CREATE INDEX IF NOT EXISTS idx_screening_suggestions_paper ON screening_suggestions(paper_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_screening_suggestions_run ON screening_suggestions(run_id, created_at DESC);`,
 	},
+	{
+		Version:     15,
+		Description: "按原文与提示词缓存翻译结果",
+		SQL: `CREATE TABLE IF NOT EXISTS translation_cache (
+    cache_key TEXT PRIMARY KEY NOT NULL,
+    translated_text TEXT NOT NULL CHECK (length(trim(translated_text)) > 0),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);`,
+	},
 }
 
 // SchemaVersion is the schema this build writes: the baseline plus every

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const translateSystem = `你是翻译助手。把用户给出的文本翻译成简体中文，保留术语、基因名、物种学名和数字原样。
+const DefaultTranslationPrompt = `你是翻译助手。把用户给出的文本翻译成简体中文，保留术语、基因名、物种学名和数字原样。
 只输出译文，不加解释、不加引号、不加标题。`
 
 // maxTranslateRunes caps one translation request; a screening page's abstract
@@ -15,11 +15,20 @@ const maxTranslateRunes = 20_000
 
 // Translate renders text in Chinese with a single completion.
 func Translate(ctx context.Context, provider Provider, text string) (string, error) {
+	return TranslateWithPrompt(ctx, provider, text, DefaultTranslationPrompt)
+}
+
+// TranslateWithPrompt applies the user's translation instructions to the source text.
+func TranslateWithPrompt(ctx context.Context, provider Provider, text, prompt string) (string, error) {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		prompt = DefaultTranslationPrompt
+	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return "", errors.New("没有要翻译的文字")
 	}
-	response, err := provider.Complete(ctx, Request{System: translateSystem, Messages: []Message{{Role: "user", Content: truncateRunes(text, maxTranslateRunes)}}})
+	response, err := provider.Complete(ctx, Request{System: prompt, Messages: []Message{{Role: "user", Content: truncateRunes(text, maxTranslateRunes)}}})
 	if err != nil {
 		return "", err
 	}

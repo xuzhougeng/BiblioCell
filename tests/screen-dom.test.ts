@@ -14,13 +14,138 @@ import { Library, type Judgement } from "../src/mygo.ts";
 
 const desktopEnv = (): Env => ({
   desktop: true, real: true,
-  settings: { storagePath: "/tmp/library", fontSize: 15, batchScreenConcurrency: 3, mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
+  settings: { storagePath: "/tmp/library", fontSize: 15, batchScreenConcurrency: 3, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],
   automation: { enabled: false, intervalHours: 24, running: false, lastRunAt: "", nextRunAt: "", added: 0, skipped: 0, failures: [] },
 });
 
 const judgement = { verdict: "included", reason: "Root scRNA-seq with public data", basis: "fulltext", skipped: false } as Judgement;
+
+test("reopening a paper restores its saved translation without calling the model", async (t: TestContext) => {
+  const lookup = t.mock.method(Library, "cachedTranslation", async () => "数据库中的译文");
+  const translate = t.mock.method(Library, "translateText", async () => { throw new Error("model must not be called"); });
+  const { app, state } = screeningApp();
+  const checkReader = reader($<HTMLIFrameElement>(".screen-pdf-frame"));
+  await setImmediate();
+  assert.equal($("#screen-abstract .abstract-text").textContent, state.papers[0]!.abstract);
+  $('[data-action="screen-abstract-toggle"]').click();
+  assert.equal(text("#screen-abstract .abstract-text"), "数据库中的译文");
+  app.render();
+  await setImmediate();
+  assert.equal(lookup.mock.callCount(), 1);
+  assert.equal(translate.mock.callCount(), 0);
+  checkReader("after restoring and displaying cached translation");
+  screeningApp();
+  await setImmediate();
+  $('[data-action="screen-abstract-toggle"]').click();
+  assert.equal(text("#screen-abstract .abstract-text"), "数据库中的译文");
+  assert.equal(lookup.mock.callCount(), 2);
+  assert.equal(translate.mock.callCount(), 0);
+});
+
+test("a late cache lookup cannot overwrite a newly requested translation", async (t: TestContext) => {
+  const lookup = Promise.withResolvers<string>();
+  t.mock.method(Library, "cachedTranslation", () => lookup.promise);
+  t.mock.method(Library, "translateText", async () => "新译文");
+  const { app, ids } = screeningApp();
+  t.mock.method(app, "canTranslate", () => true);
+  app.translateInScreening(ids[0]!);
+  await setImmediate();
+  lookup.resolve("旧译文");
+  await setImmediate();
+  assert.equal(text("#screen-abstract .abstract-text"), "新译文");
+});
+
+test("abstract translation replaces the displayed text and toggles without saving or another request", async (t: TestContext) => {
+  const { app, state, ids, saved } = screeningApp();
+  t.mock.method(app, "canTranslate", () => true);
+  app.render();
+  const original = state.papers[0]!.abstract;
+  const pending = Promise.withResolvers<string>();
+  const translate = t.mock.method(Library, "translateText", () => pending.promise);
+  const checkReader = reader($<HTMLIFrameElement>(".screen-pdf-frame"));
+  $('[data-action="screen-translate"]').click();
+  assert.equal(text("#screen-abstract .abstract-text"), original.replace(/\s+/g, " ").trim());
+  assert.equal(text("#screen-abstract [role=status]"), "正在翻译…");
+  app.translateInScreening(ids[0]!);
+  assert.equal(translate.mock.callCount(), 1);
+  pending.resolve("译文 <em>保留为文本</em>\n第二段");
+  await setImmediate();
+  assert.equal($("#screen-abstract .abstract-text").textContent, "译文 <em>保留为文本</em>\n第二段");
+  assert.equal(document.querySelector("#screen-abstract em"), null);
+  assert.equal(document.querySelector("#translate-pop"), null);
+  assert.equal(state.papers[0]!.abstract, original);
+  assert.equal(saved.length, 0);
+  assert.equal(text('[data-action="screen-abstract-toggle"]'), "显示原文");
+  $('[data-action="screen-abstract-toggle"]').click();
+  assert.equal($("#screen-abstract .abstract-text").textContent, original);
+  assert.equal(text('[data-action="screen-abstract-toggle"]'), "显示译文");
+  $('[data-action="screen-abstract-toggle"]').click();
+  app.render();
+  assert.match(text("#screen-abstract .abstract-text"), /译文/);
+  assert.equal(translate.mock.callCount(), 1);
+  checkReader("after translation, toggles and rerender");
+});
+
+test("late translations stay with their paper and changed prompts or abstracts invalidate cached text", async (t: TestContext) => {
+  const { app, state, ids } = screeningApp();
+  t.mock.method(app, "canTranslate", () => true);
+  const first = Promise.withResolvers<string>();
+  const second = Promise.withResolvers<string>();
+  const translate = t.mock.method(Library, "translateText", () => first.promise);
+  app.translateInScreening(ids[0]!);
+  app.moveScreening(1);
+  first.resolve("第一篇译文");
+  await setImmediate();
+  assert.equal($("#screen-abstract .abstract-text").textContent, state.papers[1]!.abstract);
+  app.moveScreening(-1);
+  assert.equal(text("#screen-abstract .abstract-text"), "第一篇译文");
+  app.env.settings.translationPrompt = "Translate into English.";
+  app.render();
+  assert.equal(document.querySelector('[data-action="screen-abstract-toggle"]'), null);
+  translate.mock.mockImplementation(() => second.promise);
+  app.translateInScreening(ids[0]!);
+  state.papers[0]!.abstract = "A revised abstract.";
+  app.render();
+  second.resolve("Stale translation");
+  await setImmediate();
+  assert.equal(text("#screen-abstract .abstract-text"), "A revised abstract.");
+  translate.mock.mockImplementation(async () => "Revised translation");
+  app.translateInScreening(ids[0]!);
+  await setImmediate();
+  assert.equal(text("#screen-abstract .abstract-text"), "Revised translation");
+  assert.equal(translate.mock.calls[2]!.arguments[0], "A revised abstract.");
+});
+
+test("translation errors retain the original abstract and can be retried", async (t: TestContext) => {
+  const { app, state, ids } = screeningApp();
+  t.mock.method(app, "canTranslate", () => true);
+  const translate = t.mock.method(Library, "translateText", async () => { throw new Error("Temporary failure"); });
+  app.translateInScreening(ids[0]!);
+  await setImmediate();
+  assert.equal($("#screen-abstract .abstract-text").textContent, state.papers[0]!.abstract);
+  assert.match(text("#screen-abstract [role=alert]"), /Temporary failure/);
+  translate.mock.mockImplementation(async () => "重试成功");
+  $('#screen-abstract [data-action="screen-translate"]').click();
+  await setImmediate();
+  assert.equal(text("#screen-abstract .abstract-text"), "重试成功");
+});
+
+test("settings saves the translation prompt and displays the normalized saved value", async (t: TestContext) => {
+  const { app } = screeningApp();
+  app.env.settings.mcpToken = "t".repeat(64);
+  app.env.settings.translationPrompt = "Translate into Simplified Chinese.";
+  const save = t.mock.method(Library, "saveSettings", async (config) => ({ settings: { ...config }, storageChanged: false, mcpTokenChanged: false }));
+  app.navigate("settings");
+  const input = $<HTMLTextAreaElement>("#settings-translation-prompt");
+  assert.equal(input.value, "Translate into Simplified Chinese.");
+  input.value = "Translate into French. Preserve gene names.";
+  $("#settings-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await setImmediate();
+  assert.equal(save.mock.calls[0]!.arguments[0].translationPrompt, input.value);
+  assert.equal(app.env.settings.translationPrompt, input.value);
+});
 
 /** screeningApp opens a real-mode library with a stored PDF on the first two papers and enters screening on them. */
 function screeningApp() {

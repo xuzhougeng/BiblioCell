@@ -10,7 +10,7 @@ export type AITask = "chat" | "screen" | "translate";
 export const TASKS: [AITask, string, string][] = [
   ["chat", t("AI 对话"), t("内置助手，通过 MCP 工具操作正式数据库")],
   ["screen", t("AI 判断"), t("逐篇筛选时按你的要求判断是否符合")],
-  ["translate", t("AI 翻译"), t("把划选的摘要或段落翻译成中文")],
+  ["translate", t("AI 翻译"), t("按翻译提示词翻译摘要或划选段落")],
 ];
 
 export const PROTOCOL_LABELS: Record<string, string> = { anthropic: "Anthropic Messages", openai: "OpenAI Chat Completions" };

@@ -29,6 +29,7 @@ type Config struct {
 	StoragePath            string `json:"storagePath"`
 	FontSize               int    `json:"fontSize"`
 	BatchScreenConcurrency int    `json:"batchScreenConcurrency"`
+	TranslationPrompt      string `json:"translationPrompt"`
 	MCPToken               string `json:"mcpToken"`
 	// NCBIAPIKey and ContactEmail identify this user to public APIs. They live here, not
 	// in the database, so they stay on this machine when the folder moves.
@@ -55,7 +56,7 @@ type TaskModels struct {
 	Chat string `json:"chat"`
 	// Screen judges papers against a requirement while screening.
 	Screen string `json:"screen"`
-	// Translate renders selected text in Chinese.
+	// Translate renders text using TranslationPrompt.
 	Translate string `json:"translate"`
 }
 
@@ -133,6 +134,7 @@ type Store struct {
 // defaults together with the error, allowing the application to start safely.
 func Open(path, defaultStoragePath, defaultMCPToken string) (*Store, error) {
 	defaults := Config{StoragePath: filepath.Clean(defaultStoragePath), FontSize: DefaultFontSize, BatchScreenConcurrency: DefaultBatchScreenConcurrency, MCPToken: defaultMCPToken}
+	defaults.TranslationPrompt = agent.DefaultTranslationPrompt
 	store := &Store{path: path, config: defaults}
 	if err := Validate(defaults); err != nil {
 		return store, fmt.Errorf("invalid default settings: %w", err)
@@ -150,6 +152,9 @@ func Open(path, defaultStoragePath, defaultMCPToken string) (*Store, error) {
 		return store, fmt.Errorf("parse settings: %w", err)
 	}
 	config := migrateModels(legacy)
+	if strings.TrimSpace(config.TranslationPrompt) == "" {
+		config.TranslationPrompt = agent.DefaultTranslationPrompt
+	}
 	config.StoragePath = strings.TrimSpace(config.StoragePath)
 	if config.StoragePath == "" {
 		config.StoragePath = defaults.StoragePath
@@ -179,6 +184,10 @@ func (s *Store) Get() Config {
 
 // Save validates and atomically replaces the settings file.
 func (s *Store) Save(config Config) error {
+	config.TranslationPrompt = strings.TrimSpace(config.TranslationPrompt)
+	if config.TranslationPrompt == "" {
+		config.TranslationPrompt = agent.DefaultTranslationPrompt
+	}
 	if config.BatchScreenConcurrency == 0 {
 		config.BatchScreenConcurrency = DefaultBatchScreenConcurrency
 	}
