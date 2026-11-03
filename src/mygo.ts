@@ -170,6 +170,25 @@ export interface Message {
   rawProtocol?: string;
 }
 
+export interface MetadataClaim {
+  field: string;
+  values: string[];
+  species: SpeciesEntry[];
+  repository: string;
+  accession: string;
+  role: string;
+  excerpt: string;
+}
+
+export interface MetadataProposal {
+  paperId: string;
+  fileId: string;
+  fileTitle: string;
+  truncated: boolean;
+  omitted: number;
+  claims: MetadataClaim[];
+}
+
 export interface ModelProfile {
   id: string;
   name: string;
@@ -363,6 +382,13 @@ export const Library = {
   agentChat(messages: Message[]): Promise<Result> {
     return call("Library.AgentChat", messages);
   },
+  /**
+   * ApplyPaperMetadata saves only the suggestions selected by the person, with
+   * conflict detection and evidence in the same transaction.
+   */
+  applyPaperMetadata(before: Paper, proposal: MetadataProposal): Promise<void> {
+    return call("Library.ApplyPaperMetadata", before, proposal);
+  },
   /** ChooseStoragePath opens a native directory picker for the storage folder. */
   chooseStoragePath(): Promise<string> {
     return call("Library.ChooseStoragePath");
@@ -374,6 +400,13 @@ export const Library = {
   /** DeletePaper removes a paper and its stored attachments, preserving datasets. */
   deletePaper(id: string): Promise<void> {
     return call("Library.DeletePaper", id);
+  },
+  /**
+   * ExtractPaperMetadata reads the stored full text with the chat model. It makes
+   * no database changes; the desktop window lets the person select suggestions.
+   */
+  extractPaperMetadata(paperID: string): Promise<MetadataProposal> {
+    return call("Library.ExtractPaperMetadata", paperID);
   },
   /** FetchFulltext stores an open-access PDF for a paper. */
   fetchFulltext(paperID: string): Promise<FulltextResult> {

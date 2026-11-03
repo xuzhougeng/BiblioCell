@@ -1,0 +1,53 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"bibliocell/internal/agent"
+	"bibliocell/internal/library"
+	"bibliocell/internal/settings"
+)
+
+// ExtractPaperMetadata reads the stored full text with the chat model. It makes
+// no database changes; the desktop window lets the person select suggestions.
+func (l *Library) ExtractPaperMetadata(paperID string) (library.MetadataProposal, error) {
+	if l.store == nil || l.settings == nil {
+		return library.MetadataProposal{}, errors.New("library database is not ready")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	paper, err := l.store.GetPaper(ctx, paperID)
+	if err != nil {
+		return library.MetadataProposal{}, err
+	}
+	file, fulltext, err := l.store.PaperFulltextSource(ctx, paperID)
+	if err != nil {
+		return library.MetadataProposal{}, err
+	}
+	if file.ID == "" || fulltext == "" {
+		return library.MetadataProposal{}, errors.New("请先导入可读取文本的全文；本功能不会使用摘要代替全文")
+	}
+	provider, err := l.provider(settings.TaskChat)
+	if err != nil {
+		return library.MetadataProposal{}, err
+	}
+	proposal, err := agent.ExtractMetadata(ctx, provider, paper.Title, fulltext)
+	if err != nil {
+		return library.MetadataProposal{}, err
+	}
+	proposal.PaperID, proposal.FileID, proposal.FileTitle = paper.ID, file.ID, file.Title
+	return proposal, nil
+}
+
+// ApplyPaperMetadata saves only the suggestions selected by the person, with
+// conflict detection and evidence in the same transaction.
+func (l *Library) ApplyPaperMetadata(before library.Paper, proposal library.MetadataProposal) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	return l.store.ApplyPaperMetadata(ctx, before, proposal)
+}

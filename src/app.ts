@@ -1,3 +1,4 @@
+import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
 import type { Config, MCPInfo, Paper, SourceAutomation, SourceStatus, Status } from "./mygo.ts";
@@ -684,6 +685,7 @@ export class App {
     "sync-source": (_el, id) => void syncSource(this, id),
     "source-records": (_el, id) => sourceRecordsModal(this, id),
     "use-source-query": (el) => useSourceQuery(el),
+    "extract-paper-metadata": (_el, id) => { void extractPaperMetadata(this, id); },
     "add-metadata-choice": (el) => addMetadataChoice(el),
     "add-species-row": () => {
       const rows = $("#species-rows");
@@ -888,7 +890,7 @@ export class App {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
-      "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
+      "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.

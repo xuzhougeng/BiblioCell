@@ -1,3 +1,4 @@
+import { metadataButton } from "./metadata.ts";
 // Screening mode: one paper at a time, so a person can read it and decide
 // whether to keep it, then move on with the arrow keys. The list is a snapshot
 // of the filtered papers at entry, so deciding never shuffles the order or
@@ -219,6 +220,7 @@ export function renderScreening(app: App): string {
     + `<div class="doi-bar"><span class="doi-bar-label">DOI</span>${doi}</div>`
     + proposal
     + `<div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>`
+    + metadataButton(app, p)
     + `<div class="detail-grid screen-grid">${editableDetail(p.id, "species", t("研究物种"), esc(speciesDisplay(p) || t("待补")) + (speciesNames(p).length ? `<small class="muted"> ${esc(joinList(speciesNames(p), listSeparator))}</small>` : ""))}${editableDetail(p.id, "organs", t("组织 / 部位"), esc(displayList(p.organs) || t("待补")))}${editableDetail(p.id, "modalities", t("测序类型"), esc(displayList(p.modalities) || t("待补")))}${editableDetail(p.id, "platforms", t("测序平台"), esc(displayList(p.platforms) || t("待补")))}${editableDetail(p.id, "articleTypes", t("文献类型"), esc(displayList(p.articleTypes) || t("待判断")))}${editableDetail(p.id, "datasets", t("关联数据集"), ds.length ? esc(ds.map((d) => d.accession || d.title).join(listSeparator)) : `<span class="muted">${t("未关联")}</span>`)}${editableDetail(p.id, "source", t("发现来源"), esc(tv(p.source || "手动添加")))}${editableDetail(p.id, "addedAt", t("加入时间"), dateText(p.addedAt))}</div>`
     + `<section class="detail-section"><h3>${t("摘要")}</h3><p class="abstract-text">${esc(p.abstract || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`
     + (arr(p.tags).length ? `<section class="detail-section"><h3>${t("主题标签")}</h3><div class="tag-list">${arr(p.tags).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}</div></section>` : "")
