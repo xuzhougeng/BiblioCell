@@ -3,6 +3,7 @@ import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } f
 import { calibrationActions, calibrationChange, emptyCalibration, type CalibrationState } from "./calibration.ts";
 import { pruneSelection, selectionActions, selectionChange } from "./selection.ts";
 import { shortcutsModal } from "./shortcuts.ts";
+import { icon } from "./icons.ts";
 import type { ScreeningBatch } from "./screen-batch-queue.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
@@ -159,15 +160,15 @@ export class App {
     document.addEventListener("change", (e) => this.onChange(e));
     document.addEventListener("input", (e) => this.onInput(e));
     document.addEventListener("keydown", (e) => this.onKeydown(e));
-    // A "?" in the top bar opens the same shortcut sheet as the key, for people who never press it.
+    // A keyboard button in the top bar opens the same shortcut sheet as the key, for people who never press it.
     const topbar = $(".topbar-right");
     if (topbar && !$("#shortcuts-help")) {
       const help = document.createElement("button");
       help.type = "button";
       help.id = "shortcuts-help";
-      help.className = "topbar-link shortcuts-link";
+      help.className = "topbar-link";
       help.dataset.action = "shortcuts-help";
-      help.textContent = "?";
+      help.innerHTML = icon("keyboard", 20);
       help.title = t("快捷键");
       help.setAttribute("aria-label", t("快捷键"));
       topbar.prepend(help);
