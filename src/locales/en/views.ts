@@ -270,6 +270,7 @@ export const views: Record<string, string> = {
   "搜索题目、物种、作者或 DOI…": "Search title, species, authors or DOI…",
   "搜索文献": "Search papers",
   "排序方式": "Sort order",
+  "排序": "Sort",
   "筛选": "Filter",
   "全部": "All",
   "平台": "Platform",

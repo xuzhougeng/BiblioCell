@@ -486,6 +486,9 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .filter-chip-body { position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 7px 9px 7px 12px; cursor: pointer }
 .filter-chip-key { color: #8a8468; white-space: nowrap }
 .filter-chip-key::after { content: ":" }
+/* The sort chip is always set, so it reads as a control rather than an active filter. */
+.filter-chip.sort-chip { border-style: dashed; margin-right: 4px }
+.filter-chip.sort-chip .filter-chip-key { color: var(--muted) }
 .filter-chip.on .filter-chip-key { color: #5f7a4f }
 .filter-chip-value { font-weight: 600; color: #3d4435; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px }
 .filter-chip.on .filter-chip-value { color: #2f5527 }

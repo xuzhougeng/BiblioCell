@@ -7,7 +7,7 @@ import {
   FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
   reviewConcern, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
-import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
+import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter, sortChip } from "./ui.ts";
 import { renderCalibration } from "./calibration.ts";
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 
@@ -181,8 +181,8 @@ export function renderPapers(app: App): string {
   const tabs = `<div class="view-tabs"><button class="view-tab ${!filters.starred && !filters.review && !calibration ? "active" : ""}" data-action="all-papers">${t("全部文献")} <span>${papers.length}</span></button><button class="view-tab review-tab ${filters.review ? "active" : ""}" data-action="review-papers"${concernSummary ? ` title="${esc(concernSummary)}"` : ""}>${I("alert", 15)} ${t("需核对")} <span>${concerns.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} ${t("我的收藏")} <span>${papers.filter((p) => p.starred).length}</span></button><button class="view-tab ${calibration ? "active" : ""}" data-action="calibration-open" title="${t("AI 建议与人工判定的一致率、混淆矩阵和不一致样本")}">${I("sparkle", 15)} ${t("AI 对照")}${app.calibration?.report ? ` <span>${app.calibration.report.compared}</span>` : ""}</button></div>`;
   if (calibration) return `<div class="section-toolbar">${tabs}</div>${renderCalibration(app)}`;
   return `<div class="section-toolbar">${tabs}<div class="column-toolbar"><button class="btn btn-primary" data-action="batch-open">${I("sparkle", 16)} <span id="batch-entry-label">${app.batch ? (app.batch.running ? t("AI 正在筛查文献") : t("批量筛选结果")) : t("批量 AI 筛选")}</span></button><button class="btn btn-secondary" data-action="start-screening" title="${t("以单篇文献为中心逐篇查看并做收录判断")}">${I("check-circle", 16)} ${t("逐篇筛选")}</button><button class="btn btn-secondary" data-action="paper-columns">${t("显示列")}</button><button class="btn btn-secondary" data-action="export-papers">${I("download", 16)} ${t("导出")}</button></div></div>`
-    + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="${t("搜索题目、物种、作者或 DOI…")}" value="${esc(filters.search)}" aria-label="${t("搜索文献")}"></label><select class="filter-select" data-filter="sort" aria-label="${t("排序方式")}">${SORT_OPTIONS.map(([value, label]) => option(value, label, filters.sort)).join("")}</select></div>`
-    + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} ${t("筛选")}</span>`
+    + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="${t("搜索题目、物种、作者或 DOI…")}" value="${esc(filters.search)}" aria-label="${t("搜索文献")}"></label></div>`
+    + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} ${t("筛选")}</span>${sortChip(filters.sort, SORT_OPTIONS)}`
     + selectFilter(filters, "species", t("物种"), uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))
     + selectFilter(filters, "organ", t("组织"), uniqueValues(papers, "organ"))
     + selectFilter(filters, "year", t("年份"), uniqueValues(papers, "year").reverse())

@@ -84,8 +84,11 @@ test("column headers sort the list and flip direction; the sort select agrees", 
   assert.equal($('th[aria-sort]').getAttribute("aria-sort"), "ascending");
   assert.ok(sortedAsc(years(state)), `years ascending: ${years(state)}`);
 
+  // The sort control is a chip in the filter row, and its visible text follows the choice.
+  assert.ok($("select[data-filter=sort]").closest(".filter-row .sort-chip"));
   change($("select[data-filter=sort]"), "title-desc");
   assert.equal(app.filters.sort, "title-desc");
+  assert.equal(text(".sort-chip .filter-chip-value"), "标题 Z→A");
   // The rows follow the model's order (its comparators have their own tests).
   assert.deepEqual(rowIds(), filterPapers(state.papers, app.filters).slice(0, 10).map((p) => p.id));
   assert.notDeepEqual(rowIds(), state.papers.slice(0, 10).map((p) => p.id));

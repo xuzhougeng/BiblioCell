@@ -45,6 +45,13 @@ export function selectFilter(filters: Filters, name: keyof Filters, key: string,
     + `</div>`;
 }
 
+/** sortChip is the sort order drawn like a filter chip, so it sits in the same row as the filters. */
+export function sortChip(current: string, options: [string, string][]): string {
+  const label = options.find(([value]) => value === current)?.[1] ?? options[0]?.[1] ?? "";
+  return `<div class="filter-chip sort-chip"><label class="filter-chip-body"><span class="filter-chip-key">${t("排序")}</span><span class="filter-chip-value">${esc(label)}</span>${I("chevron-down", 13)}`
+    + `<select class="filter-chip-select" data-filter="sort" aria-label="${t("排序方式")}">${options.map(([value, text]) => option(value, text, current)).join("")}</select></label></div>`;
+}
+
 export function modalityBadges(item: { modalities: string[] | null | undefined }): string {
   const list = arr(item.modalities);
   if (!list.length) return badge(t("待补"));
