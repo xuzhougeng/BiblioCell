@@ -16,7 +16,7 @@ import {
 } from "./forms.ts";
 import {
   PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
-  speciesNameFor, tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
+  tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
@@ -876,10 +876,11 @@ export class App {
         this.navigate(target);
       }
     },
-    "species-filter": (el) => {
-      const name = speciesNameFor(this.state.papers, el.dataset.label ?? "");
-      if (!name) return;
-      this.filters.species = name;
+    "overview-filter": (el) => {
+      const field = el.dataset.field as "species" | "modality" | "organ" | "year" | undefined;
+      const value = el.dataset.value ?? "";
+      if (!field || !value) return;
+      this.filters = { ...emptyFilters(), [field]: value, sort: this.filters.sort };
       this.paperPage = 1;
       this.navigate("papers");
     },
