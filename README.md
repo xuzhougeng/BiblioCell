@@ -338,6 +338,8 @@ echo '{"paperId":"P-xxxx","role":"generated","evidenceText":"..."}' | ./BiblioCe
 ./BiblioCell export bibtex -screening included > included.bib
 ./BiblioCell export datasets-csv -o datasets.csv
 ./BiblioCell sql "select id, title from papers order by added_at desc limit 5"
+./BiblioCell db version
+./BiblioCell db migrate
 ```
 
 - `papers add` / `import` / `update` 和 `datasets`、`evidence` 使用与 MCP 相同的字段和校验规则；`import` 一批原子提交，`-batch` 指定批次，`-dry-run` 只校验不写入。
@@ -345,6 +347,7 @@ echo '{"paperId":"P-xxxx","role":"generated","evidenceText":"..."}' | ./BiblioCe
 - `papers attach` 把文件复制进存放文件夹的 `papers/`，默认记为全文，`-type supplement` 记为补充材料。
 - `export KIND` 把文献或数据集写成文件，见上文“导出”；不带 `-o` 时内容直接打到 stdout，带 `-o` 时输出写入路径和记录数的 JSON。
 - `sql` 直接执行任意语句：`SELECT` / `WITH` / `PRAGMA` 打印行，其他语句打印受影响行数。它绕过应用层校验，改数据前先备份。
+- `db version` 只读取数据库文件的版本、已应用和待应用的迁移，不打开、不创建、不修改库；`db migrate` 把库升级到当前版本（先备份），其他子命令和桌面应用在打开库时也会自动做同样的事。见「数据库版本与迁移」。
 - 数据目录按 `-data-dir`、`$BIBLIOCELL_DATA_DIR`、应用默认用户数据目录的顺序确定；在 macOS 上 `.app` 包内和 `go run` 的默认目录名相同，命令行与桌面应用看到的是同一个库。
 - `settings set` 修改的存放文件夹和 MCP Token 在下次启动桌面应用后生效。
 - 桌面应用运行中也可以同时使用命令行，SQLite 自带锁，忙等 5 秒后报错。
@@ -357,7 +360,8 @@ BiblioCell/
 ├── service.go               # 暴露给前端的 Library 服务
 ├── cli.go                   # 命令行子命令：文献、来源、设置、原始 SQL
 ├── internal/library/
-│   ├── store.go             # 数据库打开、迁移与完整性检查
+│   ├── store.go             # 数据库打开、基线前的旧库修复与完整性检查
+│   ├── migrate.go           # 版本化迁移：迁移列表、备份、db version / migrate 的实现
 │   ├── auth.go              # MCP 写权限 Token 的生成与持久化
 │   ├── paper.go             # 正式文献 CRUD 与原型模型映射
 │   ├── dataset.go           # 数据集 CRUD、仓库与文献关联
@@ -368,8 +372,9 @@ BiblioCell/
 │   ├── source_query.go      # 试检索评估、助手更新检索式与修改记录
 │   ├── export.go            # BibTeX / CSV / 下载脚本 / 进度报告导出与 accession 分类
 │   ├── mcp.go               # 本机 MCP 服务与 AI 工具
-│   ├── schema.sql           # 嵌入二进制的数据库结构 v5
-│   └── *_test.go            # 数据库与 MCP 端到端测试
+│   ├── schema.sql           # 嵌入二进制的当前数据库结构（新库一次建成）
+│   ├── testdata/            # 冻结的历史 schema：v11（v0.1.0 发布版）与 v13（迁移基线）
+│   └── *_test.go            # 数据库、迁移与 MCP 端到端测试
 ├── internal/settings/       # 设置校验、默认值与原子 JSON 持久化
 ├── src/
 │   ├── main.ts              # 入口：Demo / 真实模式判断与启动
@@ -382,7 +387,7 @@ BiblioCell/
 │   ├── demo-data.ts         # 明确标记的虚构演示数据
 │   ├── style.css            # 单一样式表（外壳与设置页 → 基础 → 组件）
 │   └── mygo.ts              # mygo generate 生成的类型化客户端
-├── tests/                   # node:test 纯逻辑测试（npm test）
+├── tests/                   # node:test 测试（npm test）：纯逻辑测试与 jsdom 界面交互测试
 ├── public/                  # 图标、设计文档与可下载资料
 ├── resources/               # 应用图标
 ├── mygo.config.ts           # mygo 开发、构建和应用元数据
@@ -400,7 +405,7 @@ npm install
 npm run dev
 ```
 
-`mygo dev` 会生成 `src/mygo.ts`、启动 Vite，并打开桌面应用。普通浏览器也可以通过 `npm run dev:web` 预览 Demo，但无法连接 Go 后端、真实数据库或 MCP。`npm run typecheck` 做 TypeScript 严格检查，`npm test` 运行 `tests/` 下的纯逻辑测试（Node 22.6+ 自带类型剥离，无需额外依赖）。
+`mygo dev` 会生成 `src/mygo.ts`、启动 Vite，并打开桌面应用。普通浏览器也可以通过 `npm run dev:web` 预览 Demo，但无法连接 Go 后端、真实数据库或 MCP。`npm run typecheck` 做 TypeScript 严格检查，`npm test` 运行 `tests/` 下的全部测试（Node 22.6+ 自带类型剥离）。纯逻辑测试直接 import `src/` 的模块；`*-dom.test.ts` 通过 `tests/dom.ts` 装一个 jsdom 窗口（唯一的测试依赖），用真实 DOM 和事件驱动 `App`，覆盖文献库的分页、排序、筛选胶囊与方向键，以及逐篇筛选页在 AI 建议、判断、元数据编辑和刷新时保住 PDF 阅读器。写新的界面测试时先 `import { resetDom } from "./dom.ts"`（必须是第一个 import），每个测试开头调用 `resetDom()`。
 
 ## 验证与构建
 
@@ -410,11 +415,42 @@ npm run typecheck
 npm run build
 ```
 
-测试覆盖数据库初始化与重开、文献编辑、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化；导出的 BibTeX 转义、CSV 多值字段、accession 分类、下载脚本和进度报告在 `internal/library/export_test.go` 与 `tests/export.test.ts` 中各有一套。
+测试覆盖数据库初始化与重开、从 v0.1.0 数据库升级与备份、迁移失败回滚、迁移链与 schema.sql 一致性、文献编辑、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化；导出的 BibTeX 转义、CSV 多值字段、accession 分类、下载脚本和进度报告在 `internal/library/export_test.go` 与 `tests/export.test.ts` 中各有一套。
 
 需要实际访问公开来源时，可额外运行 `BIBLIOCELL_LIVE_TEST=1 go test ./internal/library -run TestRemoteConnectorsLive -v`；默认测试不会访问网络。
 
 打包结果位于 `build/`，前端构建结果位于 `dist/`。正式数据库保存在 mygo 的用户数据目录，不在源码目录中。
+
+## 数据库版本与迁移
+
+数据库结构的版本写在 SQLite 的 `PRAGMA user_version` 里，每一步升级在 `schema_migrations` 表留一行（版本号、说明、时间）。当前版本是 `library.SchemaVersion`，由 `internal/library/migrate.go` 里的基线版本加迁移条数算出；`./BiblioCell db version` 可以查看某个库处在哪个版本、还差哪些迁移。
+
+打开数据库（桌面应用启动、任何命令行子命令、`db migrate`）时自动升级，流程固定：
+
+1. 读取 `user_version`。比当前构建还新的库直接拒绝打开，提示更新 BiblioCell。
+2. 库落后时，先用 `VACUUM INTO` 把整个文件复制为同目录下的 `bibliocell.sqlite.bak-v<旧版本>`，再动原库。出问题时把备份复制回原文件名即可恢复。
+3. 低于基线（v13）的库，比如 v0.1.0 发布版的 v11，先经过 `store.go` 里按实际表结构修复的旧路径（补列、回填 JSON 多值字段、重建仓库名称约束、重建视图），再盖上基线版本号。
+4. 基线之后的迁移按编号顺序逐条执行。每条迁移在自己的事务里完成：执行 SQL、执行 Go 函数、写入 `schema_migrations`、更新 `user_version`，然后提交。失败即回滚这一条，库停在上一条完成的版本，错误信息写明失败的迁移、库停在的版本和备份路径；修好后再次打开会从停下的地方继续。
+5. 最后执行幂等的 `schema.sql`（新库在这一步一次建成；升级过的库在这里重建迁移中 DROP 掉的视图），并由 Go 盖上当前版本号。
+
+### 新增一条迁移
+
+改表结构时只改两处，再跑测试：
+
+1. 在 `migrate.go` 的 `migrations` 列表末尾追加一条，`Version` 是前一条加一（第一条是 14）。只改表结构写 `SQL`，可以含多条语句；需要用 Go 回填数据写 `Run`，它拿到的是同一个事务。改视图时在迁移里 `DROP VIEW IF EXISTS`，视图由随后的 `schema.sql` 重建。
+
+   ```go
+   var migrations = []Migration{
+       {Version: 14, Description: "数据集记录下载清单", SQL: `
+           ALTER TABLE datasets ADD COLUMN download_json TEXT NOT NULL DEFAULT '[]'
+               CHECK (json_valid(download_json) AND json_type(download_json) = 'array');
+           DROP VIEW IF EXISTS v_dataset_overview;`},
+   }
+   ```
+
+2. 把同样的改动写进 `schema.sql`，让新库直接建成最终形态：改 `CREATE TABLE` / `CREATE VIEW`，文件头的 `schema vN` 和末尾的 `PRAGMA user_version = N` 改成新版本号。`schema_migrations` 的初始行不用加，Go 会为新库补齐迁移记录。
+
+`go test ./internal/library` 里的 `TestMigrationsMatchSchema` 用 `testdata/schema_v13.sql` 建一个基线库跑完全部迁移，逐表逐列对比 `schema.sql` 新建的库，两边不一致或版本号没同步都会失败；`TestOpenUpgradesV010Database` 则保证从 v0.1.0 的库一路升上来数据不丢。迁移一旦合入 main 就不要再改，追加新的一条即可。几个分支各加迁移时，合并后按合并顺序重新编号，保证编号连续。
 
 ## 发布
 

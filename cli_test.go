@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -304,6 +305,64 @@ func TestCLIAgentRunsConfiguredModel(t *testing.T) {
 	}
 	if code := runCLI([]string{"-data-dir", t.TempDir(), "agent", "hello"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
 		t.Error("agent ran without an AI configuration")
+	}
+}
+
+func TestCLIDatabaseVersionAndMigrate(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// Before any command touched the file: version reports, migrate creates nothing to upgrade.
+	var info library.VersionInfo
+	run(t, dataDir, "", &info, "db", "version")
+	if info.State != "missing" || info.Exists || info.AppVersion != library.SchemaVersion {
+		t.Fatalf("db version on a missing file = %+v", info)
+	}
+	if _, err := os.Stat(info.DatabasePath); !os.IsNotExist(err) {
+		t.Fatal("db version created the database")
+	}
+
+	// A v0.1.0 library at the settings' database path.
+	if err := os.MkdirAll(filepath.Dir(info.DatabasePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ddl, err := os.ReadFile(filepath.Join("internal", "library", "testdata", "schema_v11.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := sql.Open("sqlite", info.DatabasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(string(ddl) + "; INSERT INTO papers(id, title) VALUES ('P-old', 'From v0.1.0')"); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Close()
+
+	run(t, dataDir, "", &info, "db", "version")
+	if info.State != "outdated" || info.Version != 11 || len(info.Pending) == 0 {
+		t.Fatalf("db version on a v0.1.0 file = %+v", info)
+	}
+
+	var report struct {
+		Before, After int
+		Migrated      bool
+		Backup        string
+	}
+	run(t, dataDir, "", &report, "db", "migrate")
+	if report.Before != 11 || report.After != library.SchemaVersion || !report.Migrated || report.Backup == "" {
+		t.Fatalf("db migrate = %+v", report)
+	}
+	if _, err := os.Stat(report.Backup); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	run(t, dataDir, "", &report, "db", "migrate")
+	if report.Migrated || report.Before != library.SchemaVersion {
+		t.Fatalf("second db migrate = %+v", report)
+	}
+	var found []library.Paper
+	run(t, dataDir, "", &found, "papers", "list", "-q", "v0.1.0")
+	if len(found) != 1 || found[0].ID != "P-old" {
+		t.Fatalf("paper after migrate = %+v", found)
 	}
 }
 

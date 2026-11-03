@@ -65,6 +65,8 @@ Commands:
   mcp                                 MCP endpoint and bearer token
   serve [-addr HOST:PORT]             run the MCP server without a window, until interrupted
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
+  db version                          database schema version, applied and pending migrations
+  db migrate                          upgrade the database to this build's schema (backs up first)
   agent [-max-steps N] [-system TEXT] PROMPT
                                       run the built-in agent once with the configured model;
                                       tool calls go to stderr, the result to stdout
@@ -75,7 +77,7 @@ Output is JSON. Settings changes take effect on the next app start.
 
 var cliCommands = map[string]bool{
 	"status": true, "papers": true, "datasets": true, "sources": true,
-	"settings": true, "mcp": true, "sql": true, "help": true, "evidence": true, "serve": true, "agent": true, "export": true,
+	"settings": true, "mcp": true, "sql": true, "help": true, "evidence": true, "serve": true, "agent": true, "db": true, "export": true,
 }
 
 // isCLICommand tells a command line invocation from a desktop launch, whose
@@ -140,7 +142,8 @@ func (c *cli) run(command string, args []string) error {
 	if c.settings, err = openSettings(c.dataDir); err != nil {
 		fmt.Fprintf(c.stderr, "using default settings: %v\n", err)
 	}
-	if command != "settings" {
+	// `db` inspects or migrates the file itself: Open would migrate it first.
+	if command != "settings" && command != "db" {
 		if c.store, err = library.Open(c.settings.Get().DatabasePath()); err != nil {
 			return err
 		}
@@ -170,6 +173,8 @@ func (c *cli) run(command string, args []string) error {
 		return c.print(map[string]string{
 			"endpoint": "http://" + library.MCPAddress + "/mcp", "token": c.settings.Get().MCPToken,
 		}, nil)
+	case "db":
+		return c.db(args)
 	case "sql":
 		if len(args) != 1 {
 			return errors.New("usage: sql STATEMENT")
@@ -606,6 +611,39 @@ func (c *cli) configure(args []string) error {
 }
 
 // readJSON decodes the -f FILE flag or stdin into target.
+// db reports or upgrades the schema version without going through Open first.
+func (c *cli) db(args []string) error {
+	path := c.settings.Get().DatabasePath()
+	sub, _ := split(args)
+	switch sub {
+	case "version":
+		return c.print(library.Inspect(path))
+	case "migrate":
+		before, err := library.Inspect(path)
+		if err != nil {
+			return err
+		}
+		upgrade, err := library.Migrate(path)
+		if err != nil {
+			return err
+		}
+		after, err := library.Inspect(path)
+		if err != nil {
+			return err
+		}
+		return c.print(map[string]any{
+			"databasePath": path, "before": before.Version, "after": after.Version, "migrated": upgrade != nil,
+			"backup": func() string {
+				if upgrade != nil {
+					return upgrade.Backup
+				}
+				return ""
+			}(),
+		}, nil)
+	}
+	return errors.New("usage: db version | db migrate")
+}
+
 func (c *cli) readJSON(args []string, target any) error {
 	flags := flag.NewFlagSet("json", flag.ContinueOnError)
 	file := flags.String("f", "", "JSON file; stdin when omitted")
