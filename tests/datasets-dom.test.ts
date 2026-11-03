@@ -42,7 +42,7 @@ test("every dataset row carries the same named columns as the header", () => {
 });
 
 test("the stylesheet hides the modality column and shows its badges in the title cell below 1100px", () => {
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const narrow = css.slice(css.indexOf("@media (max-width: 1100px)"));
   const block = narrow.slice(0, narrow.indexOf("\n}\n") + 3);
   assert.match(block, /\.dataset-table \.col-modality \{ display: none \}/);

@@ -8,6 +8,7 @@ import { en } from "../src/locales/en.ts";
 import { agent } from "../src/locales/en/agent.ts";
 import { core } from "../src/locales/en/core.ts";
 import { forms } from "../src/locales/en/forms.ts";
+import { research } from "../src/locales/en/research.ts";
 import { settings } from "../src/locales/en/settings.ts";
 import { views } from "../src/locales/en/views.ts";
 
@@ -73,7 +74,7 @@ test("index.html chrome has English entries", () => {
 test("a key shared by several dictionaries has one English meaning", () => {
   const seen = new Map<string, string>();
   const conflicts: string[] = [];
-  for (const part of [core, views, forms, settings, agent]) {
+  for (const part of [core, views, forms, settings, agent, research]) {
     for (const [key, value] of Object.entries(part)) {
       const before = seen.get(key);
       if (before !== undefined && before !== value) conflicts.push(`${key}: ${before} / ${value}`);

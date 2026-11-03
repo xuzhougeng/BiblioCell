@@ -1,10 +1,11 @@
+import { speciesText } from "./species.ts";
 import type { App } from "./app.ts";
 import { Library, type MetadataClaim, type MetadataProposal, type Paper } from "./mygo.ts";
 import { arr, clone, esc, repositoryLabel } from "./model.ts";
 import { configured, modelFor } from "./models.ts";
 import { enqueue } from "./store.ts";
 import { $, I, errorMessage } from "./ui.ts";
-import { t } from "./i18n.ts";
+import { t, tv } from "./i18n.ts";
 
 const labels: Record<string, string> = {
   species: t("研究物种"), organs: t("组织 / 部位"), modalities: t("测序类型"),
@@ -25,9 +26,9 @@ export function metadataButton(app: App, p: Paper): string {
 }
 
 export function metadataValue(claim: MetadataClaim): string {
-  if (claim.field === "species") return arr(claim.species).map(s => s.label ? `${s.label} · ${s.name}` : s.name).join("; ");
+  if (claim.field === "species") return arr(claim.species).map(s => speciesText(s, true)).join("; ");
   if (claim.field === "dataset") return `${repositoryLabel(claim.repository)} ${claim.accession}`;
-  return arr(claim.values).join("; ");
+  return arr(claim.values).map(tv).join("; ");
 }
 
 export function metadataSelectedByDefault(p: Paper, claim: MetadataClaim, linkedRepositories: { repository: string; accession: string }[]): boolean {
@@ -39,8 +40,8 @@ function reviewHTML(app: App, p: Paper, proposal: MetadataProposal): string {
   const linked = app.paperDatasets(p.id).flatMap(d => arr(d.repositories));
   const rows = arr(proposal.claims).map((claim, index) => {
     const current = claim.field === "dataset" ? app.paperDatasets(p.id).map(d => d.accession || d.title).join("; ")
-      : claim.field === "species" ? arr(p.species).map(s => s.label ? `${s.label} · ${s.name}` : s.name).join("; ")
-        : fields.includes(claim.field as Field) ? arr(p[claim.field as Exclude<Field, "species">]).join("; ") : "";
+      : claim.field === "species" ? arr(p.species).map(s => speciesText(s, true)).join("; ")
+        : fields.includes(claim.field as Field) ? arr(p[claim.field as Exclude<Field, "species">]).map(tv).join("; ") : "";
     return `<label class="metadata-claim"><span class="metadata-choice"><input type="checkbox" name="claim" value="${index}" ${metadataSelectedByDefault(p, claim, linked) ? "checked" : ""}><strong>${esc(labels[claim.field] ?? claim.field)}</strong></span><span class="muted small">${t("当前：{value}", { value: esc(current || t("待补")) })}</span><strong>${esc(metadataValue(claim))}</strong><blockquote>${esc(claim.excerpt)}${claim.page ? `<span class="muted small evidence-page">${t("PDF 第 {n} 页", { n: claim.page })}</span>` : ""}</blockquote></label>`;
   }).join("");
   return `<p class="muted small">${t("来源全文：{title}", { title: esc(proposal.fileTitle) })}${proposal.extractor ? ` · ${esc(proposal.extractor)}` : ""}</p><p>${t("默认勾选空缺字段；勾选已有字段将替换其内容。数据集编号与关联仍需核实。")}</p>`
