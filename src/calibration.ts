@@ -156,6 +156,7 @@ export function calibrationChange(app: App, target: HTMLElement): boolean {
 /** suggestionOf rebuilds the recorded suggestion a mismatch came from, for the screening page's AI box. */
 export const suggestionOf = (pair: CalibrationPair): ScreeningSuggestion => ({
   id: pair.suggestionId, paperId: pair.paperId, requirement: pair.requirement, profileId: pair.profileId, profileName: pair.profileName,
+  taskId: "", taskName: "", targetKind: "screening", targetValue: "",
   model: pair.model, protocol: "", verdict: pair.verdict, reason: pair.reason, basis: pair.basis, excerpt: pair.excerpt, page: pair.page,
   confidence: pair.confidence, runId: pair.runId, kind: pair.kind, inputTokens: 0, outputTokens: 0, skipped: false, createdAt: pair.createdAt,
 });

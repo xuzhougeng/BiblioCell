@@ -78,6 +78,20 @@ CREATE INDEX IF NOT EXISTS idx_screening_suggestions_run ON screening_suggestion
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );`,
 	},
+	{
+		Version:     16,
+		Description: "AI 建议记录所属的判断任务与采纳落点（收录、文章类型或标签）",
+		// A database brought up from before v14 already has these columns from
+		// schema.sql, so each one is added only when missing.
+		Run: func(tx *sql.Tx) error {
+			return addColumns(tx, "screening_suggestions", []columnSpec{
+				{"task_id", "TEXT NOT NULL DEFAULT ''"},
+				{"task_name", "TEXT NOT NULL DEFAULT ''"},
+				{"target_kind", "TEXT NOT NULL DEFAULT 'screening' CHECK (target_kind IN ('screening','articleType','tag'))"},
+				{"target_value", "TEXT NOT NULL DEFAULT ''"},
+			})
+		},
+	},
 }
 
 // SchemaVersion is the schema this build writes: the baseline plus every
@@ -283,4 +297,42 @@ func Migrate(path string) (*Upgrade, error) {
 	}
 	defer store.Close()
 	return store.Upgraded, nil
+}
+
+// columnSpec is one column a migration adds when the table lacks it.
+type columnSpec struct {
+	name string
+	ddl  string
+}
+
+// addColumns adds each missing column, so a migration stays correct for a
+// database whose table was created by a newer schema.sql on the way here.
+func addColumns(tx *sql.Tx, table string, columns []columnSpec) error {
+	rows, err := tx.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return fmt.Errorf("read %s columns: %w", table, err)
+	}
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("read %s columns: %w", table, err)
+		}
+		existing[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("read %s columns: %w", table, err)
+	}
+	for _, column := range columns {
+		if existing[column.name] {
+			continue
+		}
+		if _, err := tx.Exec("ALTER TABLE " + table + " ADD COLUMN " + column.name + " " + column.ddl); err != nil {
+			return fmt.Errorf("add %s.%s: %w", table, column.name, err)
+		}
+	}
+	return nil
 }

@@ -29,9 +29,13 @@ type Judgement struct {
 	Usage   Usage `json:"usage"`
 }
 
-// ScreenInput is everything the model sees about one paper.
+// ScreenInput is everything the model sees about one paper. Requirement is a
+// person's screening requirement; Question instead asks whether the paper has
+// one property (is it a review, does it share data), answered yes, no or
+// uncertain and recorded as included, excluded or uncertain.
 type ScreenInput struct {
 	Requirement string
+	Question    string
 	Title       string
 	Authors     string
 	Year        string
@@ -60,18 +64,31 @@ const screenSystem = `你是文献筛选助手。一个研究者正在逐篇筛�
 - confidence 是你对这个判断的把握，0 到 1 之间的小数。
 只输出一个 JSON 对象，不要输出其他文字：{"verdict": "included" | "excluded" | "uncertain", "reason": "...", "excerpt": "...", "confidence": 0.8}`
 
-// Screen asks the model whether one paper meets the requirement. The caller
-// decides what text it can supply; with neither full text nor abstract the
-// answer is Skipped and no request is made.
+const judgeSystem = `你是文献分类助手。一个研究者想批量判断每篇文献是否具有某个属性，会给出判断问题和一篇文献的信息（题目、元数据、摘要，可能还有全文）。
+你的任务：回答这篇文献是否符合判断问题。
+- 只依据给出的内容判断，不要编造文中没有的信息。
+- 符合答 yes；明确不符合答 no；信息不足或模棱两可答 uncertain。
+- reason 用中文写 1～3 句，引用文中的具体依据。
+- excerpt 是支持你判断的一段原文，必须逐字摘自给出的摘要或全文（不超过 300 字），没有合适的就留空字符串。
+- confidence 是你对这个判断的把握，0 到 1 之间的小数。
+只输出一个 JSON 对象，不要输出其他文字：{"verdict": "yes" | "no" | "uncertain", "reason": "...", "excerpt": "...", "confidence": 0.8}`
+
+// Screen asks the model whether one paper meets the requirement, or answers
+// the question when one is given. The caller decides what text it can supply;
+// with neither full text nor abstract the answer is Skipped and no request is
+// made.
 func Screen(ctx context.Context, provider Provider, input ScreenInput) (Judgement, error) {
-	if strings.TrimSpace(input.Requirement) == "" {
+	system := screenSystem
+	if strings.TrimSpace(input.Question) != "" {
+		system = judgeSystem
+	} else if strings.TrimSpace(input.Requirement) == "" {
 		return Judgement{}, errors.New("筛选要求不能为空")
 	}
 	if strings.TrimSpace(input.Fulltext) == "" && strings.TrimSpace(input.Abstract) == "" {
 		return Judgement{Skipped: true}, nil
 	}
 	basis, prompt := screenPrompt(input)
-	response, err := provider.Complete(ctx, Request{System: screenSystem, Messages: []Message{{Role: "user", Content: prompt}}})
+	response, err := provider.Complete(ctx, Request{System: system, Messages: []Message{{Role: "user", Content: prompt}}})
 	if err != nil {
 		return Judgement{}, err
 	}
@@ -88,8 +105,13 @@ func Screen(ctx context.Context, provider Provider, input ScreenInput) (Judgemen
 // which text it rests on.
 func screenPrompt(input ScreenInput) (basis string, prompt string) {
 	var b strings.Builder
-	b.WriteString("## 筛选要求\n")
-	b.WriteString(strings.TrimSpace(input.Requirement))
+	if question := strings.TrimSpace(input.Question); question != "" {
+		b.WriteString("## 判断问题\n")
+		b.WriteString(question)
+	} else {
+		b.WriteString("## 筛选要求\n")
+		b.WriteString(strings.TrimSpace(input.Requirement))
+	}
 	b.WriteString("\n\n## 文献信息\n")
 	field := func(label, value string) {
 		if value = strings.TrimSpace(value); value != "" {

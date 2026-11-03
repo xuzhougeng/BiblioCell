@@ -1,4 +1,4 @@
--- BiblioCell · schema v15
+-- BiblioCell · schema v16
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -477,7 +477,13 @@ CREATE TABLE IF NOT EXISTS screening_suggestions (
     kind TEXT NOT NULL DEFAULT 'screen' CHECK (kind IN ('screen','batch','rerun')),
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    -- 所属判断任务（如 review、single-cell、custom；收录筛选为空）与采纳后的落点：
+    -- screening 写入收录判断，articleType 追加文章类型，tag 追加个人标签。
+    task_id TEXT NOT NULL DEFAULT '',
+    task_name TEXT NOT NULL DEFAULT '',
+    target_kind TEXT NOT NULL DEFAULT 'screening' CHECK (target_kind IN ('screening','articleType','tag')),
+    target_value TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_screening_suggestions_paper ON screening_suggestions(paper_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_screening_suggestions_run ON screening_suggestions(run_id, created_at DESC);
@@ -564,5 +570,5 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (14, 'AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照'),
        (15, '按原文与提示词缓存翻译结果');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 15;
+PRAGMA user_version = 16;
 COMMIT;
