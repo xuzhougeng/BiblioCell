@@ -16,7 +16,7 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, type ScreenState, type Translation } from "./screen.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, updateScreenAI, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
@@ -523,14 +523,14 @@ export class App {
     if (!ai || !p) return;
     if (ai.results.has(id) && !retry) return;
     ai.results.set(id, { state: "loading" });
-    if (retry) this.render();
+    if (retry) updateScreenAI(this, id);
     Library.screenPaper(id, ai.requirement).then((judgement) => {
       ai.results.set(id, { state: "done", judgement });
     }, (error: unknown) => {
       ai.results.set(id, { state: "error", message: errorMessage(error, t("AI 判断失败，请重试。")) });
     }).then(() => {
       // Show the answer only if this run is still on and that paper is still on screen.
-      if (this.screen?.ai === ai && screenPapers(this)[this.screen.index]?.id === id) this.render();
+      if (this.screen?.ai === ai && screenPapers(this)[this.screen.index]?.id === id) updateScreenAI(this, id);
     });
   }
   /** adoptJudgement records the model's verdict as the person's decision, with the model's reason as the basis. */

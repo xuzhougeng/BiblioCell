@@ -126,6 +126,15 @@ function aiBox(app: App, p: Paper): string {
   return `<div class="ai-box ${esc(j.verdict)}">${head}${badge(SCREEN[j.verdict] ?? j.verdict, VERDICT_COLOR[j.verdict] ?? "gray")}<span class="ai-box-basis muted">${esc(BASIS[j.basis] ?? j.basis)}</span><p class="ai-box-reason">${esc(j.reason)}</p><span class="section-actions">${adopt}</span></div>`;
 }
 
+/** Update only the suggestion: rebuilding the page would reload the PDF iframe. */
+export function updateScreenAI(app: App, id: string): void {
+  const region = $("#screen-ai");
+  const p = app.paperById(id);
+  if (!region || region.dataset.paperId !== id || !p || !app.screen?.ai) return;
+  if (screenPapers(app)[app.screen.index]?.id !== id) return;
+  region.innerHTML = aiBox(app, p);
+}
+
 /** Decision keys: the letter a person presses, the status it records and the button colour. */
 export const DECISIONS: [key: string, status: string, color: string][] = [
   ["y", "included", "btn-primary"],
@@ -185,7 +194,7 @@ export function renderScreening(app: App): string {
     + `<p class="paper-meta">${esc(p.authors || t("作者待补"))} · ${esc(p.journal || t("期刊待补"))} · ${esc(p.year || t("年份待补"))}</p>`
     + `<div class="doi-bar"><span class="doi-bar-label">DOI</span>${doi}</div>`
     + proposal
-    + aiBox(app, p)
+    + `<div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>`
     + `<div class="detail-grid screen-grid">${editableDetail(p.id, "species", t("研究物种"), esc(speciesDisplay(p) || t("待补")) + (speciesNames(p).length ? `<small class="muted"> ${esc(joinList(speciesNames(p), listSeparator))}</small>` : ""))}${editableDetail(p.id, "organs", t("组织 / 部位"), esc(displayList(p.organs) || t("待补")))}${editableDetail(p.id, "modalities", t("测序类型"), esc(displayList(p.modalities) || t("待补")))}${editableDetail(p.id, "platforms", t("测序平台"), esc(displayList(p.platforms) || t("待补")))}${editableDetail(p.id, "articleTypes", t("文献类型"), esc(displayList(p.articleTypes) || t("待判断")))}${editableDetail(p.id, "datasets", t("关联数据集"), ds.length ? esc(ds.map((d) => d.accession || d.title).join(listSeparator)) : `<span class="muted">${t("未关联")}</span>`)}${editableDetail(p.id, "source", t("发现来源"), esc(tv(p.source || "手动添加")))}${editableDetail(p.id, "addedAt", t("加入时间"), dateText(p.addedAt))}</div>`
     + `<section class="detail-section"><h3>${t("摘要")}</h3><p class="abstract-text">${esc(p.abstract || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`
     + (arr(p.tags).length ? `<section class="detail-section"><h3>${t("主题标签")}</h3><div class="tag-list">${arr(p.tags).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}</div></section>` : "")
