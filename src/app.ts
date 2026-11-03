@@ -95,6 +95,7 @@ export class App {
   abstractTranslations = new Map<string, AbstractTranslation>();
   /** Screening mode shows the stored PDF beside the paper unless hidden. */
   screenPdf = localStorage.getItem("bibliocell-screen-pdf") !== "off";
+  overviewHidePreprint = localStorage.getItem("bibliocell-overview-hide-preprint") === "on";
   /** Screening mode: the queue rail is open by default on wide windows; narrow ones show it as an overlay on request. */
   screenQueueOpen = wideWindow();
   private translationAnchor: DOMRect | null = null;
@@ -941,10 +942,11 @@ export class App {
       }
     },
     "overview-filter": (el) => {
-      const field = el.dataset.field as "species" | "modality" | "organ" | "year" | undefined;
+      const field = el.dataset.field as "species" | "modality" | "organ" | "year" | "articleType" | undefined;
       const value = el.dataset.value ?? "";
       if (!field || !value) return;
-      this.filters = { ...emptyFilters(), [field]: value, sort: this.filters.sort };
+      // With preprints left out of the charts, the library shows the same papers the bar counted.
+      this.filters = { ...emptyFilters(), [field]: value, preprint: this.overviewHidePreprint ? "no" : "", sort: this.filters.sort };
       this.paperPage = 1;
       this.navigate("papers");
     },
@@ -1060,6 +1062,12 @@ export class App {
     }
     if (target.id === "automation-enabled" || target.id === "automation-interval") {
       saveAutomation(this);
+      return;
+    }
+    if (target.id === "overview-hide-preprint" && target instanceof HTMLInputElement) {
+      this.overviewHidePreprint = target.checked;
+      localStorage.setItem("bibliocell-overview-hide-preprint", target.checked ? "on" : "off");
+      this.render();
       return;
     }
     if (target.id === "demo-mode" && target instanceof HTMLInputElement) {

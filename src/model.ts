@@ -46,6 +46,7 @@ export interface Filters {
   year: string;
   modality: string;
   platform: string;
+  articleType: string;
   fulltext: string;
   screening: string;
   source: string;
@@ -56,7 +57,7 @@ export interface Filters {
 }
 
 export const emptyFilters = (): Filters => ({
-  search: "", species: "", organ: "", year: "", modality: "", platform: "", fulltext: "", screening: "", source: "", preprint: "", review: "", starred: false, sort: "newest",
+  search: "", species: "", organ: "", year: "", modality: "", platform: "", articleType: "", fulltext: "", screening: "", source: "", preprint: "", review: "", starred: false, sort: "newest",
 });
 
 /** A negative proposal needs attention until the person accepts or dismisses it. */
@@ -168,12 +169,13 @@ export const speciesNames = (p: HasSpecies): string[] => arr(p.species).map((s) 
 export const speciesDisplay = (p: HasSpecies, includeScientific = locale === "en"): string => arr(p.species).map((s) => s ? speciesText(s, includeScientific) : "").filter(Boolean).join(listSeparator);
 export const joinList = (value: string[] | null | undefined, separator = listSeparator): string => arr(value).filter(Boolean).join(separator);
 
-export type ListField = "species" | "organ" | "year" | "modality" | "platform" | "source";
+export type ListField = "species" | "organ" | "year" | "modality" | "platform" | "articleType" | "source";
 export const listValues: Record<ListField, (p: Paper) => string[]> = {
   species: (p) => speciesNames(p),
   organ: (p) => arr(p.organs),
   modality: (p) => arr(p.modalities),
   platform: (p) => arr(p.platforms),
+  articleType: (p) => arr(p.articleTypes),
   year: (p) => (p.year ? [String(p.year)] : []),
   source: (p) => (p.source ? [p.source] : []),
 };
@@ -264,6 +266,7 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
         && (!filters.year || listValues.year(p).includes(filters.year))
         && (!filters.modality || listValues.modality(p).includes(filters.modality))
         && (!filters.platform || listValues.platform(p).includes(filters.platform))
+        && (!filters.articleType || listValues.articleType(p).includes(filters.articleType))
         && (!filters.fulltext || p.fulltext === filters.fulltext)
         && (!filters.screening || p.screening === filters.screening)
         && (!filters.review || reviewConcern(p) !== null)

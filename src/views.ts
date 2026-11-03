@@ -212,14 +212,19 @@ export function renderOverview(app: App): string {
   const statCards = stats.map((s, i) =>
     `<button class="stat-card" data-action="stat-nav" data-target="${s[4]}"><div class="stat-top"><span class="stat-label">${s[0]}</span><span class="stat-icon">${I(s[3], 18)}</span></div><div class="stat-value">${s[1]}<span class="stat-unit">${i === 1 ? t("组") : t("篇")}</span></div><div class="stat-meta">${s[2]}${I("arrow-right", 14)}</div></button>`,
   ).join("");
-  return `<div class="stat-grid">${statCards}</div>${screeningDashboard(app)}`
+  const coverage = `<section class="panel coverage-panel"><div class="panel-header"><div><h2>${t("整理覆盖")}</h2><p class="muted">${t("收录与完善，各自向前一步")}</p></div></div><div class="panel-body progress-list">${progressRow(t("收录范围已判断"), total - pending, total)}${progressRow(t("已关联数据集"), withData, total, "blue")}${progressRow(t("已记录全文入口"), withFulltext, total, "gold")}</div></section>`;
+  // The statistics can leave preprints out; screening progress and coverage always count every paper.
+  const preprints = papers.filter((p) => p.publicationStatus === "preprint").length;
+  const counted = app.overviewHidePreprint ? papers.filter((p) => p.publicationStatus !== "preprint") : papers;
+  return `<div class="stat-grid">${statCards}</div><div class="overview-progress-grid">${screeningDashboard(app)}${coverage}</div>`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>${t("最近收录")}</h2><p class="muted">${t("新线索先留下，整理慢慢来")}</p></div><button class="text-link" data-page="papers">${t("查看全部")} ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} ${t("当前条目为原型示例，可通过新增或导入建立自己的目录。")}</div></section>`
     + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>${t("接下来整理")}</h2><p class="muted">${t("按需要补齐信息")}</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">${t("查看全部待补事项")} ${I("arrow-right", 16)}</button></section></div>`
-    + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><div><h2>${t("整理覆盖")}</h2><p class="muted">${t("收录与完善，各自向前一步")}</p></div><button class="text-link" data-action="export-report">${I("download", 15)} ${t("导出进度报告")}</button></div><div class="panel-body progress-list">${progressRow(t("收录范围已判断"), total - pending, total)}${progressRow(t("已关联数据集"), withData, total, "blue")}${progressRow(t("已记录全文入口"), withFulltext, total, "gold")}</div></section>`
-    + distributionPanel(papers, "species", t("研究物种"), t("当前目录中的文献分布"), (v) => speciesLabelOf(papers, v))
-    + yearPanel(papers)
-    + distributionPanel(papers, "modality", t("研究技术"), t("按测序或成像技术统计"), tv)
-    + distributionPanel(papers, "organ", t("研究组织"), t("按组织或器官统计"), tv)
+    + `<div class="overview-section-head"><div><h2>${t("文献统计")}</h2><p class="muted">${t("点击条目筛选文献库")}</p></div><label class="checkbox-choice"><input type="checkbox" id="overview-hide-preprint"${app.overviewHidePreprint ? " checked" : ""}><span>${t("不展示预印本")}${preprints ? ` (${preprints})` : ""}</span></label></div>`
+    + `<div class="overview-bottom-grid">${yearPanel(counted)}`
+    + distributionPanel(counted, "species", t("研究物种"), t("当前目录中的文献分布"), (v) => speciesLabelOf(papers, v))
+    + distributionPanel(counted, "modality", t("研究技术"), t("按测序或成像技术统计"), tv)
+    + distributionPanel(counted, "organ", t("研究组织"), t("按组织或器官统计"), tv)
+    + distributionPanel(counted, "articleType", t("文献类型"), t("按原创研究、方法、综述等统计"), tv)
     + `</div>`;
 }
 
@@ -247,7 +252,7 @@ export function renderPapers(app: App): string {
   // Writing the clamped page back keeps state valid as filters or edits shrink the list.
   const info = paperPage(items.length, app.paperPageSize, app.paperPage);
   app.paperPage = info.page;
-  const filterKeys = ["species", "organ", "year", "modality", "platform", "fulltext", "screening", "source", "preprint"] as const;
+  const filterKeys = ["species", "organ", "year", "modality", "platform", "articleType", "fulltext", "screening", "source", "preprint"] as const;
   const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0) + (filters.review ? 1 : 0);
   const entries = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
   const calibration = app.calibrationView;
@@ -262,6 +267,7 @@ export function renderPapers(app: App): string {
     + selectFilter(filters, "year", t("年份"), uniqueValues(papers, "year").reverse())
     + selectFilter(filters, "modality", t("技术"), uniqueValues(papers, "modality").map((v) => ({ value: v, label: tv(v) })))
     + selectFilter(filters, "platform", t("平台"), uniqueValues(papers, "platform"))
+    + selectFilter(filters, "articleType", t("文献类型"), uniqueValues(papers, "articleType").map((v) => ({ value: v, label: tv(v) })))
     + selectFilter(filters, "fulltext", t("全文"), entries(FULL))
     + selectFilter(filters, "screening", t("收录"), entries(SCREEN))
     + selectFilter(filters, "source", t("来源"), uniqueValues(papers, "source").map((v) => ({ value: v, label: tv(v) })))
