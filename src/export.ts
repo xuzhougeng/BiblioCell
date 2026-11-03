@@ -38,6 +38,8 @@ export function exportModal(app: App, scope: ExportScope, preset: ExportKind | "
     const filtered = filterPapers(app.state.papers, app.filters).length;
     const included = app.state.papers.filter((p) => p.screening === "included").length;
     ranges = [["filtered", t("当前筛选结果（{n} 篇）", { n: filtered })], ["included", t("全部已收录（{n} 篇）", { n: included })], ["all", t("全部文献（{n} 篇）", { n: app.state.papers.length })]];
+    // Papers ticked in the table come first, so the bar's export button needs no extra step.
+    if (app.selectedPapers.size) ranges.unshift(["selected", t("已勾选的文献（{n} 篇）", { n: app.selectedPapers.size })]);
     formats = PAPER_FORMATS;
   } else {
     const filtered = filterDatasets(app.state.datasets, app.datasetSearch, (id) => app.paperById(id)?.title ?? "", app.datasetReview).length;
@@ -68,6 +70,7 @@ export function runExport(app: App, form: HTMLFormElement): void {
   if (scope === "papers") {
     if (range === "filtered") papers = filterPapers(papers, app.filters);
     else if (range === "included") papers = papers.filter((p) => p.screening === "included");
+    else if (range === "selected") papers = papers.filter((p) => app.selectedPapers.has(p.id));
   } else if (range === "filtered") {
     datasets = filterDatasets(datasets, app.datasetSearch, (id) => app.paperById(id)?.title ?? "", app.datasetReview);
   }

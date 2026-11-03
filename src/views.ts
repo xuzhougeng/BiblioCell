@@ -1,5 +1,4 @@
 // Page renderers for overview, papers, datasets and tasks.
-import { AGENT_EXAMPLES } from "./agent.ts";
 import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
@@ -7,8 +6,9 @@ import {
   FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf,
   reviewConcern, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
-import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter } from "./ui.ts";
+import { I, badge, datasetStatusBadge, demoBadge, empty, fullBadge, modalityBadges, option, progressRow, screenBadge, selectFilter, sortChip } from "./ui.ts";
 import { renderCalibration } from "./calibration.ts";
+import { bulkBar, selectCell, selectHeader } from "./selection.ts";
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 
 /** displayList joins stored values for display, translating known labels like modalities. */
@@ -91,7 +91,8 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
     const concernReason = concern === "source" ? t("来自 {source} 的更新，尚未人工核查。", { source: p.source ? tv(p.source) : t("来源") })
       : p.proposedReason || (concern === "excluded" ? t("可能不符合收录范围，请查看详情确认。") : t("收录依据仍有疑问，请查看详情确认。"));
     const concernHint = concern === "source" ? t("查看详情，确认收录范围") : t("查看详情，核对依据");
-    const warning = concern ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: concernLabel })}</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">${concernHint} ${I("arrow-right", 12)}</span></div>` : "";
+    // The review state lives in the status column; the note under the title only appears when that column is hidden.
+    const warning = concern && !columns.includes("screening") ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: concernLabel })}</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">${concernHint} ${I("arrow-right", 12)}</span></div>` : "";
     const cells: Record<PaperColumn, string> = {
       star: `<td class="star-cell"><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? t("取消收藏") : t("加入收藏")}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`,
       title: `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || t("作者待补"))}</span><span class="meta-separator">·</span><span>${esc(p.year || t("年份待补"))}</span>${p.publicationStatus === "preprint" ? `<span class="preprint-label">${t("预印本")}</span>` : ""}</div>${warning}</td>`,
@@ -101,13 +102,42 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
       datasets: `<td class="link-cell">${datasetChips(app, p)}</td>`,
       modality: `<td>${modalityBadges(p)}</td>`,
       fulltext: `<td>${fulltextCell(app, p)}</td>`,
-      screening: `<td class="screening-cell">${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}">${I("alert", 13)}${concernLabel}<small>${t("尚未确认")}</small></div>` : ""}</td>`,
+      screening: `<td class="screening-cell">${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}" title="${esc(concernReason)}">${I("alert", 13)}${t("{label} · 待你确认", { label: concernLabel })}<small>${concernHint}</small></div>` : ""}</td>`,
     };
-    return `<tr${concern ? ` class="paper-needs-review ${concern}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? t("{label}，待确认：{title}", { label: concernLabel, title: esc(p.title) }) : t("查看 {title}", { title: esc(p.title) })}">${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
+    const selected = !compact && app.selectedPapers.has(p.id);
+    const classes = [concern ? `paper-needs-review ${concern}` : "", selected ? "is-selected" : ""].filter(Boolean).join(" ");
+    return `<tr${classes ? ` class="${classes}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? t("{label}，待确认：{title}", { label: concernLabel, title: esc(p.title) }) : t("查看 {title}", { title: esc(p.title) })}">${compact ? "" : selectCell(p.id, p.title, selected)}${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
-  const head = `<tr>${columns.map(id => id === "star" ? `<th class="col-star"><span class="sr-only">${t("收藏")}</span></th>` : th(labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
+  const selectAll = compact ? "" : selectHeader(items.every((p) => app.selectedPapers.has(p.id)), items.length > 0);
+  const head = `<tr>${selectAll}${columns.map(id => id === "star" ? `<th class="col-star"><span class="sr-only">${t("收藏")}</span></th>` : th(labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
 
   return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+}
+
+const WEEK = 7 * 24 * 60 * 60 * 1000;
+
+/** screeningDashboard shows how far screening has come and where to pick it up:
+ * a bar of decisions, what arrived this week, what waits for review, and a
+ * button that opens screening on the first undecided paper. */
+export function screeningDashboard(app: App, now = Date.now()): string {
+  const papers = app.state.papers;
+  const total = papers.length;
+  const by = (status: string) => papers.filter((p) => p.screening === status).length;
+  const undecided = by("pending");
+  const decided = total - undecided;
+  const thisWeek = papers.filter((p) => Date.parse(p.addedAt) >= now - WEEK).length;
+  const concerns = papers.filter((p) => reviewConcern(p)).length;
+  const segments = (["included", "excluded", "uncertain", "pending"] as const).map((status) => {
+    const n = by(status);
+    return n ? `<span class="screen-bar-seg ${status}" style="width:${(n / total) * 100}%" title="${esc(SCREEN[status]!)} ${n}"></span>` : "";
+  }).join("");
+  const legend = (["included", "excluded", "uncertain", "pending"] as const).map((status) =>
+    `<span class="screen-bar-key"><span class="screen-queue-dot ${status === "included" ? "green" : status === "excluded" ? "red" : status === "uncertain" ? "amber" : ""}"></span>${esc(SCREEN[status]!)} <strong>${by(status)}</strong></span>`).join("");
+  const metric = (label: string, value: number, action: string, target = ""): string =>
+    `<button class="dashboard-metric" data-action="${action}"${target ? ` data-target="${target}"` : ""}><span class="dashboard-metric-label">${label}</span><strong>${value}</strong></button>`;
+  return `<section class="panel dashboard-panel" aria-label="${t("筛选进度")}"><div class="panel-header"><div><h2>${t("筛选进度")}</h2><p class="muted">${t("已判断 {done} / {total} 篇", { done: decided, total })}</p></div><div class="section-actions"><button class="text-link" data-action="export-report">${I("download", 15)} ${t("导出进度报告")}</button><button class="btn btn-primary" data-action="resume-screening"${undecided ? "" : " disabled"}>${I("check-circle", 16)} ${t("继续筛选")}</button></div></div>`
+    + `<div class="panel-body"><div class="screen-bar" role="img" aria-label="${t("已判断 {done} / {total} 篇", { done: decided, total })}">${segments}</div><div class="screen-bar-legend">${legend}</div>`
+    + `<div class="dashboard-metrics">${metric(t("本周新增"), thisWeek, "stat-nav", "papers")}${metric(t("需核对"), concerns, "review-papers-nav")}${metric(t("待判断"), undecided, "stat-nav", "screen")}${metric(t("全文待补"), papers.filter((p) => p.screening === "included" && p.fulltext !== "stored").length, "stat-nav", "fulltext")}</div></div></section>`;
 }
 
 export function renderOverview(app: App): string {
@@ -140,8 +170,9 @@ export function renderOverview(app: App): string {
   const speciesBars = species.map(([label, count]) =>
     `<button class="species-bar-row" data-action="species-filter" data-label="${esc(label)}"><span>${esc(label)}</span><div class="species-bar-track"><div style="width:${Math.round((count / maxCount) * 100)}%"></div></div><strong>${count}</strong></button>`,
   ).join("");
-  const agentEntry = `<section class="panel agent-entry"><span class="agent-entry-icon">${I("sparkle", 22)}</span><div class="agent-entry-body"><h2>${t("AI 助手")}</h2><p class="muted">${t("用自己的模型，通过 MCP 工具检索、导入、补元数据、提收录建议。")}</p><div class="agent-entry-prompts">${AGENT_EXAMPLES.map((p) => `<button type="button" class="agent-entry-prompt" data-action="agent-open" data-prompt="${esc(p)}">${esc(p)}</button>`).join("")}</div></div><button class="btn btn-primary" data-action="agent-open">${I("sparkle", 15)} ${t("打开助手")}</button></section>`;
-  return `<div class="stat-grid">${statCards}</div>${agentEntry}`
+  // The assistant is one line here; its example prompts live on its own page.
+  const agentEntry = `<section class="panel agent-entry compact"><span class="agent-entry-icon">${I("sparkle", 18)}</span><div class="agent-entry-body"><h2>${t("AI 助手")}</h2><p class="muted">${t("用自己的模型，通过 MCP 工具检索、导入、补元数据、提收录建议。")}</p></div><button class="btn btn-secondary" data-action="agent-open">${I("sparkle", 15)} ${t("打开助手")}</button></section>`;
+  return `<div class="stat-grid">${statCards}</div>${screeningDashboard(app)}${agentEntry}`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>${t("最近收录")}</h2><p class="muted">${t("新线索先留下，整理慢慢来")}</p></div><button class="text-link" data-page="papers">${t("查看全部")} ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} ${t("当前条目为原型示例，可通过新增或导入建立自己的目录。")}</div></section>`
     + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>${t("接下来整理")}</h2><p class="muted">${t("按需要补齐信息")}</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">${t("查看全部待补事项")} ${I("arrow-right", 16)}</button></section></div>`
     + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><div><h2>${t("整理覆盖")}</h2><p class="muted">${t("收录与完善，各自向前一步")}</p></div><button class="text-link" data-action="export-report">${I("download", 15)} ${t("导出进度报告")}</button></div><div class="panel-body progress-list">${progressRow(t("收录范围已判断"), total - pending, total)}${progressRow(t("已关联数据集"), withData, total, "blue")}${progressRow(t("已记录全文入口"), withFulltext, total, "gold")}</div></section>`
@@ -176,12 +207,12 @@ export function renderPapers(app: App): string {
   const filterCount = filterKeys.filter((k) => filters[k]).length + (filters.starred ? 1 : 0) + (filters.review ? 1 : 0);
   const entries = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
   const calibration = app.calibrationView;
-  const tabs = `<div class="view-tabs"><button class="view-tab ${!filters.starred && !filters.review && !calibration ? "active" : ""}" data-action="all-papers">${t("全部文献")} <span>${papers.length}</span></button><button class="view-tab review-tab ${filters.review ? "active" : ""}" data-action="review-papers">${I("alert", 15)} ${t("需核对")} <span>${concerns.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} ${t("我的收藏")} <span>${papers.filter((p) => p.starred).length}</span></button><button class="view-tab ${calibration ? "active" : ""}" data-action="calibration-open" title="${t("AI 建议与人工判定的一致率、混淆矩阵和不一致样本")}">${I("sparkle", 15)} ${t("AI 对照")}${app.calibration?.report ? ` <span>${app.calibration.report.compared}</span>` : ""}</button></div>`;
+  // The breakdown of what waits for review sits on the tab; the rows themselves carry the reason.
+  const tabs = `<div class="view-tabs"><button class="view-tab ${!filters.starred && !filters.review && !calibration ? "active" : ""}" data-action="all-papers">${t("全部文献")} <span>${papers.length}</span></button><button class="view-tab review-tab ${filters.review ? "active" : ""}" data-action="review-papers"${concernSummary ? ` title="${esc(concernSummary)}"` : ""}>${I("alert", 15)} ${t("需核对")} <span>${concerns.length}</span></button><button class="view-tab ${filters.starred ? "active" : ""}" data-action="starred-papers">${I("star", 15)} ${t("我的收藏")} <span>${papers.filter((p) => p.starred).length}</span></button><button class="view-tab ${calibration ? "active" : ""}" data-action="calibration-open" title="${t("AI 建议与人工判定的一致率、混淆矩阵和不一致样本")}">${I("sparkle", 15)} ${t("AI 对照")}${app.calibration?.report ? ` <span>${app.calibration.report.compared}</span>` : ""}</button></div>`;
   if (calibration) return `<div class="section-toolbar">${tabs}</div>${renderCalibration(app)}`;
   return `<div class="section-toolbar">${tabs}<div class="column-toolbar"><button class="btn btn-primary" data-action="batch-open">${I("sparkle", 16)} <span id="batch-entry-label">${app.batch ? (app.batch.running ? t("AI 正在筛查文献") : t("批量筛选结果")) : t("批量 AI 筛选")}</span></button><button class="btn btn-secondary" data-action="start-screening" title="${t("以单篇文献为中心逐篇查看并做收录判断")}">${I("check-circle", 16)} ${t("逐篇筛选")}</button><button class="btn btn-secondary" data-action="paper-columns">${t("显示列")}</button><button class="btn btn-secondary" data-action="export-papers">${I("download", 16)} ${t("导出")}</button></div></div>`
-    + (concerns.length ? `<div class="review-summary">${I("alert", 20)}<div><strong>${t("有 {n} 篇文献的收录范围需要核对", { n: concerns.length })}</strong><p>${t("{summary}。确认前仍计入全部文献；打开详情可做出收录判断、采纳或忽略建议，或标记核查完成。", { summary: concernSummary })}</p></div><button class="btn btn-secondary" data-action="review-papers">${t("查看待核对")} ${I("arrow-right", 15)}</button></div>` : "")
-    + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="${t("搜索题目、物种、作者或 DOI…")}" value="${esc(filters.search)}" aria-label="${t("搜索文献")}"></label><select class="filter-select" data-filter="sort" aria-label="${t("排序方式")}">${SORT_OPTIONS.map(([value, label]) => option(value, label, filters.sort)).join("")}</select></div>`
-    + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} ${t("筛选")}</span>`
+    + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="${t("搜索题目、物种、作者或 DOI…")}" value="${esc(filters.search)}" aria-label="${t("搜索文献")}"></label></div>`
+    + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} ${t("筛选")}</span>${sortChip(filters.sort, SORT_OPTIONS)}`
     + selectFilter(filters, "species", t("物种"), uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))
     + selectFilter(filters, "organ", t("组织"), uniqueValues(papers, "organ"))
     + selectFilter(filters, "year", t("年份"), uniqueValues(papers, "year").reverse())
@@ -192,7 +223,7 @@ export function renderPapers(app: App): string {
     + selectFilter(filters, "source", t("来源"), uniqueValues(papers, "source").map((v) => ({ value: v, label: tv(v) })))
     + selectFilter(filters, "preprint", t("预印本"), [{ value: "yes", label: t("是") }, { value: "no", label: t("否") }])
     + (filterCount || filters.search ? `<button class="text-link filter-clear-all" data-action="clear-filters">${I("x", 13)} ${filterCount ? t("清空 {n} 项筛选", { n: filterCount }) : t("清空")}</button>` : "")
-    + `</div>${paperTable(items.slice(info.start, info.end), app, false, filters.sort)}<div class="table-footer"><span>${t("显示 {range} / {total} 篇文献", { range: items.length ? `${info.start + 1}–${info.end}` : 0, total: items.length })}</span><span class="muted footer-hint">${t("↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情")}</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
+    + `</div>${paperTable(items.slice(info.start, info.end), app, false, filters.sort)}${bulkBar(app)}<div class="table-footer"><span>${t("显示 {range} / {total} 篇文献", { range: items.length ? `${info.start + 1}–${info.end}` : 0, total: items.length })}</span><span class="muted footer-hint">${t("↑↓ 切换文献 · ←→ 翻页 · Enter 查看详情")}</span>${items.length ? tablePager("papers", app.paperPageSize, info) : ""}</div></section>`;
 }
 
 /** datasetTable renders the datasets list: one row per dataset with its linked papers. */
@@ -217,14 +248,15 @@ export function datasetTable(items: Dataset[], app: App, none = empty(t("暂无�
       ? `<div class="paper-review-note source"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: t("来源新增") })}</span><span class="paper-review-hint">${t("查看详情，核对仓库记录")} ${I("arrow-right", 12)}</span></div>`
       : "";
     return `<tr${d.awaitingReview ? ' class="paper-needs-review source"' : ""} data-action="open-dataset" data-id="${esc(d.id)}" tabindex="0" aria-label="${d.awaitingReview ? t("{label}，待确认：{title}", { label: t("来源新增"), title: esc(d.title) }) : t("查看 {title}", { title: esc(d.title) })}">`
-      + `<td class="dataset-main-cell"><div class="dataset-title">${esc(d.title)}</div><div class="dataset-meta">${demoBadge(d)}<span>${esc(displayList(d.platforms) || t("平台待补"))}</span></div>${review}</td>`
-      + `<td class="link-cell">${links.length ? `${chips}${links.length > 2 ? `<span class="link-more">+${links.length - 2}</span>` : ""}` : `<span class="muted">${t("未关联")}</span>`}</td>`
-      + `<td><div class="species-label">${esc(speciesDisplay(d) || t("物种待补"))}</div><div class="species-name">${esc(displayList(d.organs) || t("组织待补"))}</div></td>`
-      + `<td>${modalityBadges(d)}</td>`
-      + `<td class="repo-cell">${repos.length ? `${repos.slice(0, 1).map(repoLine).join("")}${repos.length > 1 ? `<span class="link-more">+${repos.length - 1}</span>` : ""}` : `<span class="muted">${t("待补")}</span>`}</td>`
-      + `<td>${datasetStatusBadge(d)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
+      // The modality badges repeat inside the title cell for narrow windows, where the column itself is hidden.
+      + `<td class="dataset-main-cell col-title"><div class="dataset-title">${esc(d.title)}</div><div class="dataset-meta">${demoBadge(d)}<span>${esc(displayList(d.platforms) || t("平台待补"))}</span><span class="dataset-meta-modality">${modalityBadges(d)}</span></div>${review}</td>`
+      + `<td class="link-cell col-links">${links.length ? `${chips}${links.length > 2 ? `<span class="link-more">+${links.length - 2}</span>` : ""}` : `<span class="muted">${t("未关联")}</span>`}</td>`
+      + `<td class="col-species"><div class="species-label">${esc(speciesDisplay(d) || t("物种待补"))}</div><div class="species-name">${esc(displayList(d.organs) || t("组织待补"))}</div></td>`
+      + `<td class="col-modality">${modalityBadges(d)}</td>`
+      + `<td class="repo-cell col-repo">${repos.length ? `${repos.slice(0, 1).map(repoLine).join("")}${repos.length > 1 ? `<span class="link-more">+${repos.length - 1}</span>` : ""}` : `<span class="muted">${t("待补")}</span>`}</td>`
+      + `<td class="col-status">${datasetStatusBadge(d)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
-  const head = `<tr><th>${t("数据集")}</th><th>${t("关联文献")}</th><th>${t("研究对象")}</th><th>${t("技术")}</th><th>${t("仓库编号")}</th><th>${t("数据状态")}</th><th class="col-arrow"></th></tr>`;
+  const head = `<tr><th class="col-title">${t("数据集")}</th><th class="col-links">${t("关联文献")}</th><th class="col-species">${t("研究对象")}</th><th class="col-modality">${t("技术")}</th><th class="col-repo">${t("仓库编号")}</th><th class="col-status">${t("数据状态")}</th><th class="col-arrow"></th></tr>`;
   return `<div class="table-wrap"><table class="paper-table dataset-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -238,7 +270,6 @@ export function renderDatasets(app: App): string {
   const toggle = `<div class="view-toggle" role="group" aria-label="${t("数据集视图切换")}"><button class="view-option${app.datasetView === "cards" ? " active" : ""}" data-action="datasets-view" data-view="cards" aria-pressed="${app.datasetView === "cards"}">${I("grid", 15)} ${t("卡片")}</button><button class="view-option${app.datasetView === "table" ? " active" : ""}" data-action="datasets-view" data-view="table" aria-pressed="${app.datasetView === "table"}">${I("more", 15)} ${t("列表")}</button></div>`;
   const tabs = `<div class="view-tabs"><button class="view-tab ${!app.datasetReview ? "active" : ""}" data-action="all-datasets">${t("全部数据集")} <span>${datasets.length}</span></button><button class="view-tab review-tab ${app.datasetReview ? "active" : ""}" data-action="review-datasets">${I("alert", 15)} ${t("需核对")} <span>${awaiting}</span></button></div>`;
   const head = `<div class="section-toolbar">${tabs}<div class="page-actions">${toggle}<button class="btn btn-secondary" data-action="export-datasets">${I("download", 16)} ${t("导出")}</button><button class="btn btn-secondary" data-action="new-dataset">${I("plus", 16)} ${t("添加数据集")}</button></div></div>`
-    + (awaiting && !app.datasetReview ? `<div class="review-summary">${I("alert", 20)}<div><strong>${t("有 {n} 组数据集需要核对", { n: awaiting })}</strong><p>${t("由来源更新从数据仓库新增，尚未人工核查。打开详情核对仓库记录、关联文献，修改整理状态或标记核查完成后移出。")}</p></div><button class="btn btn-secondary" data-action="review-datasets">${t("查看待核对")} ${I("arrow-right", 15)}</button></div>` : "")
     + `<div class="toolbar standalone-toolbar"><label class="table-search">${I("search", 18)}<input id="dataset-search" class="search-input" type="search" placeholder="${t("搜索物种、组织、accession 或关联文献…")}" value="${esc(app.datasetSearch)}" aria-label="${t("搜索数据集")}"></label></div>`;
   if (app.datasetView === "cards") {
     const cards = items.map((d) =>
