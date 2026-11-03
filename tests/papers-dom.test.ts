@@ -270,3 +270,22 @@ test("ticking rows keeps them selected across pages and feeds the bulk bar's act
   assert.equal(bar().hidden, true);
   assert.equal(document.querySelector("#modal-root .modal"), null);
 });
+
+test("a row waiting for review shows one short pill in the status column, never a multi-line note", () => {
+  const state = demoState();
+  const flagged = state.papers.find((p) => p.awaitingReview || p.proposedScreening === "excluded") ?? state.papers[0]!;
+  flagged.awaitingReview = true;
+  flagged.source = "PubMed";
+  papersApp(state);
+  const row = $(`tbody tr[data-id="${flagged.id}"]`);
+  const cell = $(".screening-cell", row);
+  const pill = $(".screening-proposal", cell);
+  assert.equal(text(".screening-proposal", cell), "待确认");
+  assert.equal(cell.querySelector("small"), null);
+  assert.equal(row.querySelector(".paper-review-note"), null);
+  assert.equal(cell.textContent?.includes("\n"), false);
+  // The explanation lives on the tooltip; the row itself opens the details.
+  assert.match(pill.title, /来源新增 · 来自 PubMed 的更新/);
+  // Both cells of the row carry no block-level text beyond the title's two lines.
+  assert.ok(!cell.textContent!.includes("查看详情"));
+});

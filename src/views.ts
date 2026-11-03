@@ -76,11 +76,12 @@ function fulltextCell(app: App, p: Paper): string {
 export function paperTable(items: Paper[], app: App, compact = false, sort = ""): string {
   if (!items.length) return empty(t("没有找到匹配文献"), t("尝试调整筛选条件，或添加一篇新文献。"), `<button class="btn btn-secondary" data-action="clear-filters">${t("清空筛选")}</button>`);
   const active = compact ? null : sortParts(sort);
-  const th = (label: string, key?: SortKey): string => {
-    if (compact || !key) return `<th>${label}</th>`;
+  // Every column carries a col-* class, so narrow windows can fold the secondary ones.
+  const th = (id: PaperColumn, label: string, key?: SortKey): string => {
+    if (compact || !key) return `<th class="col-${id}">${label}</th>`;
     const on = active!.key === key;
     const dir = on ? active!.dir : "";
-    return `<th${on ? ` aria-sort="${dir === "asc" ? "ascending" : "descending"}"` : ""}><button class="th-sort${on ? " on" : ""}" data-action="sort-column" data-key="${key}" aria-label="${t("按{label}排序", { label })}">${label}<span class="sort-mark">${on ? I(dir === "asc" ? "chevron-up" : "chevron-down", 12) : ""}</span></button></th>`;
+    return `<th class="col-${id}"${on ? ` aria-sort="${dir === "asc" ? "ascending" : "descending"}"` : ""}><button class="th-sort${on ? " on" : ""}" data-action="sort-column" data-key="${key}" aria-label="${t("按{label}排序", { label })}">${label}<span class="sort-mark">${on ? I(dir === "asc" ? "chevron-up" : "chevron-down", 12) : ""}</span></button></th>`;
   };
   const columns: PaperColumn[] = compact ? ["star", "title", "species", "modality", "screening"] : app.paperColumns;
   const labels = Object.fromEntries(PAPER_COLUMNS) as Record<PaperColumn, string>;
@@ -95,21 +96,22 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
     const warning = concern && !columns.includes("screening") ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: concernLabel })}</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">${concernHint} ${I("arrow-right", 12)}</span></div>` : "";
     const cells: Record<PaperColumn, string> = {
       star: `<td class="star-cell"><button class="btn-icon star-button${p.starred ? " is-starred" : ""}" data-action="toggle-star" data-id="${esc(p.id)}" aria-label="${p.starred ? t("取消收藏") : t("加入收藏")}" aria-pressed="${Boolean(p.starred)}">${I("star", 16)}</button></td>`,
-      title: `<td class="paper-main-cell"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || t("作者待补"))}</span><span class="meta-separator">·</span><span>${esc(p.year || t("年份待补"))}</span>${p.publicationStatus === "preprint" ? `<span class="preprint-label">${t("预印本")}</span>` : ""}</div>${warning}</td>`,
-      journal: `<td class="journal-cell">${p.journal ? esc(p.journal) : `<span class="muted">${t("期刊待补")}</span>`}</td>`,
-      year: `<td class="year-cell">${p.year ? esc(String(p.year)) : `<span class="muted">${t("年份待补")}</span>`}</td>`,
-      species: `<td><div class="species-label">${esc(speciesDisplay(p) || t("物种待补"))}</div><div class="species-name">${esc(displayList(p.organs) || t("组织待补"))}</div></td>`,
-      datasets: `<td class="link-cell">${datasetChips(app, p)}</td>`,
-      modality: `<td>${modalityBadges(p)}</td>`,
-      fulltext: `<td>${fulltextCell(app, p)}</td>`,
-      screening: `<td class="screening-cell">${screenBadge(p.screening)}${concern ? `<div class="screening-proposal ${concern}" title="${esc(concernReason)}">${I("alert", 13)}${t("{label} · 待你确认", { label: concernLabel })}<small>${concernHint}</small></div>` : ""}</td>`,
+      title: `<td class="paper-main-cell col-title"><div class="paper-title">${esc(p.title)}</div><div class="paper-meta">${demoBadge(p)}<span>${esc(p.authors || t("作者待补"))}</span><span class="meta-separator">·</span><span>${esc(p.year || t("年份待补"))}</span>${p.publicationStatus === "preprint" ? `<span class="preprint-label">${t("预印本")}</span>` : ""}</div>${warning}</td>`,
+      journal: `<td class="journal-cell col-journal">${p.journal ? esc(p.journal) : `<span class="muted">${t("期刊待补")}</span>`}</td>`,
+      year: `<td class="year-cell col-year">${p.year ? esc(String(p.year)) : `<span class="muted">${t("年份待补")}</span>`}</td>`,
+      species: `<td class="col-species"><div class="species-label">${esc(speciesDisplay(p) || t("物种待补"))}</div><div class="species-name">${esc(displayList(p.organs) || t("组织待补"))}</div></td>`,
+      datasets: `<td class="link-cell col-datasets">${datasetChips(app, p)}</td>`,
+      modality: `<td class="col-modality">${modalityBadges(p)}</td>`,
+      fulltext: `<td class="col-fulltext">${fulltextCell(app, p)}</td>`,
+      // One short pill only: the label and reason go on the tooltip, and the row opens the details.
+      screening: `<td class="screening-cell col-screening">${screenBadge(p.screening)}${concern ? `<span class="screening-proposal ${concern}" title="${esc(`${concernLabel} · ${concernReason} ${concernHint}`)}">${I("alert", 12)}${t("待确认")}</span>` : ""}</td>`,
     };
     const selected = !compact && app.selectedPapers.has(p.id);
     const classes = [concern ? `paper-needs-review ${concern}` : "", selected ? "is-selected" : ""].filter(Boolean).join(" ");
     return `<tr${classes ? ` class="${classes}"` : ""} data-action="open-paper" data-id="${esc(p.id)}" tabindex="0" aria-label="${concern ? t("{label}，待确认：{title}", { label: concernLabel, title: esc(p.title) }) : t("查看 {title}", { title: esc(p.title) })}">${compact ? "" : selectCell(p.id, p.title, selected)}${columns.map(id => cells[id]).join("")}<td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
   const selectAll = compact ? "" : selectHeader(items.every((p) => app.selectedPapers.has(p.id)), items.length > 0);
-  const head = `<tr>${selectAll}${columns.map(id => id === "star" ? `<th class="col-star"><span class="sr-only">${t("收藏")}</span></th>` : th(labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
+  const head = `<tr>${selectAll}${columns.map(id => id === "star" ? `<th class="col-star"><span class="sr-only">${t("收藏")}</span></th>` : th(id, labels[id], sortKeys[id])).join("")}<th class="col-arrow"></th></tr>`;
 
   return `<div class="table-wrap"><table class="paper-table${compact ? " compact-table" : ""}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }

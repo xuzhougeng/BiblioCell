@@ -269,6 +269,7 @@ export const views: Record<string, string> = {
   "{n} 篇建议核对": "{n} suggested for review",
   "全部文献": "All papers",
   "需核对": "Needs review",
+  "待确认": "To confirm",
   "我的收藏": "Starred",
   "显示列": "Columns",
   "导出": "Export",

@@ -418,7 +418,7 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .paper-table th.col-select, .paper-table td.select-cell { min-width: 0; width: 36px; max-width: 36px; padding-left: 14px; padding-right: 0 }
 .paper-table th.col-select { padding-top: 0; padding-bottom: 0 }
 .paper-table .select-cell input, .paper-table .col-select input { display: block; width: 16px; height: 16px; margin: 0; accent-color: var(--primary); cursor: pointer }
-.paper-table th.col-select + th.col-star, .paper-table td.select-cell + td.star-cell { padding-left: 6px }
+.paper-table th.col-select + th.col-star, .paper-table td.select-cell + td.star-cell { width: 30px; max-width: 30px; padding-left: 4px }
 .paper-table tbody tr.is-selected { background: var(--green-soft) }
 .paper-table tbody tr.is-selected:hover { background: var(--green-soft) }
 .bulk-bar { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 10px 22px; border-top: 2px solid var(--line-strong); background: var(--surface) }
@@ -865,7 +865,23 @@ code { font-family: var(--mono) }
 .paper-table .col-arrow { width: 30px }
 .paper-table .paper-main-cell { width: 44%; min-width: 240px }
 .paper-table .year-cell, .paper-table th.col-year { width: 1%; white-space: nowrap }
-.paper-table .screening-cell { width: 1%; white-space: nowrap }
+.paper-table .screening-cell { width: 1%; min-width: 110px; white-space: normal }
+.paper-table .screening-cell .badge { white-space: nowrap }
+.paper-table .link-chip-title { max-width: 150px }
+/* Keep the full table inside the panel: trim cell padding, then fold secondary columns as the window narrows.
+   Anything folded is still in the details drawer and in the column picker. */
+@media (max-width: 1500px) {
+  .paper-table:not(.compact-table) td, .paper-table:not(.compact-table) th { padding-left: 10px; padding-right: 10px }
+  .paper-table:not(.compact-table) .row-arrow, .paper-table:not(.compact-table) .col-arrow { display: none }
+  .paper-table:not(.compact-table) .link-chip-title { max-width: 130px }
+}
+@media (max-width: 1250px) {
+  .paper-table:not(.compact-table) .col-journal, .paper-table:not(.compact-table) .col-fulltext { display: none }
+}
+@media (max-width: 1100px) {
+  .paper-table:not(.compact-table) .col-datasets { display: none }
+  .paper-table:not(.compact-table) .link-chip-title { max-width: 110px }
+}
 .paper-table .row-arrow { color: #b0a483; width: 30px; padding-left: 0 }
 .paper-table .star-button { width: 26px; min-width: 26px; color: #b0a483 }
 .paper-table .star-button.is-starred { color: #956a1c }
@@ -881,10 +897,9 @@ code { font-family: var(--mono) }
 .paper-review-label svg, .screening-proposal > svg { flex-shrink: 0 }
 .paper-review-reason { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin-top: 3px; color: #74634f }
 .paper-review-hint { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px }
-.screening-proposal { margin-top: 6px; font-size: calc(12px * var(--font-scale, 1)); font-weight: 650; color: var(--amber); white-space: normal; line-height: 1.45; cursor: help }
-.screening-proposal > svg { vertical-align: -2px; margin-right: 4px }
+.screening-proposal { display: flex; width: fit-content; align-items: center; gap: 3px; margin: 4px 0 0; padding: 1px 7px; border-radius: 999px; background: var(--amber-soft); font-size: calc(11.5px * var(--font-scale, 1)); font-weight: 650; color: var(--amber); white-space: nowrap; line-height: 1.5; cursor: help; vertical-align: middle }
+.screening-proposal > svg { width: 12px; height: 12px; flex-shrink: 0 }
 .screening-proposal.excluded { color: #914333 }
-.screening-proposal small { display: block; font-weight: 400; color: var(--muted) }
 .view-tab.review-tab { color: #805a23 }
 .view-tab.review-tab.active { border-bottom-color: #a8772c; color: #805a23 }
 .view-tab.review-tab > span, .view-tab.review-tab.active > span { background: #f1dfbb; color: #805a23 }
