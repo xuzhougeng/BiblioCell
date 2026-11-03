@@ -14,8 +14,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const SchemaVersion = 14
-
 //go:embed schema.sql
 var schemaSQL string
 
@@ -134,6 +132,31 @@ var columnMigrations = []columnMigration{
 		ddl:      "INTEGER NOT NULL DEFAULT 0 CHECK (awaiting_review IN (0,1))",
 		backfill: "DROP VIEW IF EXISTS v_dataset_overview",
 	},
+}
+
+// legacyUpgrade brings a database from before the baseline up to it. Each
+// step checks the actual DDL rather than user_version, which pre-release
+// builds did not always keep honest.
+func legacyUpgrade(db *sql.DB) error {
+	if err := healColumns(db); err != nil {
+		return err
+	}
+	if err := migrateRepositoryNames(db); err != nil {
+		return err
+	}
+	// Early databases may predate the migration log. Numbered migrations need
+	// it before schema.sql runs at the end of Open.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version INTEGER PRIMARY KEY,
+		description TEXT NOT NULL,
+		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+	)`); err != nil {
+		return fmt.Errorf("initialize migration log: %w", err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", baselineVersion)); err != nil {
+		return fmt.Errorf("stamp baseline version: %w", err)
+	}
+	return nil
 }
 
 // healColumns adds missing columns to existing tables and backfills JSON
@@ -306,6 +329,8 @@ type Store struct {
 	db        *sql.DB
 	path      string
 	integrity string // PRAGMA integrity_check result from Open; Open fails unless it is "ok"
+	// Upgraded says what Open changed when the file was behind this build; nil otherwise.
+	Upgraded *Upgrade
 }
 
 const (
@@ -357,29 +382,55 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;"); err != nil {
 		return nil, fmt.Errorf("configure database: %w", err)
 	}
-	var version int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return nil, fmt.Errorf("read schema version: %w", err)
-	}
-	if version < 0 || version > SchemaVersion {
-		return nil, fmt.Errorf("unsupported database schema version %d", version)
-	}
-	if err := healColumns(db); err != nil {
+	version, hasTables, err := readVersion(db)
+	if err != nil {
 		return nil, err
 	}
+	if version < 0 || version > SchemaVersion {
+		return nil, fmt.Errorf("database schema version %d is newer than this build (%d); update BiblioCell", version, SchemaVersion)
+	}
+	store := &Store{db: db, path: path}
+	if hasTables && version < SchemaVersion {
+		// Outdated: keep a copy first, so a failed step never costs the library.
+		backup, err := backupDatabase(db, path, version)
+		if err != nil {
+			return nil, err
+		}
+		store.Upgraded = &Upgrade{From: version, To: SchemaVersion, Backup: backup}
+		if version < baselineVersion {
+			// Before the baseline the schema was repaired by inspection, not by
+			// number: these steps are idempotent and cover every pre-release shape.
+			if err := legacyUpgrade(db); err != nil {
+				return nil, fmt.Errorf("upgrade database to version %d, backup at %s: %w", baselineVersion, backup, err)
+			}
+			version = baselineVersion
+		}
+		if err := applyMigrations(db, version, backup); err != nil {
+			return nil, err
+		}
+	}
+	// Pre-release builds stamped version 13 before the paper view gained
+	// fulltext_url; the check is one PRAGMA, so it stays for every database.
 	if err := ensurePaperView(db); err != nil {
 		return nil, err
 	}
-	if err := migrateRepositoryNames(db); err != nil {
-		return nil, err
-	}
+	// schema.sql is idempotent: it creates what is missing (all of it on a
+	// fresh database, views a migration dropped on an upgraded one) and stamps
+	// the current version.
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return nil, fmt.Errorf("initialize schema: %w", err)
+	}
+	if err := recordMigrations(db); err != nil {
+		return nil, err
+	}
+	// Go owns the final stamp: a schema.sql whose pragma lags the migration
+	// list must not roll the version back and replay steps on the next start.
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", SchemaVersion)); err != nil {
+		return nil, fmt.Errorf("stamp schema version: %w", err)
 	}
 	if err := rekeyPapers(db); err != nil {
 		return nil, err
 	}
-	store := &Store{db: db, path: path}
 	if err := store.ensureSourceStates(context.Background()); err != nil {
 		return nil, err
 	}

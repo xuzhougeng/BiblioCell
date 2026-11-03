@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -304,5 +305,126 @@ func TestCLIAgentRunsConfiguredModel(t *testing.T) {
 	}
 	if code := runCLI([]string{"-data-dir", t.TempDir(), "agent", "hello"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
 		t.Error("agent ran without an AI configuration")
+	}
+}
+
+func TestCLIDatabaseVersionAndMigrate(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// Before any command touched the file: version reports, migrate creates nothing to upgrade.
+	var info library.VersionInfo
+	run(t, dataDir, "", &info, "db", "version")
+	if info.State != "missing" || info.Exists || info.AppVersion != library.SchemaVersion {
+		t.Fatalf("db version on a missing file = %+v", info)
+	}
+	if _, err := os.Stat(info.DatabasePath); !os.IsNotExist(err) {
+		t.Fatal("db version created the database")
+	}
+
+	// A v0.1.0 library at the settings' database path.
+	if err := os.MkdirAll(filepath.Dir(info.DatabasePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ddl, err := os.ReadFile(filepath.Join("internal", "library", "testdata", "schema_v11.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := sql.Open("sqlite", info.DatabasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(string(ddl) + "; INSERT INTO papers(id, title) VALUES ('P-old', 'From v0.1.0')"); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Close()
+
+	run(t, dataDir, "", &info, "db", "version")
+	if info.State != "outdated" || info.Version != 11 || len(info.Pending) == 0 {
+		t.Fatalf("db version on a v0.1.0 file = %+v", info)
+	}
+
+	var report struct {
+		Before, After int
+		Migrated      bool
+		Backup        string
+	}
+	run(t, dataDir, "", &report, "db", "migrate")
+	if report.Before != 11 || report.After != library.SchemaVersion || !report.Migrated || report.Backup == "" {
+		t.Fatalf("db migrate = %+v", report)
+	}
+	if _, err := os.Stat(report.Backup); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	run(t, dataDir, "", &report, "db", "migrate")
+	if report.Migrated || report.Before != library.SchemaVersion {
+		t.Fatalf("second db migrate = %+v", report)
+	}
+	var found []library.Paper
+	run(t, dataDir, "", &found, "papers", "list", "-q", "v0.1.0")
+	if len(found) != 1 || found[0].ID != "P-old" {
+		t.Fatalf("paper after migrate = %+v", found)
+	}
+}
+
+func TestCLIExport(t *testing.T) {
+	dataDir := t.TempDir()
+	var paper library.Paper
+	run(t, dataDir, `{"title":"Export me & more","doi":"10.1000/exp","authors":"Doe, Jane","year":2025,"journal":"Cell","species":[{"name":"Zea mays","label":"玉米"}],"modalities":["scRNA-seq"]}`, &paper, "papers", "add")
+	var excluded library.Paper
+	run(t, dataDir, `{"title":"Leave me out","doi":"10.1000/out"}`, &excluded, "papers", "add")
+	var dataset library.Dataset
+	run(t, dataDir, `{"title":"Maize root","repositories":[{"repository":"geo","accession":"GSE100"},{"repository":"sra","accession":"SRP200"}],"papers":[{"paperId":"`+paper.ID+`","role":"generated","evidenceText":"table 1"}]}`, &dataset, "datasets", "add")
+
+	// Without -o the file body goes to stdout, filtered like papers list.
+	var stdout, stderr bytes.Buffer
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "bibtex", "-q", "export me"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("export bibtex exited %d: %s", code, stderr.String())
+	}
+	bib := stdout.String()
+	if !strings.Contains(bib, "@article{doe2025export,") || !strings.Contains(bib, `title = {{Export me \& more}},`) || strings.Contains(bib, "Leave me out") {
+		t.Fatalf("bibtex output:\n%s", bib)
+	}
+
+	// With -o the file is written and its path reported.
+	target := filepath.Join(dataDir, "out", "papers.csv")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var written struct {
+		Path  string `json:"path"`
+		Count int    `json:"count"`
+	}
+	run(t, dataDir, "", &written, "export", "papers-csv", "-o", target)
+	if written.Path != target || written.Count != 2 {
+		t.Fatalf("export -o = %+v", written)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "GSE100; SRP200") || !strings.Contains(string(data), "Zea mays") {
+		t.Fatalf("papers csv:\n%s", data)
+	}
+
+	stdout.Reset()
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "download-script"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("export download-script exited %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "geo_series GSE100 ") || !strings.Contains(stdout.String(), "sra SRP200") || !strings.Contains(stdout.String(), "doi: 10.1000/exp") {
+		t.Fatalf("download script:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "report", "-title", "Weekly"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("export report exited %d: %s", code, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "# Weekly\n") || !strings.Contains(stdout.String(), "| Pending | 2 |") {
+		t.Fatalf("report:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "pdf"}, strings.NewReader(""), &stdout, &stderr); code == 0 || !strings.Contains(stderr.String(), "unknown export kind") {
+		t.Fatalf("unknown kind: code %d, stderr %q", code, stderr.String())
 	}
 }

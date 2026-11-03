@@ -231,9 +231,6 @@ func TestOpenMigratesV3Datasets(t *testing.T) {
 	if chemistry != "v3" || notes != "" {
 		t.Errorf("chemistry or notes changed: %q / %q", chemistry, notes)
 	}
-	if SchemaVersion != 14 {
-		t.Errorf("SchemaVersion = %d, want 14", SchemaVersion)
-	}
 }
 
 // saveDatasets stores whole datasets the way a person's new records are saved.

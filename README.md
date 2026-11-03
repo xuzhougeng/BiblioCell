@@ -268,6 +268,56 @@ AI 客户端可以通过标准 MCP 能力发现接口，不需要在提示词里
 
 MCP 始终操作正式数据库，与界面是否开启 Demo 无关。MCP 新增或编辑的文献在窗口回到前台时可见。服务仅监听 `127.0.0.1`，不要将端口转发到局域网或公网。
 
+## 导出
+
+筛选完一批文献后，结果可以从文献库页和数据集页右上角的“导出”按钮导出，也可以用命令行 `export`。桌面应用弹出保存对话框，由你选择位置；Demo 模式导出的是浏览器里的 Demo 数据，真实数据库模式导出的是正式库，两者都不会写入数据库。在线浏览器预览里文件直接下载。总览页“整理覆盖”面板有“导出进度报告”的快捷入口。
+
+文献库页的范围可选“当前筛选结果”“全部已收录”或“全部文献”，数据集页可选“当前搜索结果”或“全部数据集”。格式：
+
+| 格式 | 文件 | 内容 |
+|---|---|---|
+| `bibtex` | `.bib` | 每篇一个 `@article`，题目加双层花括号保留大小写，`\&`、`\%`、`\_` 等已转义，作者 `A; B` 写成 `A and B`，附 DOI、URL、PMID、物种/组织/测序类型/平台作 `keywords`，预印本加 `note = {Preprint}`。引用键为“第一作者姓 + 年份 + 题目首个长词”，重复时加 a、b 后缀 |
+| `papers-csv` | `.csv` | 每行一篇：`id, title, authors, journal, year, doi, pmid, publication_status, species, species_label, organs, modalities, platforms, article_types, screening, screening_reason, fulltext, reading, tags, dataset_accessions, dataset_ids, source, added_at`。多值字段用 `; ` 连接 |
+| `report` | `.md` | 筛选进度报告：收录 / 排除 / 证据不足 / 待判断数量、待处理的 agent 建议、来源更新新增未核查数、已收录文献的全文覆盖；数据集整理状态与可用性；按物种、测序类型、组织的数据集数（含已核实、公开）和已收录文献数；最后列出已收录文献的题目、年份、DOI 和 accession。`-title` 自定义标题 |
+| `datasets-csv` | `.csv` | 每行一个数据集：`accessions`、`repositories`、`accession_kinds`（如 `geo/series; sra/run`）、`verified_accessions`、整理状态、可用性、细胞数、关联文献 DOI / ID / 角色 |
+| `datasets-summary` | `.csv` | 按 `-group-by species|organ|modality` 聚合：数据集数、已核实数、公开数、关联文献数、accession 数。多物种的数据集在每个物种下各计一次，没填的记为 `(unspecified)` |
+| `download-script` | `.sh` | 批量下载脚本。按 accession 前缀分类：GEO 系列用 wget 取 `suppl/` 和 SOFT family 文件；SRA 的 SRP/SRX/SRS/SRR 用 `prefetch` + `fasterq-dump`；ENA / DDBJ 的 ERR/ERP/PRJEB 等从 ENA 文件报告取 fastq 链接；PRJNA 用 entrez-direct 展开成 SRR 再 prefetch；GSA、BioStudies、Zenodo 等没有批量工具的列为 `manual`，附页面地址。每条命令上方注释数据集题目和关联文献 DOI。应用只生成文件，不运行；`OUT=/data/scrna bash xxx.sh` 指定目标目录 |
+| `accessions` | `.txt` | 每行一个 accession，去重，可直接 `xargs prefetch` 或交给其他工具 |
+
+CSV 带 UTF-8 BOM 和 CRLF，Excel 直接打开；以 `=`、`+`、`-`、`@` 开头的单元格前面加 `'`，防止被当公式执行。accession 的识别以前缀为准：记成 GEO 但编号是 `SRR…` 的按 SRA 处理，前缀不认识的沿用记录的仓库名。
+
+命令行的 `-q`、`-screening` 筛选文献（和 `papers list` 一样），`-status` 筛选数据集；数据集格式把 `-q` 用在数据集上。
+
+```bash
+./BiblioCell export report -title "Week 44" -o report.md
+./BiblioCell export download-script -status verified > download.sh
+./BiblioCell export datasets-summary -group-by modality
+```
+
+示例：
+
+```bibtex
+@article{zhang2024singlecell,
+  title = {{Single-cell atlas of Arabidopsis \& rice roots}},
+  author = {Zhang, Wei and O'Brien, Ann},
+  journal = {Nature Plants},
+  year = {2024},
+  doi = {10.1000/abc\_1},
+  url = {https://doi.org/10.1000/abc\_1},
+  keywords = {Arabidopsis thaliana, root, scRNA-seq, 10x Genomics Chromium},
+}
+```
+
+```bash
+# ---- GEO (series) ----
+# Root atlas data (doi: 10.1000/abc_1)
+geo_series GSE123456 'https://ftp.ncbi.nlm.nih.gov/geo/series/GSE123nnn/GSE123456/'
+
+# ---- SRA (prefetch + fasterq-dump) ----
+# Root atlas data (doi: 10.1000/abc_1)
+sra SRP111111
+```
+
 ## 命令行
 
 同一个可执行文件也可以当命令行工具用，不开窗口，直接读写正式 SQLite 数据库和 `settings.json`。第一个参数是已知子命令时走命令行，否则照常启动桌面应用。输出一律是 JSON，方便接 `jq`。
@@ -302,13 +352,19 @@ echo '{"paperId":"P-xxxx","role":"generated","evidenceText":"..."}' | ./BiblioCe
 ./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN> -ncbi-api-key <KEY> -contact-email <EMAIL>
 ./BiblioCell mcp
 ./BiblioCell serve -addr 127.0.0.1:37841
+./BiblioCell export bibtex -screening included > included.bib
+./BiblioCell export datasets-csv -o datasets.csv
 ./BiblioCell sql "select id, title from papers order by added_at desc limit 5"
+./BiblioCell db version
+./BiblioCell db migrate
 ```
 
 - `papers add` / `import` / `update` 和 `datasets`、`evidence` 使用与 MCP 相同的字段和校验规则；`import` 一批原子提交，`-batch` 指定批次，`-dry-run` 只校验不写入。
 - `papers attach` 由本机命令行执行，可以读取任意路径；MCP 的 `attach_file` 只能读 `inbox/`。
 - `papers attach` 把文件复制进存放文件夹的 `papers/`，默认记为全文，`-type supplement` 记为补充材料。
+- `export KIND` 把文献或数据集写成文件，见上文“导出”；不带 `-o` 时内容直接打到 stdout，带 `-o` 时输出写入路径和记录数的 JSON。
 - `sql` 直接执行任意语句：`SELECT` / `WITH` / `PRAGMA` 打印行，其他语句打印受影响行数。它绕过应用层校验，改数据前先备份。
+- `db version` 只读取数据库文件的版本、已应用和待应用的迁移，不打开、不创建、不修改库；`db migrate` 把库升级到当前版本（先备份），其他子命令和桌面应用在打开库时也会自动做同样的事。见「数据库版本与迁移」。
 - 数据目录按 `-data-dir`、`$BIBLIOCELL_DATA_DIR`、应用默认用户数据目录的顺序确定；在 macOS 上 `.app` 包内和 `go run` 的默认目录名相同，命令行与桌面应用看到的是同一个库。
 - `settings set` 修改的存放文件夹和 MCP Token 在下次启动桌面应用后生效。
 - 桌面应用运行中也可以同时使用命令行，SQLite 自带锁，忙等 5 秒后报错。
@@ -321,7 +377,8 @@ BiblioCell/
 ├── service.go               # 暴露给前端的 Library 服务
 ├── cli.go                   # 命令行子命令：文献、来源、设置、原始 SQL
 ├── internal/library/
-│   ├── store.go             # 数据库打开、迁移与完整性检查
+│   ├── store.go             # 数据库打开、基线前的旧库修复与完整性检查
+│   ├── migrate.go           # 版本化迁移：迁移列表、备份、db version / migrate 的实现
 │   ├── auth.go              # MCP 写权限 Token 的生成与持久化
 │   ├── paper.go             # 正式文献 CRUD 与原型模型映射
 │   ├── dataset.go           # 数据集 CRUD、仓库与文献关联
@@ -330,15 +387,18 @@ BiblioCell/
 │   ├── source_clients.go    # 文献公开 API 客户端与解析器
 │   ├── source_repositories.go # GEO / SRA / ENA 仓库检索
 │   ├── source_query.go      # 试检索评估、助手更新检索式与修改记录
+│   ├── export.go            # BibTeX / CSV / 下载脚本 / 进度报告导出与 accession 分类
 │   ├── mcp.go               # 本机 MCP 服务与 AI 工具
 │   ├── suggestion.go / calibration.go  # AI 筛选建议记录、一致率与混淆矩阵
-│   ├── schema.sql           # 嵌入二进制的数据库结构 v14
-│   └── *_test.go            # 数据库与 MCP 端到端测试
+│   ├── schema.sql           # 嵌入二进制的当前数据库结构（新库一次建成）
+│   ├── testdata/            # 冻结的历史 schema：v11（v0.1.0 发布版）与 v13（迁移基线）
+│   └── *_test.go            # 数据库、迁移与 MCP 端到端测试
 ├── internal/settings/       # 设置校验、默认值与原子 JSON 持久化
 ├── src/
 │   ├── main.ts              # 入口：Demo / 真实模式判断与启动
 │   ├── app.ts               # 页面状态、渲染循环与事件委托
-│   ├── model.ts             # 纯逻辑：筛选、待补事项、DOI 规范化、导入校验、CSV
+│   ├── model.ts             # 纯逻辑：筛选、待补事项、DOI 规范化、导入校验
+│   ├── export.ts            # 导出弹窗；浏览器预览用的 TypeScript 版导出格式
 │   ├── store.ts             # 持久化：SQLite（经 Go）与 localStorage（Demo）两种实现
 │   ├── views.ts / drawer.ts / forms.ts / sources.ts / settings.ts  # 各页面、抽屉与弹窗
 │   ├── screen.ts / screen-batch.ts / calibration.ts  # 逐篇筛选、批量 AI 筛选与 AI 对照
@@ -346,7 +406,7 @@ BiblioCell/
 │   ├── demo-data.ts         # 明确标记的虚构演示数据
 │   ├── style.css            # 单一样式表（外壳与设置页 → 基础 → 组件）
 │   └── mygo.ts              # mygo generate 生成的类型化客户端
-├── tests/                   # node:test 纯逻辑测试（npm test）
+├── tests/                   # node:test 测试（npm test）：纯逻辑测试与 jsdom 界面交互测试
 ├── public/                  # 图标、设计文档与可下载资料
 ├── resources/               # 应用图标
 ├── mygo.config.ts           # mygo 开发、构建和应用元数据
@@ -364,7 +424,7 @@ npm install
 npm run dev
 ```
 
-`mygo dev` 会生成 `src/mygo.ts`、启动 Vite，并打开桌面应用。普通浏览器也可以通过 `npm run dev:web` 预览 Demo，但无法连接 Go 后端、真实数据库或 MCP。`npm run typecheck` 做 TypeScript 严格检查，`npm test` 运行 `tests/` 下的纯逻辑测试（Node 22.6+ 自带类型剥离，无需额外依赖）。
+`mygo dev` 会生成 `src/mygo.ts`、启动 Vite，并打开桌面应用。普通浏览器也可以通过 `npm run dev:web` 预览 Demo，但无法连接 Go 后端、真实数据库或 MCP。`npm run typecheck` 做 TypeScript 严格检查，`npm test` 运行 `tests/` 下的全部测试（Node 22.6+ 自带类型剥离）。纯逻辑测试直接 import `src/` 的模块；`*-dom.test.ts` 通过 `tests/dom.ts` 装一个 jsdom 窗口（唯一的测试依赖），用真实 DOM 和事件驱动 `App`，覆盖文献库的分页、排序、筛选胶囊与方向键，以及逐篇筛选页在 AI 建议、判断、元数据编辑和刷新时保住 PDF 阅读器。写新的界面测试时先 `import { resetDom } from "./dom.ts"`（必须是第一个 import），每个测试开头调用 `resetDom()`。
 
 ## 验证与构建
 
@@ -374,11 +434,42 @@ npm run typecheck
 npm run build
 ```
 
-测试覆盖数据库初始化与重开、文献编辑、AI 筛选建议记录与一致率 / 混淆矩阵、证据页码定位、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化。
+测试覆盖数据库初始化与重开、从 v0.1.0 数据库升级与备份、迁移失败回滚、迁移链与 schema.sql 一致性、文献编辑、AI 筛选建议记录与一致率 / 混淆矩阵、证据页码定位、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化；导出的 BibTeX 转义、CSV 多值字段、accession 分类、下载脚本和进度报告在 `internal/library/export_test.go` 与 `tests/export.test.ts` 中各有一套。
 
 需要实际访问公开来源时，可额外运行 `BIBLIOCELL_LIVE_TEST=1 go test ./internal/library -run TestRemoteConnectorsLive -v`；默认测试不会访问网络。
 
 打包结果位于 `build/`，前端构建结果位于 `dist/`。正式数据库保存在 mygo 的用户数据目录，不在源码目录中。
+
+## 数据库版本与迁移
+
+数据库结构的版本写在 SQLite 的 `PRAGMA user_version` 里，每一步升级在 `schema_migrations` 表留一行（版本号、说明、时间）。当前版本是 `library.SchemaVersion`，由 `internal/library/migrate.go` 里的基线版本加迁移条数算出；`./BiblioCell db version` 可以查看某个库处在哪个版本、还差哪些迁移。
+
+打开数据库（桌面应用启动、任何命令行子命令、`db migrate`）时自动升级，流程固定：
+
+1. 读取 `user_version`。比当前构建还新的库直接拒绝打开，提示更新 BiblioCell。
+2. 库落后时，先用 `VACUUM INTO` 把整个文件复制为同目录下的 `bibliocell.sqlite.bak-v<旧版本>`，再动原库。出问题时把备份复制回原文件名即可恢复。
+3. 低于基线（v13）的库，比如 v0.1.0 发布版的 v11，先经过 `store.go` 里按实际表结构修复的旧路径（补列、回填 JSON 多值字段、重建仓库名称约束、重建视图），再盖上基线版本号。
+4. 基线之后的迁移按编号顺序逐条执行。每条迁移在自己的事务里完成：执行 SQL、执行 Go 函数、写入 `schema_migrations`、更新 `user_version`，然后提交。失败即回滚这一条，库停在上一条完成的版本，错误信息写明失败的迁移、库停在的版本和备份路径；修好后再次打开会从停下的地方继续。
+5. 最后执行幂等的 `schema.sql`（新库在这一步一次建成；升级过的库在这里重建迁移中 DROP 掉的视图），并由 Go 盖上当前版本号。
+
+### 新增一条迁移
+
+改表结构时只改两处，再跑测试：
+
+1. 在 `migrate.go` 的 `migrations` 列表末尾追加一条，`Version` 是前一条加一（第一条是 14）。只改表结构写 `SQL`，可以含多条语句；需要用 Go 回填数据写 `Run`，它拿到的是同一个事务。改视图时在迁移里 `DROP VIEW IF EXISTS`，视图由随后的 `schema.sql` 重建。
+
+   ```go
+   var migrations = []Migration{
+       {Version: 14, Description: "数据集记录下载清单", SQL: `
+           ALTER TABLE datasets ADD COLUMN download_json TEXT NOT NULL DEFAULT '[]'
+               CHECK (json_valid(download_json) AND json_type(download_json) = 'array');
+           DROP VIEW IF EXISTS v_dataset_overview;`},
+   }
+   ```
+
+2. 把同样的改动写进 `schema.sql`，让新库直接建成最终形态：改 `CREATE TABLE` / `CREATE VIEW`，文件头的 `schema vN` 和末尾的 `PRAGMA user_version = N` 改成新版本号。`schema_migrations` 的初始行不用加，Go 会为新库补齐迁移记录。
+
+`go test ./internal/library` 里的 `TestMigrationsMatchSchema` 用 `testdata/schema_v13.sql` 建一个基线库跑完全部迁移，逐表逐列对比 `schema.sql` 新建的库，两边不一致或版本号没同步都会失败；`TestOpenUpgradesV010Database` 则保证从 v0.1.0 的库一路升上来数据不丢。迁移一旦合入 main 就不要再改，追加新的一条即可。几个分支各加迁移时，合并后按合并顺序重新编号，保证编号连续。
 
 ## 发布
 

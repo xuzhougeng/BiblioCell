@@ -175,6 +175,23 @@ export interface Evidence {
   observedAt: string;
 }
 
+export interface ExportRequest {
+  kind: string;
+  papers: Paper[];
+  datasets: Dataset[];
+  groupBy: string;
+  title: string;
+}
+
+/**
+ * ExportResult tells the window where an export landed. An empty path means
+ * the person cancelled the save dialog.
+ */
+export interface ExportResult {
+  path: string;
+  count: number;
+}
+
 export interface FulltextResult {
   file: PaperFile;
   source: string;
@@ -498,6 +515,14 @@ export const Library = {
   /** DeletePaper removes a paper and its stored attachments, preserving datasets. */
   deletePaper(id: string): Promise<void> {
     return call("Library.DeletePaper", id);
+  },
+  /**
+   * ExportLibrary renders the records the window sends (the current filter in
+   * either mode, Demo included) and saves the file where the person chooses.
+   * The database is not read, so Demo exports never touch the real library.
+   */
+  exportLibrary(req: ExportRequest): Promise<ExportResult> {
+    return call("Library.ExportLibrary", req);
   },
   /**
    * ExtractPaperMetadata reads the stored full text with the chat model. It makes

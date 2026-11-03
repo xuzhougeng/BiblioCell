@@ -15,7 +15,7 @@ import {
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
-  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, csvText, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
+  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   speciesNameFor, tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
@@ -27,6 +27,7 @@ import { Library } from "./mygo.ts";
 import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
 import { plantChoices } from "./research-options.ts";
 import { $, $$, I, addMetadataChoice, selectPlant, downloadFile, errorMessage, speciesRow } from "./ui.ts";
+import { exportModal, runExport } from "./export.ts";
 import { renderDatasets, renderOverview, renderPapers, renderTasks } from "./views.ts";
 import { t } from "./i18n.ts";
 import { datasetPickerMode, paperFieldKey, paperFieldModal, savePaperFields, searchDatasetPicker, selectPaperField, stepPaperField } from "./paper-fields.ts";
@@ -627,11 +628,6 @@ export class App {
   }
 
   // ---- import / export ----
-  exportCSV(): void {
-    const list = filterPapers(this.state.papers, this.filters);
-    downloadFile(`plantcell-papers-${nowISO().slice(0, 10)}.csv`, csvText(list, this.state.datasets), "text/csv;charset=utf-8");
-    this.toast(t("已导出当前筛选的 {n} 篇文献。", { n: list.length }));
-  }
   exportJSON(): void {
     downloadFile(`plantcell-library-${nowISO().slice(0, 10)}.json`, JSON.stringify({ ...this.state, exportedAt: nowISO() }, null, 2), "application/json;charset=utf-8");
     this.toast(t("已导出文献、数据集、链接与笔记。"));
@@ -724,7 +720,9 @@ export class App {
     },
     "paper-columns": () => this.showPaperColumns(),
     "reset-paper-columns": () => { this.paperColumns = defaultPaperColumns(); this.savePaperColumns(); $$("[data-paper-column]").forEach(el => { if (el instanceof HTMLInputElement) el.checked = true; }); },
-    "export-csv": () => this.exportCSV(),
+    "export-papers": () => exportModal(this, "papers"),
+    "export-datasets": () => exportModal(this, "datasets"),
+    "export-report": () => exportModal(this, "papers", "report"),
     "export-json": () => this.exportJSON(),
     "import-json": () => this.importJSON(),
     "reset-demo": () => resetDemoModal(this),
@@ -912,7 +910,7 @@ export class App {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
-      "batch-screen-form": startBatch,
+      "batch-screen-form": startBatch, "export-form": runExport,
       "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
