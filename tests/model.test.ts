@@ -220,6 +220,8 @@ test("repositoryURL prefers the recorded url and falls back to known repositorie
   assert.equal(repositoryURL({ repository: "GEO", accession: "GSE1", url: "" }), "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE1");
   assert.equal(repositoryURL({ repository: "ena", accession: "ERP123", url: "" }), "https://www.ebi.ac.uk/ena/browser/view/ERP123");
   assert.equal(repositoryURL({ repository: "zenodo", accession: "1234567", url: "" }), "https://zenodo.org/records/1234567");
+  assert.equal(repositoryURL({ repository: "stomics", accession: "ST-test", url: "" }), "https://db.cngb.org/stomics/");
+  assert.equal(repositoryURL({ repository: "stomics", accession: "ST-test", url: "https://db.cngb.org/stomics/dataset/example" }), "https://db.cngb.org/stomics/dataset/example");
   assert.equal(repositoryURL({ repository: "geo", accession: "", url: "" }), "", "no accession means no location");
   assert.equal(repositoryURL({ repository: "other", accession: "X1", url: "" }), "", "unknown repositories stay unlinkable");
   assert.equal(repositoryURL({ repository: "geo", accession: "GSE1", url: "javascript:alert(1)" }), "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE1", "an unsafe url falls back to the repository link");

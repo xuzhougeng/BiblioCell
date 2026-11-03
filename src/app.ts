@@ -1,3 +1,4 @@
+import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { PAPER_COLUMNS, COLUMN_STORAGE_KEY, defaultPaperColumns, loadPaperColumns } from "./columns.ts";
 // Application state, rendering and event delegation.
 import type { Config, MCPInfo, Paper, SourceAutomation, SourceStatus, Status } from "./mygo.ts";
@@ -16,12 +17,13 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, updateScreenAI, type ScreenState, type Translation } from "./screen.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
 import { Library } from "./mygo.ts";
 import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
-import { $, $$, I, downloadFile, errorMessage, speciesRow } from "./ui.ts";
+import { plantChoices } from "./research-options.ts";
+import { $, $$, I, addMetadataChoice, selectPlant, downloadFile, errorMessage, speciesRow } from "./ui.ts";
 import { renderDatasets, renderOverview, renderPapers, renderTasks } from "./views.ts";
 import { t } from "./i18n.ts";
 import { datasetPickerMode, paperFieldKey, paperFieldModal, savePaperFields, searchDatasetPicker, selectPaperField, stepPaperField } from "./paper-fields.ts";
@@ -279,7 +281,7 @@ export class App {
     };
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
     if (!this.screen) this.clearTranslation();
-    content.innerHTML = renderers[this.page]();
+    updateScreeningContent(content, renderers[this.page]());
     if (this.screen?.ai) {
       const current = screenPapers(this)[this.screen.index];
       if (current) this.requestJudgement(current.id);
@@ -683,11 +685,13 @@ export class App {
     "sync-source": (_el, id) => void syncSource(this, id),
     "source-records": (_el, id) => sourceRecordsModal(this, id),
     "use-source-query": (el) => useSourceQuery(el),
+    "extract-paper-metadata": (_el, id) => { void extractPaperMetadata(this, id); },
+    "add-metadata-choice": (el) => addMetadataChoice(el),
     "add-species-row": () => {
       const rows = $("#species-rows");
       if (!rows) return;
-      rows.insertAdjacentHTML("beforeend", speciesRow());
-      $$<HTMLElement>(".species-row", rows).at(-1)?.querySelector<HTMLInputElement>("[name=speciesName]")?.focus();
+      rows.insertAdjacentHTML("beforeend", speciesRow({}, plantChoices(this.state)));
+      $$<HTMLElement>(".species-row", rows).at(-1)?.querySelector<HTMLSelectElement>("[data-species-picker]")?.focus();
     },
     "remove-species-row": (el) => el.closest(".species-row")?.remove(),
     "delete-paper": (_el, id) => this.requestDeletePaper(id),
@@ -886,7 +890,7 @@ export class App {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
-      "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
+      "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
@@ -913,6 +917,7 @@ export class App {
       this.savePaperColumns();
       return;
     }
+    if (target instanceof HTMLSelectElement && target.matches("[data-species-picker]")) { selectPlant(target); return; }
     if (target instanceof HTMLSelectElement && target.matches('#source-config-form [name="provider"]')) {
       applyProviderDefault(target);
       return;
@@ -986,6 +991,10 @@ export class App {
       return;
     }
     if (!(target instanceof HTMLInputElement)) return;
+    if (target.matches("[name=speciesName], [name=speciesLabel]")) {
+      const picker = target.closest(".species-row")?.querySelector<HTMLSelectElement>("[data-species-picker]");
+      if (picker) picker.value = "";
+    }
     if (target.id === "field-dataset-search") { searchDatasetPicker(this, target.value); return; }
     if (target.id === "settings-font-size") {
       previewFontSize(target);

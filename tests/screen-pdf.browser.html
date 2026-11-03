@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Screening PDF persistence regression</title>
+<body>
+<h1>Screening PDF persistence regression</h1>
+<p>Run with the Vite preview server at /tests/screen-pdf.browser.html. Uses an isolated in-memory library.</p>
+<button id="run">Run regression</button>
+<pre id="result" role="status">Ready</pre>
+<main id="app-content"></main>
+<div id="modal-root"></div><div id="drawer-root"></div><div id="toast-root"></div>
+<script type="module">
+import { App } from "../src/app.ts";
+import { demoState } from "../src/demo-data.ts";
+import { paperFieldModal, savePaperFields } from "../src/paper-fields.ts";
+import { extractPaperMetadata, saveMetadata } from "../src/metadata.ts";
+import { Library } from "../src/mygo.ts";
+
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const result = document.querySelector("#result");
+const button = document.querySelector("#run");
+button.addEventListener("click", async () => {
+  button.disabled = true;
+  result.textContent = "Running…";
+  try {
+    history.replaceState(null, "", "#papers");
+    const state = demoState();
+    const ids = state.papers.slice(0, 2).map(p => p.id);
+    state.resources = ids.map((id, i) => ({ id: `pdf-${i}`, paperId: id, datasetId: null, type: "fulltext", title: `paper-${i}.pdf`, localPath: `paper-${i}.pdf`, status: "stored", url: "", isDemo: false, addedAt: "2026-01-01" }));
+    const app = new App({ initial: state, store: { load: async () => state, save: async () => {} }, env: {
+      desktop: true, real: true, settings: { models: [], tasks: {} }, mcp: {}, status: null, sources: [], automation: {},
+    } });
+    app.screen = { ids, index: 0, ai: null };
+    app.render();
+    const frame = () => document.querySelector(".screen-pdf-frame");
+    const first = frame();
+    // srcdoc supplies an observable reader document while retaining the production
+    // src attribute. No PDF viewer internals or desktop-only file protocol needed.
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("reader fixture did not load")), 5000);
+      first.addEventListener("load", () => {
+        if (first.contentDocument?.querySelector("#reader")) { clearTimeout(timeout); resolve(); }
+      });
+      first.srcdoc = '<!doctype html><div id="reader" style="height:4000px">PDF reader stand-in</div>';
+    });
+    first.contentWindow.scrollTo(0, 750);
+    const reader = first.contentDocument.querySelector("#reader");
+    const context = first.contentWindow;
+    const assertReader = label => {
+      assert(frame() === first, `${label}: iframe was replaced`);
+      assert(first.contentWindow === context && first.contentDocument.querySelector("#reader") === reader, `${label}: browsing context reloaded`);
+      assert(first.contentWindow.scrollY === 750, `${label}: reading position lost`);
+    };
+
+    for (const [field, input, value] of [
+      ["platforms", "platformsCustom", "Fixture platform"],
+      ["modalities", "modalitiesCustom", "Fixture-seq"],
+      ["species", "speciesName", "Hordeum vulgare"],
+    ]) {
+      paperFieldModal(app, ids[0], field);
+      const form = document.querySelector("#paper-fields-form");
+      form.querySelector(`[name="${input}"]`).value = value;
+      if (field === "species") form.querySelector('[name="speciesLabel"]').value = "Barley";
+      savePaperFields(app, form);
+      assertReader(`save ${field}`);
+      assert(document.querySelector(".screen-body").textContent.includes(field === "species" ? "Barley" : value), `${field}: metadata did not refresh`);
+    }
+    app.state.papers[0].starred = !app.state.papers[0].starred;
+    app.render();
+    assertReader("star update");
+    await app.reload();
+    assertReader("database refresh");
+    app.state.resources[0].title = "Renamed PDF";
+    app.render();
+    assertReader("attachment title update");
+    assert(first.title === "Renamed PDF", "attachment title did not refresh");
+
+    const originalExtract = Library.extractPaperMetadata;
+    const originalApply = Library.applyPaperMetadata;
+    try {
+      const suggestion = { paperId: ids[0], fileId: "pdf-0", fileTitle: "Renamed PDF", truncated: false, omitted: 0,
+        claims: [{field:"platforms",values:["Stereo-seq"],species:[],repository:"",accession:"",role:"",excerpt:"Full-text evidence for Stereo-seq."}] };
+      Library.extractPaperMetadata = async () => suggestion;
+      let applied = 0;
+      Library.applyPaperMetadata = async (before, proposal) => {
+        assert(before.id === ids[0] && proposal.claims.length === 1, "wrong autofill target");
+        applied++;
+        state.papers[0].platforms = proposal.claims[0].values;
+      };
+      await extractPaperMetadata(app, ids[0]);
+      const form = document.querySelector("#metadata-apply-form");
+      assert(form && !form.querySelector('[name="claim"]').checked, "autofill should not replace existing values by default");
+      await saveMetadata(app, form);
+      assert(applied === 0, "empty selection should not save");
+      form.querySelector('[name="claim"]').checked = true;
+      await saveMetadata(app, form);
+      assert(applied === 1 && document.querySelector(".screen-body").textContent.includes("Stereo-seq"), "selected autofill did not update metadata");
+      assertReader("AI autofill apply");
+      // A closed modal must not be reopened by a late model response.
+      const deferred = Promise.withResolvers();
+      Library.extractPaperMetadata = () => deferred.promise;
+      const pending = extractPaperMetadata(app, ids[0]);
+      app.closeModal();
+      deferred.resolve(suggestion);
+      await pending;
+      assert(!document.querySelector("#metadata-apply-form") && applied === 1, "late result changed a closed modal or saved data");
+    } finally {
+      Library.extractPaperMetadata = originalExtract;
+      Library.applyPaperMetadata = originalApply;
+    }
+
+    app.state.resources[0].id = "replacement-pdf";
+    app.render();
+    const replacement = frame();
+    assert(replacement !== first && replacement.getAttribute("src").includes("replacement-pdf"), "replacement attachment was not loaded");
+    app.moveScreening(1);
+    assert(frame() !== replacement && frame().getAttribute("src").includes("pdf-1"), "next paper did not change PDF");
+    app.toggleScreenPdf();
+    assert(!frame(), "hide PDF left the reader visible");
+    app.toggleScreenPdf();
+    assert(frame(), "show PDF failed");
+    app.navigate("datasets");
+    assert(!frame(), "leaving screening kept the PDF mounted");
+    result.textContent = "PASS: platform, modality and species saves; AI autofill selection, apply and late response; star and database refresh; attachment title; replacement PDF; next paper; hide/show; exit. Reader document and scroll position preserved.";
+  } catch (error) {
+    result.textContent = `FAIL: ${error.stack || error}`;
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

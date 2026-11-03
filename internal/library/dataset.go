@@ -452,7 +452,7 @@ func saveDatasetRepositories(ctx context.Context, tx *sql.Tx, d *Dataset) error 
 		if repository.Repository == "" || repository.Accession == "" {
 			return fmt.Errorf("dataset %s repository and accession must be provided together", d.ID)
 		}
-		if !oneOf(repository.Repository, "geo", "sra", "ena", "gsa", "bioproject", "biosample", "biostudies", "zenodo", "figshare", "dryad", "other") {
+		if len([]rune(repository.Repository)) > 100 {
 			return fmt.Errorf("invalid repository %q", repository.Repository)
 		}
 		if repository.RecordKind == "" {

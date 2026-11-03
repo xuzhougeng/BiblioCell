@@ -19,9 +19,15 @@ const maxFulltextTextBytes = 8 << 20
 // plain-text or Markdown file is read as is. A file that cannot be read is
 // reported, since a screening decision should not silently rest on less.
 func (s *Store) PaperFulltextText(ctx context.Context, paperID string) (string, error) {
+	_, text, err := s.PaperFulltextSource(ctx, paperID)
+	return text, err
+}
+
+// PaperFulltextSource identifies the exact attachment used as extraction evidence.
+func (s *Store) PaperFulltextSource(ctx context.Context, paperID string) (PaperFile, string, error) {
 	files, err := s.ListPaperFiles(ctx)
 	if err != nil {
-		return "", err
+		return PaperFile{}, "", err
 	}
 	for _, file := range files {
 		if file.PaperID != paperID || file.Type != "fulltext" {
@@ -29,11 +35,12 @@ func (s *Store) PaperFulltextText(ctx context.Context, paperID string) (string, 
 		}
 		path, err := s.PaperFilePath(ctx, file.ID)
 		if err != nil {
-			return "", err
+			return PaperFile{}, "", err
 		}
-		return fulltextFileText(path)
+		text, err := fulltextFileText(path)
+		return file, text, err
 	}
-	return "", nil
+	return PaperFile{}, "", nil
 }
 
 func fulltextFileText(path string) (text string, err error) {

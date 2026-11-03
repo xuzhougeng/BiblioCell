@@ -1,8 +1,9 @@
+import { metadataButton } from "./metadata.ts";
 // Detail drawer for one paper or one dataset.
 import type { App } from "./app.ts";
 import { editableDetail } from "./paper-fields.ts";
 import type { DatasetPaperLink, Evidence, Paper } from "./mygo.ts";
-import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, datasetLocation, dateText, esc, fileSize, joinList, repositoryURL, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
+import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, datasetLocation, dateText, esc, fileSize, joinList, repositoryLabel, repositoryURL, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, options, screenBadge } from "./ui.ts";
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 
@@ -93,6 +94,7 @@ export function renderDrawer(app: App): string | null {
       body = (p.awaitingReview ? reviewBox("paper", p.id, t("来自 {source} 的更新。做出收录判断后自动移出需核对；暂不判断也可直接标记核查完成。", { source: p.source ? tv(p.source) : t("来源") })) : "")
         + `<div class="drawer-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? t("未读"))}${demoBadge(p)}<button class="btn btn-secondary" data-action="edit-paper" data-id="${esc(p.id)}">${t("编辑信息")}</button><button class="btn btn-danger" data-action="delete-paper" data-id="${esc(p.id)}">${t("删除")}</button></div>`
         + doiBar(p)
+        + metadataButton(app, p)
         + `<div class="detail-grid">${editableDetail(p.id, "species", t("研究物种"), esc(speciesDisplay(p) || t("待补")), `<small>${esc(joinList(speciesNames(p), listSeparator))}</small>`)}${editableDetail(p.id, "organs", t("组织 / 部位"), esc(displayList(p.organs) || t("待补")))}${editableDetail(p.id, "modalities", t("测序类型"), esc(displayList(p.modalities) || t("待补")))}${editableDetail(p.id, "platforms", t("测序平台"), esc(displayList(p.platforms) || t("待补")))}${editableDetail(p.id, "year", t("发表年份"), esc(p.year || t("待补")))}${editableDetail(p.id, "articleTypes", t("文献类型"), esc(displayList(p.articleTypes) || t("待判断")))}${editableDetail(p.id, "publicationStatus", t("发表状态"), PUBLICATION_LABELS[p.publicationStatus] ?? t("尚未确认"))}${editableDetail(p.id, "datasets", t("关联数据集"), esc(ds.map(d => d.accession || d.title).join(listSeparator) || t("未关联")))}</div>`
         + `<section class="detail-section"><h3>${t("摘要")}</h3><p class="abstract-text">${esc(p.abstract || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`
         + `<section class="detail-section"><h3>${t("主题标签")}</h3><div class="tag-list">${arr(p.tags).length ? arr(p.tags).map((t) => `<span class="tag">${esc(t)}</span>`).join("") : `<span class="muted">${t("暂未设置标签")}</span>`}</div></section>`
@@ -126,7 +128,7 @@ export function renderDrawer(app: App): string | null {
     return p ? `<button class="related-dataset" data-action="open-paper" data-id="${esc(p.id)}"><span class="icon-wrap blue">${I("book", 18)}</span><span><strong>${esc(p.title)}</strong><small>${esc(p.year || t("年份待补"))}</small></span>${badge(ROLE[l.role] ?? t("关联"))}</button>${linkReview(app, d.id, l)}` : "";
   }).join("");
   const repositories = arr(d.repositories).map((r) =>
-    `<div class="evidence-item"><div class="evidence-head"><strong>${esc(r.repository.toUpperCase())} ${esc(r.accession)}</strong>${badge(r.verified ? t("已核实") : t("待核实"), r.verified ? "green" : "amber")}</div>${r.evidenceText ? `<blockquote>${esc(r.evidenceText)}</blockquote>` : ""}<div class="evidence-foot"><span class="evidence-source">${sourceLink(safeURL(r.url) || repositoryURL(r))}${r.evidenceUrl && r.evidenceUrl !== r.url ? sourceLink(r.evidenceUrl) : ""}</span><span class="section-actions"><button class="text-link" data-action="verify-repository" data-id="${esc(d.id)}" data-record="${esc(r.id)}" data-verified="${!r.verified}">${r.verified ? t("撤销核实") : t("核实编号")}</button></span></div></div>`,
+    `<div class="evidence-item"><div class="evidence-head"><strong>${esc(repositoryLabel(r.repository))} ${esc(r.accession)}</strong>${badge(r.verified ? t("已核实") : t("待核实"), r.verified ? "green" : "amber")}</div>${r.evidenceText ? `<blockquote>${esc(r.evidenceText)}</blockquote>` : ""}<div class="evidence-foot"><span class="evidence-source">${sourceLink(safeURL(r.url) || repositoryURL(r))}${r.evidenceUrl && r.evidenceUrl !== r.url ? sourceLink(r.evidenceUrl) : ""}</span><span class="section-actions"><button class="text-link" data-action="verify-repository" data-id="${esc(d.id)}" data-record="${esc(r.id)}" data-verified="${!r.verified}">${r.verified ? t("撤销核实") : t("核实编号")}</button></span></div></div>`,
   ).join("");
   const datasetHome = datasetLocation(d);
   const accessionValue = datasetHome

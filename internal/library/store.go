@@ -14,7 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const SchemaVersion = 11
+const SchemaVersion = 13
 
 //go:embed schema.sql
 var schemaSQL string
@@ -368,6 +368,9 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if err := ensurePaperView(db); err != nil {
+		return nil, err
+	}
+	if err := migrateRepositoryNames(db); err != nil {
 		return nil, err
 	}
 	if _, err := db.Exec(schemaSQL); err != nil {

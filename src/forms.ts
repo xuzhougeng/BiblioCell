@@ -1,17 +1,17 @@
 // Modal forms: paper, dataset, dataset link, resource link, exclusion reason,
 // demo reset and import confirmation.
+import { plantChoices, researchChoices } from "./research-options.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  ARTICLE_TYPES, AVAILABILITY, MODALITY_CHOICES, PLATFORM_CHOICES, RESOURCE_TYPES, ROLE, arr, clone, decideScreening, emptyFilters, emptyRepository, esc, joinList,
+  ARTICLE_TYPES, AVAILABILITY, RESOURCE_TYPES, ROLE, arr, clone, decideScreening, emptyFilters, emptyRepository, esc, joinList,
   normalizeDOI, normalizeDataset, nowISO, safeURL, splitList, uid, validDOI, type ImportStats,
 } from "./model.ts";
 import { t } from "./i18n.ts";
-import { I, checkboxGroup, customField, field, mergeChecked, option, options, readSpeciesRows, setFormError, speciesRow, text } from "./ui.ts";
+import { I, checkboxGroup, customField, field, mergeChecked, option, options, readRepository, repositoryField, readSpeciesRows, setFormError, speciesRow, text } from "./ui.ts";
 
 export const cancelButton = `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button>`;
 const PUBLICATION_STATUSES: Record<string, string> = { unknown: t("尚未确认"), preprint: t("预印本"), published: t("正式发表"), unpublished: t("未发表") };
-const REPOSITORIES: Record<string, string> = { geo: "GEO", gsa: "GSA / CNCB", sra: "SRA", ena: "ENA", bioproject: "BioProject", biosample: "BioSample", biostudies: "BioStudies", zenodo: "Zenodo", figshare: "Figshare", dryad: "Dryad", other: t("其他") };
 
 export function paperModal(app: App, id = ""): void {
   const existing = id ? app.paperById(id) : undefined;
@@ -27,10 +27,10 @@ export function paperModal(app: App, id = ""): void {
     + field("PMID", "pmid", p.pmid ?? "", t("可选，例如 39012345"))
     + `<label class="form-field"><span>${t("发表状态")}</span><select class="input" name="publicationStatus">${options(PUBLICATION_STATUSES, p.publicationStatus || "unknown")}</select></label>`
     + `<label class="form-field"><span>${t("文献类型（可多选）")}</span>${checkboxGroup("articleTypes", ARTICLE_TYPES, arr(p.articleTypes).filter((v) => ARTICLE_TYPES.includes(v)))}</label>`
-    + `<div class="form-field full-width"><span>${t("研究物种（一篇文献可涉及多个）")}</span><div class="species-rows" id="species-rows">${species.map((s) => speciesRow(s)).join("")}</div><button type="button" class="text-link" data-action="add-species-row">${I("plus", 15)} ${t("添加物种")}</button></div>`
+    + `<div class="form-field full-width"><span>${t("研究物种（一篇文献可涉及多个）")}</span><div class="species-rows" id="species-rows">${species.map((s) => speciesRow(s, plantChoices(app.state))).join("")}</div><button type="button" class="text-link" data-action="add-species-row">${I("plus", 15)} ${t("添加物种")}</button></div>`
     + `<label class="form-field"><span>${t("组织 / 部位（逗号分隔）")}</span><input class="input" name="organs" type="text" value="${esc(joinList(p.organs, ", "))}" placeholder="${t("例如 根, 叶")}" maxlength="2000"></label>`
-    + `<div class="form-field full-width"><span>${t("测序类型（可多选）")}</span>${checkboxGroup("modalities", MODALITY_CHOICES, p.modalities, customField("modalitiesCustom", t("其他类型，逗号分隔")))}</div>`
-    + `<div class="form-field full-width"><span>${t("测序平台（可多选）")}</span>${checkboxGroup("platforms", PLATFORM_CHOICES, p.platforms, customField("platformsCustom", t("其他平台，逗号分隔")))}</div>`
+    + `<div class="form-field full-width"><span>${t("测序类型（可多选）")}</span>${checkboxGroup("modalities", researchChoices(app.state, "modalities"), p.modalities, customField("modalitiesCustom", t("其他类型，逗号分隔")))}</div>`
+    + `<div class="form-field full-width"><span>${t("测序平台（可多选）")}</span>${checkboxGroup("platforms", researchChoices(app.state, "platforms"), p.platforms, customField("platformsCustom", t("其他平台，逗号分隔")))}</div>`
     + `<label class="form-field full-width"><span>${t("摘要")}</span><textarea class="textarea" name="abstract" rows="4" maxlength="50000" placeholder="${t("可粘贴摘要，暂时没有也可以留空")}">${esc(p.abstract ?? "")}</textarea></label>`
     + `<label class="form-field full-width"><span>${t("收录判断依据")}${p.screening === "excluded" ? ' <b class="required">*</b>' : ""}</span><textarea class="textarea" name="screeningReason" rows="2" maxlength="3000" placeholder="${t("例如：实际分析了植物单核数据；或仅包含空间转录组")}">${esc(p.screeningReason ?? "")}</textarea></label>`
     + '</div><p id="form-error" class="form-error" role="alert"></p></form>';
@@ -116,14 +116,14 @@ export function datasetModal(app: App, id = "", paperId = ""): void {
   const existing = app.state.datasets.find((d) => d.id === id);
   const d: Partial<Dataset> = existing ?? {};
   const repository = arr(d.repositories)[0] ?? { repository: d.repository ?? "", accession: d.accession ?? "" };
-  const speciesRows = arr(d.species).length ? arr(d.species).map((s) => speciesRow(s)).join("") : speciesRow();
+  const speciesRows = arr(d.species).length ? arr(d.species).map((s) => speciesRow(s, plantChoices(app.state))).join("") : speciesRow({}, plantChoices(app.state));
   const form = `<form id="dataset-form"><input type="hidden" name="id" value="${esc(id)}"><input type="hidden" name="paperId" value="${esc(paperId)}"><div class="form-grid">`
     + field(t("数据集名称"), "title", d.title ?? "", t("例如：拟南芥根尖发育数据"), true, "text", true)
     + `<div class="form-field full-width"><span>${t("研究物种")}</span><div class="species-rows" id="species-rows">${speciesRows}</div><button class="text-link" type="button" data-action="add-species-row">${I("plus", 14)} ${t("添加物种")}</button></div>`
     + `<label class="form-field full-width"><span>${t("组织 / 部位")}</span><input class="input" name="organs" value="${esc(joinList(d.organs, "，"))}" placeholder="${t("多个组织用逗号分隔，例如：根，叶，茎尖")}"></label>`
-    + `<div class="form-field full-width"><span>${t("测序类型")}</span>${checkboxGroup("modalities", MODALITY_CHOICES, d.modalities, customField("modalitiesCustom", t("补充其他类型，多个用逗号分隔")))}</div>`
-    + `<div class="form-field full-width"><span>${t("测序平台")}</span>${checkboxGroup("platforms", PLATFORM_CHOICES, d.platforms, customField("platformsCustom", t("补充其他平台，多个用逗号分隔")))}</div>`
-    + `<label class="form-field"><span>${t("数据仓库")}</span><select class="input" name="repository">${option("", t("待补充"), repository.repository)}${options(REPOSITORIES, repository.repository)}</select></label>`
+    + `<div class="form-field full-width"><span>${t("测序类型")}</span>${checkboxGroup("modalities", researchChoices(app.state, "modalities"), d.modalities, customField("modalitiesCustom", t("补充其他类型，多个用逗号分隔")))}</div>`
+    + `<div class="form-field full-width"><span>${t("测序平台")}</span>${checkboxGroup("platforms", researchChoices(app.state, "platforms"), d.platforms, customField("platformsCustom", t("补充其他平台，多个用逗号分隔")))}</div>`
+    + repositoryField(app.state, "repository", repository.repository)
     + field("Accession", "accession", repository.accession ?? "", t("可先留空"))
     + `<label class="form-field"><span>${t("整理状态")}</span><select class="input" name="status">${option("pending", t("待整理"), d.status || "pending")}${option("identified", t("线索已记录"), d.status)}${option("verified", t("已人工核实"), d.status)}</select></label>`
     + `<label class="form-field"><span>${t("原始数据可用性")}</span><select class="input" name="availability">${options(AVAILABILITY, d.availability || "unknown")}</select></label>`
@@ -141,7 +141,8 @@ export function saveDataset(app: App, form: HTMLFormElement): void {
     setFormError(!title ? t("请填写数据集名称。") : t("标记为已核实前，请先填写仓库编号。"));
     return;
   }
-  const repository = text(f, "repository").toLowerCase();
+  const repository = readRepository(f, "repository");
+  if ([...repository].length > 100) { setFormError(t("仓库名称不能超过 100 个字符。")); return; }
   if (accession && !repository) {
     setFormError(t("填写 Accession 时，请同时选择数据仓库。"));
     return;

@@ -18,7 +18,7 @@ var (
 // RepositoryInput is what an agent may state about a repository record. Whether
 // it really belongs to the dataset stays for a person to verify.
 type RepositoryInput struct {
-	Repository   string `json:"repository" jsonschema:"geo, sra, ena, gsa, bioproject, biosample, biostudies, zenodo, figshare, dryad, or other"`
+	Repository   string `json:"repository" jsonschema:"Repository name, up to 100 characters; e.g. geo, sra, ena, gsa, stomics (STOmics DB), or a custom name"`
 	Accession    string `json:"accession" jsonschema:"Repository accession such as GSE123456"`
 	RecordKind   string `json:"recordKind,omitempty" jsonschema:"unknown, project, study, sample, experiment, run, analysis, collection, or other"`
 	URL          string `json:"url,omitempty"`
