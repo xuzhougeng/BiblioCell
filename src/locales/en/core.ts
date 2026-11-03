@@ -70,7 +70,6 @@ export const core: Record<string, string> = {
   "刷新失败：{reason}": "Refresh failed: {reason}",
   "请重新打开应用。": "Please reopen the app.",
   "关闭弹窗": "Close dialog",
-  "已导出当前筛选的 {n} 篇文献。": "Exported {n} papers matching the current filters.",
   "已导出文献、数据集、链接与笔记。": "Exported papers, datasets, links and notes.",
   "请导入 10 MB 以内的 JSON 文件。": "Import a JSON file under 10 MB.",
   "JSON 格式无效，请使用本工具导出的备份文件。": "Invalid JSON. Use a backup exported by this app.",

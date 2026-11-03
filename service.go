@@ -178,6 +178,42 @@ func (l *Library) RemovePaperFile(id string) error {
 	return l.store.RemovePaperFile(ctx, id)
 }
 
+// ExportResult tells the window where an export landed. An empty path means
+// the person cancelled the save dialog.
+type ExportResult struct {
+	Path  string `json:"path"`
+	Count int    `json:"count"`
+}
+
+// ExportLibrary renders the records the window sends (the current filter in
+// either mode, Demo included) and saves the file where the person chooses.
+// The database is not read, so Demo exports never touch the real library.
+func (l *Library) ExportLibrary(ctx context.Context, req library.ExportRequest) (ExportResult, error) {
+	file, err := library.Export(req, time.Now())
+	if err != nil {
+		return ExportResult{}, err
+	}
+	defaultPath := file.Name
+	if dir, err := mygo.App.Path(mygo.PathDownloads); err == nil && dir != "" {
+		defaultPath = filepath.Join(dir, file.Name)
+	}
+	ext := strings.TrimPrefix(filepath.Ext(file.Name), ".")
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+		Parent:            mygo.CallerWindow(ctx),
+		Title:             "导出",
+		DefaultPath:       defaultPath,
+		Filters:           []mygo.FileFilter{{Name: strings.ToUpper(ext), Extensions: []string{ext}}},
+		CreateDirectories: true,
+	})
+	if err != nil || path == "" {
+		return ExportResult{}, err
+	}
+	if err := os.WriteFile(path, []byte(file.Content), 0o644); err != nil {
+		return ExportResult{}, err
+	}
+	return ExportResult{Path: path, Count: file.Count}, nil
+}
+
 // ListDatasets returns real datasets with repository and paper associations.
 func (l *Library) ListDatasets() ([]library.Dataset, error) {
 	if l.store == nil {

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoState } from "../src/demo-data.ts";
-import { changedItems, csvText, datasetLocation, decideScreening, emptyFilters, esc, fileSize, filterDatasets, filterPapers, nextRunText, normalizeDOI, normalizeDataset, pageList, paperPage, prepareImport, repositoryURL, shortTime, speciesDisplay, tasksFor, toggleSort, validDOI } from "../src/model.ts";
+import { changedItems, datasetLocation, decideScreening, emptyFilters, esc, fileSize, filterDatasets, filterPapers, nextRunText, normalizeDOI, normalizeDataset, pageList, paperPage, prepareImport, repositoryURL, shortTime, speciesDisplay, tasksFor, toggleSort, validDOI } from "../src/model.ts";
 
 test("esc neutralizes HTML metacharacters and tolerates null", () => {
   assert.equal(esc(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
@@ -189,15 +189,6 @@ test("prepareImport validates structure, dedupes by DOI and remaps dataset links
   assert.deepEqual(dataset.paperLinks.map((l) => [l.paperId, l.role]), [["new", "generated"], [existing.id, "reused"]]);
   assert.equal(dataset.species[0]?.label, "玉米");
   assert.throws(() => prepareImport({ schemaVersion: 2, papers: [], datasets: [], resources: [{ paperId: existing.id, url: "javascript:alert(1)" }] }, current), /有效的 HTTP/);
-});
-
-test("csvText escapes quotes and neutralizes spreadsheet formulas", () => {
-  const state = demoState();
-  const p = state.papers[0]!;
-  p.title = '=SUM(1) "quoted"';
-  const lines = csvText([p], state.datasets).split("\r\n");
-  assert.equal(lines.length, 2);
-  assert.ok(lines[1]!.includes(`"'=SUM(1) ""quoted"""`));
 });
 
 test("filterDatasets matches own fields, repositories and linked paper titles", () => {

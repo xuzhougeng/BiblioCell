@@ -251,6 +251,56 @@ AI 客户端可以通过标准 MCP 能力发现接口，不需要在提示词里
 
 MCP 始终操作正式数据库，与界面是否开启 Demo 无关。MCP 新增或编辑的文献在窗口回到前台时可见。服务仅监听 `127.0.0.1`，不要将端口转发到局域网或公网。
 
+## 导出
+
+筛选完一批文献后，结果可以从文献库页和数据集页右上角的“导出”按钮导出，也可以用命令行 `export`。桌面应用弹出保存对话框，由你选择位置；Demo 模式导出的是浏览器里的 Demo 数据，真实数据库模式导出的是正式库，两者都不会写入数据库。在线浏览器预览里文件直接下载。总览页“整理覆盖”面板有“导出进度报告”的快捷入口。
+
+文献库页的范围可选“当前筛选结果”“全部已收录”或“全部文献”，数据集页可选“当前搜索结果”或“全部数据集”。格式：
+
+| 格式 | 文件 | 内容 |
+|---|---|---|
+| `bibtex` | `.bib` | 每篇一个 `@article`，题目加双层花括号保留大小写，`\&`、`\%`、`\_` 等已转义，作者 `A; B` 写成 `A and B`，附 DOI、URL、PMID、物种/组织/测序类型/平台作 `keywords`，预印本加 `note = {Preprint}`。引用键为“第一作者姓 + 年份 + 题目首个长词”，重复时加 a、b 后缀 |
+| `papers-csv` | `.csv` | 每行一篇：`id, title, authors, journal, year, doi, pmid, publication_status, species, species_label, organs, modalities, platforms, article_types, screening, screening_reason, fulltext, reading, tags, dataset_accessions, dataset_ids, source, added_at`。多值字段用 `; ` 连接 |
+| `report` | `.md` | 筛选进度报告：收录 / 排除 / 证据不足 / 待判断数量、待处理的 agent 建议、来源更新新增未核查数、已收录文献的全文覆盖；数据集整理状态与可用性；按物种、测序类型、组织的数据集数（含已核实、公开）和已收录文献数；最后列出已收录文献的题目、年份、DOI 和 accession。`-title` 自定义标题 |
+| `datasets-csv` | `.csv` | 每行一个数据集：`accessions`、`repositories`、`accession_kinds`（如 `geo/series; sra/run`）、`verified_accessions`、整理状态、可用性、细胞数、关联文献 DOI / ID / 角色 |
+| `datasets-summary` | `.csv` | 按 `-group-by species|organ|modality` 聚合：数据集数、已核实数、公开数、关联文献数、accession 数。多物种的数据集在每个物种下各计一次，没填的记为 `(unspecified)` |
+| `download-script` | `.sh` | 批量下载脚本。按 accession 前缀分类：GEO 系列用 wget 取 `suppl/` 和 SOFT family 文件；SRA 的 SRP/SRX/SRS/SRR 用 `prefetch` + `fasterq-dump`；ENA / DDBJ 的 ERR/ERP/PRJEB 等从 ENA 文件报告取 fastq 链接；PRJNA 用 entrez-direct 展开成 SRR 再 prefetch；GSA、BioStudies、Zenodo 等没有批量工具的列为 `manual`，附页面地址。每条命令上方注释数据集题目和关联文献 DOI。应用只生成文件，不运行；`OUT=/data/scrna bash xxx.sh` 指定目标目录 |
+| `accessions` | `.txt` | 每行一个 accession，去重，可直接 `xargs prefetch` 或交给其他工具 |
+
+CSV 带 UTF-8 BOM 和 CRLF，Excel 直接打开；以 `=`、`+`、`-`、`@` 开头的单元格前面加 `'`，防止被当公式执行。accession 的识别以前缀为准：记成 GEO 但编号是 `SRR…` 的按 SRA 处理，前缀不认识的沿用记录的仓库名。
+
+命令行的 `-q`、`-screening` 筛选文献（和 `papers list` 一样），`-status` 筛选数据集；数据集格式把 `-q` 用在数据集上。
+
+```bash
+./BiblioCell export report -title "Week 44" -o report.md
+./BiblioCell export download-script -status verified > download.sh
+./BiblioCell export datasets-summary -group-by modality
+```
+
+示例：
+
+```bibtex
+@article{zhang2024singlecell,
+  title = {{Single-cell atlas of Arabidopsis \& rice roots}},
+  author = {Zhang, Wei and O'Brien, Ann},
+  journal = {Nature Plants},
+  year = {2024},
+  doi = {10.1000/abc\_1},
+  url = {https://doi.org/10.1000/abc\_1},
+  keywords = {Arabidopsis thaliana, root, scRNA-seq, 10x Genomics Chromium},
+}
+```
+
+```bash
+# ---- GEO (series) ----
+# Root atlas data (doi: 10.1000/abc_1)
+geo_series GSE123456 'https://ftp.ncbi.nlm.nih.gov/geo/series/GSE123nnn/GSE123456/'
+
+# ---- SRA (prefetch + fasterq-dump) ----
+# Root atlas data (doi: 10.1000/abc_1)
+sra SRP111111
+```
+
 ## 命令行
 
 同一个可执行文件也可以当命令行工具用，不开窗口，直接读写正式 SQLite 数据库和 `settings.json`。第一个参数是已知子命令时走命令行，否则照常启动桌面应用。输出一律是 JSON，方便接 `jq`。
@@ -285,12 +335,15 @@ echo '{"paperId":"P-xxxx","role":"generated","evidenceText":"..."}' | ./BiblioCe
 ./BiblioCell settings set -font-size 16 -storage /abs/path/folder -mcp-token <TOKEN> -ncbi-api-key <KEY> -contact-email <EMAIL>
 ./BiblioCell mcp
 ./BiblioCell serve -addr 127.0.0.1:37841
+./BiblioCell export bibtex -screening included > included.bib
+./BiblioCell export datasets-csv -o datasets.csv
 ./BiblioCell sql "select id, title from papers order by added_at desc limit 5"
 ```
 
 - `papers add` / `import` / `update` 和 `datasets`、`evidence` 使用与 MCP 相同的字段和校验规则；`import` 一批原子提交，`-batch` 指定批次，`-dry-run` 只校验不写入。
 - `papers attach` 由本机命令行执行，可以读取任意路径；MCP 的 `attach_file` 只能读 `inbox/`。
 - `papers attach` 把文件复制进存放文件夹的 `papers/`，默认记为全文，`-type supplement` 记为补充材料。
+- `export KIND` 把文献或数据集写成文件，见上文“导出”；不带 `-o` 时内容直接打到 stdout，带 `-o` 时输出写入路径和记录数的 JSON。
 - `sql` 直接执行任意语句：`SELECT` / `WITH` / `PRAGMA` 打印行，其他语句打印受影响行数。它绕过应用层校验，改数据前先备份。
 - 数据目录按 `-data-dir`、`$BIBLIOCELL_DATA_DIR`、应用默认用户数据目录的顺序确定；在 macOS 上 `.app` 包内和 `go run` 的默认目录名相同，命令行与桌面应用看到的是同一个库。
 - `settings set` 修改的存放文件夹和 MCP Token 在下次启动桌面应用后生效。
@@ -313,6 +366,7 @@ BiblioCell/
 │   ├── source_clients.go    # 文献公开 API 客户端与解析器
 │   ├── source_repositories.go # GEO / SRA / ENA 仓库检索
 │   ├── source_query.go      # 试检索评估、助手更新检索式与修改记录
+│   ├── export.go            # BibTeX / CSV / 下载脚本 / 进度报告导出与 accession 分类
 │   ├── mcp.go               # 本机 MCP 服务与 AI 工具
 │   ├── schema.sql           # 嵌入二进制的数据库结构 v5
 │   └── *_test.go            # 数据库与 MCP 端到端测试
@@ -320,7 +374,8 @@ BiblioCell/
 ├── src/
 │   ├── main.ts              # 入口：Demo / 真实模式判断与启动
 │   ├── app.ts               # 页面状态、渲染循环与事件委托
-│   ├── model.ts             # 纯逻辑：筛选、待补事项、DOI 规范化、导入校验、CSV
+│   ├── model.ts             # 纯逻辑：筛选、待补事项、DOI 规范化、导入校验
+│   ├── export.ts            # 导出弹窗；浏览器预览用的 TypeScript 版导出格式
 │   ├── store.ts             # 持久化：SQLite（经 Go）与 localStorage（Demo）两种实现
 │   ├── views.ts / drawer.ts / forms.ts / sources.ts / settings.ts  # 各页面、抽屉与弹窗
 │   ├── ui.ts / icons.ts / shell.ts  # HTML 片段构造、图标与侧栏等静态外壳
@@ -355,7 +410,7 @@ npm run typecheck
 npm run build
 ```
 
-测试覆盖数据库初始化与重开、文献编辑、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化。
+测试覆盖数据库初始化与重开、文献编辑、数据集多值往返、共享仓库记录保护、文献关联证据保留、来源配置持久化、跨来源去重与人工整理保护、定时更新到期判断与补跑、同一时间单次运行、已有数据迁移、失败运行记录、公开 API 可选冒烟测试、MCP 新增记录不被界面保存覆盖、真实 MCP 客户端调用、工具与资源 Schema、`dryRun` 校验、失败批次整体回滚、无认证只读、错误 Token 拒绝、认证后的 metadata 局部更新，以及设置默认值、校验和持久化；导出的 BibTeX 转义、CSV 多值字段、accession 分类、下载脚本和进度报告在 `internal/library/export_test.go` 与 `tests/export.test.ts` 中各有一套。
 
 需要实际访问公开来源时，可额外运行 `BIBLIOCELL_LIVE_TEST=1 go test ./internal/library -run TestRemoteConnectorsLive -v`；默认测试不会访问网络。
 
