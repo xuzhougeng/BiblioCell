@@ -365,3 +365,66 @@ func TestCLIDatabaseVersionAndMigrate(t *testing.T) {
 		t.Fatalf("paper after migrate = %+v", found)
 	}
 }
+
+func TestCLIExport(t *testing.T) {
+	dataDir := t.TempDir()
+	var paper library.Paper
+	run(t, dataDir, `{"title":"Export me & more","doi":"10.1000/exp","authors":"Doe, Jane","year":2025,"journal":"Cell","species":[{"name":"Zea mays","label":"玉米"}],"modalities":["scRNA-seq"]}`, &paper, "papers", "add")
+	var excluded library.Paper
+	run(t, dataDir, `{"title":"Leave me out","doi":"10.1000/out"}`, &excluded, "papers", "add")
+	var dataset library.Dataset
+	run(t, dataDir, `{"title":"Maize root","repositories":[{"repository":"geo","accession":"GSE100"},{"repository":"sra","accession":"SRP200"}],"papers":[{"paperId":"`+paper.ID+`","role":"generated","evidenceText":"table 1"}]}`, &dataset, "datasets", "add")
+
+	// Without -o the file body goes to stdout, filtered like papers list.
+	var stdout, stderr bytes.Buffer
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "bibtex", "-q", "export me"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("export bibtex exited %d: %s", code, stderr.String())
+	}
+	bib := stdout.String()
+	if !strings.Contains(bib, "@article{doe2025export,") || !strings.Contains(bib, `title = {{Export me \& more}},`) || strings.Contains(bib, "Leave me out") {
+		t.Fatalf("bibtex output:\n%s", bib)
+	}
+
+	// With -o the file is written and its path reported.
+	target := filepath.Join(dataDir, "out", "papers.csv")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var written struct {
+		Path  string `json:"path"`
+		Count int    `json:"count"`
+	}
+	run(t, dataDir, "", &written, "export", "papers-csv", "-o", target)
+	if written.Path != target || written.Count != 2 {
+		t.Fatalf("export -o = %+v", written)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "GSE100; SRP200") || !strings.Contains(string(data), "Zea mays") {
+		t.Fatalf("papers csv:\n%s", data)
+	}
+
+	stdout.Reset()
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "download-script"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("export download-script exited %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "geo_series GSE100 ") || !strings.Contains(stdout.String(), "sra SRP200") || !strings.Contains(stdout.String(), "doi: 10.1000/exp") {
+		t.Fatalf("download script:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "report", "-title", "Weekly"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("export report exited %d: %s", code, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "# Weekly\n") || !strings.Contains(stdout.String(), "| Pending | 2 |") {
+		t.Fatalf("report:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runCLI([]string{"-data-dir", dataDir, "export", "pdf"}, strings.NewReader(""), &stdout, &stderr); code == 0 || !strings.Contains(stderr.String(), "unknown export kind") {
+		t.Fatalf("unknown kind: code %d, stderr %q", code, stderr.String())
+	}
+}

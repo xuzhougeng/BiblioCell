@@ -284,7 +284,8 @@ func TestMigrationsMatchSchema(t *testing.T) {
 	if stamped, _ := strconv.Atoi(pragma[1]); stamped != SchemaVersion {
 		t.Errorf("schema.sql stamps version %d, but the migration list ends at %d: update both", stamped, SchemaVersion)
 	}
-	if !strings.Contains(schemaSQL, fmt.Sprintf("schema v%d\n", SchemaVersion)) {
+	header, _, _ := strings.Cut(schemaSQL, "\n")
+	if !strings.HasSuffix(strings.TrimSpace(header), fmt.Sprintf("schema v%d", SchemaVersion)) {
 		t.Errorf("schema.sql header does not say v%d", SchemaVersion)
 	}
 	for i, m := range migrations {

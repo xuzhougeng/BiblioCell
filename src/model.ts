@@ -449,23 +449,6 @@ export function isLibraryState(value: unknown): value is LibraryState {
   return isRec(value) && value.schemaVersion === 2 && Array.isArray(value.papers) && Array.isArray(value.datasets) && Array.isArray(value.resources);
 }
 
-export function csvText(papers: Paper[], datasets: Dataset[]): string {
-  const cell = (value: unknown): string => {
-    let s = str(value);
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return `"${s.replaceAll('"', '""')}"`;
-  };
-  const headers = [t("内部编号"), t("题目"), "DOI", t("作者"), t("年份"), t("物种（中文名）"), t("物种（学名）"), t("组织"), t("技术"), t("测序平台"), t("文献类型"), t("收录状态"), t("全文情况"), t("阅读进度"), t("关联数据集"), t("标签"), t("笔记"), t("是否示例")];
-  const rows = papers.map((p) => [
-    p.id, p.title, p.doi, p.authors, p.year,
-    joinList(arr(p.species).map((s) => s?.label || s?.name || "")), joinList(speciesNames(p)),
-    joinList(p.organs, ";"), joinList(p.modalities, ";"), joinList(p.platforms, ";"), joinList(p.articleTypes, ";"),
-    SCREEN[p.screening], FULL[p.fulltext], READING[p.reading],
-    paperDatasets(datasets, p.id).map((d) => d.id).join(";"), arr(p.tags).join(";"), p.notes, p.isDemo ? t("是") : t("否"),
-  ].map(cell).join(","));
-  return `﻿${headers.map(cell).join(",")}\r\n${rows.join("\r\n")}`;
-}
-
 export interface ImportStats {
   papers: number;
   datasets: number;
