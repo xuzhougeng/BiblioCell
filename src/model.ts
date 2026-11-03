@@ -1,5 +1,6 @@
 // Pure data logic shared by the UI and the node:test suite. No DOM access here.
-import { listSeparator, locale, t } from "./i18n.ts";
+import { listSeparator, locale, t, tv } from "./i18n.ts";
+import { speciesText } from "./species.ts";
 import type { Dataset, DatasetPaperLink, DatasetRepository, Evidence, Paper, PaperFile, SourceAutomation, SpeciesEntry } from "./mygo.ts";
 
 export interface Resource {
@@ -164,7 +165,7 @@ export function decideScreening(p: Paper, status: string, reason = p.screeningRe
 
 type HasSpecies = { species: SpeciesEntry[] };
 export const speciesNames = (p: HasSpecies): string[] => arr(p.species).map((s) => s?.name ?? "").filter(Boolean);
-export const speciesDisplay = (p: HasSpecies): string => arr(p.species).map((s) => s?.label || s?.name || "").filter(Boolean).join(listSeparator);
+export const speciesDisplay = (p: HasSpecies, includeScientific = locale === "en"): string => arr(p.species).map((s) => s ? speciesText(s, includeScientific) : "").filter(Boolean).join(listSeparator);
 export const joinList = (value: string[] | null | undefined, separator = listSeparator): string => arr(value).filter(Boolean).join(separator);
 
 export type ListField = "species" | "organ" | "year" | "modality" | "platform" | "source";
@@ -183,7 +184,7 @@ export function uniqueValues(papers: Paper[], field: ListField): string[] {
 
 export function speciesLabelOf(papers: Paper[], name: string): string {
   for (const p of papers) {
-    for (const s of arr(p.species)) if (s?.name === name) return s.label || name;
+    for (const s of arr(p.species)) if (s?.name === name) return speciesText(s);
   }
   return name;
 }
@@ -191,7 +192,7 @@ export function speciesLabelOf(papers: Paper[], name: string): string {
 /** speciesNameFor finds the scientific name behind a display label (or name). */
 export function speciesNameFor(papers: Paper[], label: string): string {
   for (const p of papers) {
-    for (const s of arr(p.species)) if (s && (s.label === label || s.name === label)) return s.name;
+    for (const s of arr(p.species)) if (s && (s.label === label || s.name === label || speciesText(s) === label)) return s.name;
   }
   return "";
 }
@@ -252,6 +253,8 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
       const hay = [
         p.title, p.authors, p.doi, p.pmid,
         arr(p.species).map((s) => (s ? `${s.name || ""} ${s.label || ""}`.trim() : "")).join(" "),
+        speciesDisplay(p),
+        arr(p.organs).map(tv).join(" "),
         joinList(p.organs, " "), joinList(p.modalities, " "), joinList(p.platforms, " "), joinList(p.articleTypes, " "),
         p.abstract, arr(p.tags).join(" "),
       ].join(" ").toLocaleLowerCase();
@@ -315,7 +318,8 @@ export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (
   const pool = reviewOnly ? datasets.filter((d) => d.awaitingReview) : datasets;
   if (!q) return pool;
   return pool.filter((d) => [
-    d.title, d.id, speciesNames(d).join(" "), speciesDisplay(d), joinList(d.organs, " "), joinList(d.modalities, " "), joinList(d.platforms, " "),
+    d.title, d.id, speciesNames(d).join(" "), speciesDisplay(d), arr(d.species).map(s => s?.label).join(" "), joinList(d.organs, " "), joinList(d.modalities, " "), joinList(d.platforms, " "),
+    arr(d.organs).map(tv).join(" "),
     arr(d.repositories).map((r) => `${r.repository || ""} ${r.accession || ""}`).join(" "),
     arr(d.paperLinks).map((l) => paperTitle(l.paperId)).join(" "),
   ].join(" ").toLocaleLowerCase().includes(q));

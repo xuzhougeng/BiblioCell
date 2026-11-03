@@ -1,4 +1,5 @@
 // Page renderers for overview, papers, datasets and tasks.
+import { speciesText } from "./species.ts";
 import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
@@ -218,7 +219,7 @@ export function renderOverview(app: App): string {
     + distributionPanel(papers, "species", t("研究物种"), t("当前目录中的文献分布"), (v) => speciesLabelOf(papers, v))
     + yearPanel(papers)
     + distributionPanel(papers, "modality", t("研究技术"), t("按测序或成像技术统计"), tv)
-    + distributionPanel(papers, "organ", t("研究组织"), t("按组织或器官统计"), (v) => v)
+    + distributionPanel(papers, "organ", t("研究组织"), t("按组织或器官统计"), tv)
     + `</div>`;
 }
 
@@ -257,7 +258,7 @@ export function renderPapers(app: App): string {
     + `<section class="panel papers-panel"><div class="toolbar"><label class="table-search">${I("search", 18)}<input id="paper-search" class="search-input" type="search" placeholder="${t("搜索题目、物种、作者或 DOI…")}" value="${esc(filters.search)}" aria-label="${t("搜索文献")}"></label></div>`
     + `<div class="filter-row"><span class="filter-caption">${I("filter", 15)} ${t("筛选")}</span>${sortChip(filters.sort, SORT_OPTIONS)}`
     + selectFilter(filters, "species", t("物种"), uniqueValues(papers, "species").map((v) => ({ value: v, label: speciesLabelOf(papers, v) })))
-    + selectFilter(filters, "organ", t("组织"), uniqueValues(papers, "organ"))
+    + selectFilter(filters, "organ", t("组织"), uniqueValues(papers, "organ").map((v) => ({ value: v, label: tv(v) })))
     + selectFilter(filters, "year", t("年份"), uniqueValues(papers, "year").reverse())
     + selectFilter(filters, "modality", t("技术"), uniqueValues(papers, "modality").map((v) => ({ value: v, label: tv(v) })))
     + selectFilter(filters, "platform", t("平台"), uniqueValues(papers, "platform"))

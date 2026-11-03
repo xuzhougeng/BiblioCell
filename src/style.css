@@ -939,6 +939,8 @@ a.link-chip:hover svg { color: var(--primary) }
   text-align: left;
 }
 .species-bar-row:first-child { padding-top: 0 }
+:lang(en) .species-bar-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 26px }
+:lang(en) .species-bar-row > span { overflow-wrap: anywhere }
 .species-bar-row:last-child { padding-bottom: 0 }
 .species-bar-track { height: 8px; background: #e8e0c6; border-radius: 2px; overflow: hidden }
 .species-bar-track > div { height: 100%; background: #7c9668; border-radius: 2px }
