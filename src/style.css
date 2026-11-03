@@ -421,7 +421,7 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .paper-table th.col-select + th.col-star, .paper-table td.select-cell + td.star-cell { padding-left: 6px }
 .paper-table tbody tr.is-selected { background: var(--green-soft) }
 .paper-table tbody tr.is-selected:hover { background: var(--green-soft) }
-.bulk-bar { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 10px 22px; border-top: 1px solid var(--line-strong); background: var(--surface); box-shadow: 0 -8px 24px rgba(38, 46, 36, 0.08) }
+.bulk-bar { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 10px 22px; border-top: 2px solid var(--line-strong); background: var(--surface) }
 .bulk-bar[hidden] { display: none }
 .bulk-bar-count { font-weight: 650; color: var(--text-strong); font-variant-numeric: tabular-nums }
 .bulk-bar-actions { display: flex; flex-wrap: wrap; gap: 8px }
@@ -478,7 +478,7 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .link-more { color: #78725e; font-size: calc(12px * var(--font-scale, 1)); white-space: nowrap }
 .dataset-table .repo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin: 3px 0; min-width: 0 }
 .dataset-table .repo-line span { color: #6a6146; font-size: calc(12px * var(--font-scale, 1)); font-weight: 650 }
-.dataset-table .repo-line code { background: #f0ead6; border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; font-size: calc(12px * var(--font-scale, 1)); color: #454d3c; overflow-wrap: anywhere; max-width: 100% }
+.dataset-table .repo-line code { background: var(--surface-deep); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; font-size: calc(12px * var(--font-scale, 1)); color: var(--text); overflow-wrap: anywhere; max-width: 100% }
 .dataset-table .repo-cell { min-width: 0; overflow-wrap: anywhere }
 /* ---------------- 工具栏与筛选 ---------------- */
 .toolbar { display: flex; gap: 13px; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap }
