@@ -217,14 +217,15 @@ export function datasetTable(items: Dataset[], app: App, none = empty(t("暂无�
       ? `<div class="paper-review-note source"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: t("来源新增") })}</span><span class="paper-review-hint">${t("查看详情，核对仓库记录")} ${I("arrow-right", 12)}</span></div>`
       : "";
     return `<tr${d.awaitingReview ? ' class="paper-needs-review source"' : ""} data-action="open-dataset" data-id="${esc(d.id)}" tabindex="0" aria-label="${d.awaitingReview ? t("{label}，待确认：{title}", { label: t("来源新增"), title: esc(d.title) }) : t("查看 {title}", { title: esc(d.title) })}">`
-      + `<td class="dataset-main-cell"><div class="dataset-title">${esc(d.title)}</div><div class="dataset-meta">${demoBadge(d)}<span>${esc(displayList(d.platforms) || t("平台待补"))}</span></div>${review}</td>`
-      + `<td class="link-cell">${links.length ? `${chips}${links.length > 2 ? `<span class="link-more">+${links.length - 2}</span>` : ""}` : `<span class="muted">${t("未关联")}</span>`}</td>`
-      + `<td><div class="species-label">${esc(speciesDisplay(d) || t("物种待补"))}</div><div class="species-name">${esc(displayList(d.organs) || t("组织待补"))}</div></td>`
-      + `<td>${modalityBadges(d)}</td>`
-      + `<td class="repo-cell">${repos.length ? `${repos.slice(0, 1).map(repoLine).join("")}${repos.length > 1 ? `<span class="link-more">+${repos.length - 1}</span>` : ""}` : `<span class="muted">${t("待补")}</span>`}</td>`
-      + `<td>${datasetStatusBadge(d)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
+      // The modality badges repeat inside the title cell for narrow windows, where the column itself is hidden.
+      + `<td class="dataset-main-cell col-title"><div class="dataset-title">${esc(d.title)}</div><div class="dataset-meta">${demoBadge(d)}<span>${esc(displayList(d.platforms) || t("平台待补"))}</span><span class="dataset-meta-modality">${modalityBadges(d)}</span></div>${review}</td>`
+      + `<td class="link-cell col-links">${links.length ? `${chips}${links.length > 2 ? `<span class="link-more">+${links.length - 2}</span>` : ""}` : `<span class="muted">${t("未关联")}</span>`}</td>`
+      + `<td class="col-species"><div class="species-label">${esc(speciesDisplay(d) || t("物种待补"))}</div><div class="species-name">${esc(displayList(d.organs) || t("组织待补"))}</div></td>`
+      + `<td class="col-modality">${modalityBadges(d)}</td>`
+      + `<td class="repo-cell col-repo">${repos.length ? `${repos.slice(0, 1).map(repoLine).join("")}${repos.length > 1 ? `<span class="link-more">+${repos.length - 1}</span>` : ""}` : `<span class="muted">${t("待补")}</span>`}</td>`
+      + `<td class="col-status">${datasetStatusBadge(d)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
-  const head = `<tr><th>${t("数据集")}</th><th>${t("关联文献")}</th><th>${t("研究对象")}</th><th>${t("技术")}</th><th>${t("仓库编号")}</th><th>${t("数据状态")}</th><th class="col-arrow"></th></tr>`;
+  const head = `<tr><th class="col-title">${t("数据集")}</th><th class="col-links">${t("关联文献")}</th><th class="col-species">${t("研究对象")}</th><th class="col-modality">${t("技术")}</th><th class="col-repo">${t("仓库编号")}</th><th class="col-status">${t("数据状态")}</th><th class="col-arrow"></th></tr>`;
   return `<div class="table-wrap"><table class="paper-table dataset-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 

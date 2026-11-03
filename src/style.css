@@ -435,13 +435,22 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .view-option.active { background: var(--primary); color: #f8f4e7 }
 .view-option + .view-option { border-left: 1.5px solid var(--line) }
 .dataset-table { width: 100%; table-layout: fixed }
-.dataset-table th:nth-child(1) { width: 26% }
-.dataset-table th:nth-child(2) { width: 30% }
-.dataset-table th:nth-child(3) { width: 12% }
-.dataset-table th:nth-child(4) { width: 11% }
-.dataset-table th:nth-child(5) { width: 13% }
-.dataset-table th:nth-child(6) { width: 8% }
+.dataset-table th.col-title { width: 26% }
+.dataset-table th.col-links { width: 28% }
+.dataset-table th.col-species { width: 12% }
+.dataset-table th.col-modality { width: 11% }
+.dataset-table th.col-repo { width: 15% }
+.dataset-table th.col-status { width: 8% }
 .dataset-table th.col-arrow { width: 44px }
+.dataset-meta-modality { display: none }
+/* Narrow windows: the modality column folds into the title cell so the accession column keeps its width. */
+@media (max-width: 1100px) {
+  .dataset-table .col-modality { display: none }
+  .dataset-table .dataset-meta-modality { display: inline-flex; flex-wrap: wrap; gap: 4px }
+  .dataset-table .dataset-meta-modality .badge { margin: 0 }
+  .dataset-table th.col-links { width: 26% }
+  .dataset-table th.col-repo { width: 18% }
+}
 .dataset-table .dataset-title { font-weight: 650; color: var(--text-strong); line-height: 1.55; overflow-wrap: anywhere }
 .dataset-table .dataset-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: calc(12.5px * var(--font-scale, 1)); color: #78725e; flex-wrap: wrap }
 .dataset-table td { vertical-align: top }
@@ -451,10 +460,10 @@ h1 { font-size: calc(30px * var(--font-scale, 1)); line-height: 1.25; font-weigh
 .link-chip-title { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .link-chip-role { flex-shrink: 0; color: #6a6146; background: #ece5cf; padding: 1px 6px; border-radius: 3px; font-size: calc(11px * var(--font-scale, 1)) }
 .link-more { color: #78725e; font-size: calc(12px * var(--font-scale, 1)); white-space: nowrap }
-.dataset-table .repo-line { display: flex; align-items: center; gap: 7px; white-space: nowrap; margin: 3px 0 }
+.dataset-table .repo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin: 3px 0; min-width: 0 }
 .dataset-table .repo-line span { color: #6a6146; font-size: calc(12px * var(--font-scale, 1)); font-weight: 650 }
-.dataset-table .repo-line code { background: #f0ead6; border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; font-size: calc(12px * var(--font-scale, 1)); color: #454d3c }
-.dataset-table .repo-cell { white-space: nowrap }
+.dataset-table .repo-line code { background: #f0ead6; border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; font-size: calc(12px * var(--font-scale, 1)); color: #454d3c; overflow-wrap: anywhere; max-width: 100% }
+.dataset-table .repo-cell { min-width: 0; overflow-wrap: anywhere }
 /* ---------------- 工具栏与筛选 ---------------- */
 .toolbar { display: flex; gap: 13px; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap }
 .search-input { display: flex; gap: 10px; align-items: center; min-width: 250px; position: relative }
