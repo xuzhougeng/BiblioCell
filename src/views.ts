@@ -1,5 +1,4 @@
 // Page renderers for overview, papers, datasets and tasks.
-import { AGENT_EXAMPLES } from "./agent.ts";
 import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
@@ -181,8 +180,7 @@ export function renderOverview(app: App): string {
   const statCards = stats.map((s, i) =>
     `<button class="stat-card" data-action="stat-nav" data-target="${s[4]}"><div class="stat-top"><span class="stat-label">${s[0]}</span><span class="stat-icon">${I(s[3], 18)}</span></div><div class="stat-value">${s[1]}<span class="stat-unit">${i === 1 ? t("组") : t("篇")}</span></div><div class="stat-meta">${s[2]}${I("arrow-right", 14)}</div></button>`,
   ).join("");
-  const agentEntry = `<section class="panel agent-entry"><span class="agent-entry-icon">${I("sparkle", 22)}</span><div class="agent-entry-body"><h2>${t("AI 助手")}</h2><p class="muted">${t("用自己的模型，通过 MCP 工具检索、导入、补元数据、提收录建议。")}</p><div class="agent-entry-prompts">${AGENT_EXAMPLES.map((p) => `<button type="button" class="agent-entry-prompt" data-action="agent-open" data-prompt="${esc(p)}">${esc(p)}</button>`).join("")}</div></div><button class="btn btn-primary" data-action="agent-open">${I("sparkle", 15)} ${t("打开助手")}</button></section>`;
-  return `<div class="stat-grid">${statCards}</div>${agentEntry}`
+  return `<div class="stat-grid">${statCards}</div>`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>${t("最近收录")}</h2><p class="muted">${t("新线索先留下，整理慢慢来")}</p></div><button class="text-link" data-page="papers">${t("查看全部")} ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} ${t("当前条目为原型示例，可通过新增或导入建立自己的目录。")}</div></section>`
     + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>${t("接下来整理")}</h2><p class="muted">${t("按需要补齐信息")}</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">${t("查看全部待补事项")} ${I("arrow-right", 16)}</button></section></div>`
     + `<div class="overview-bottom-grid"><section class="panel"><div class="panel-header"><div><h2>${t("整理覆盖")}</h2><p class="muted">${t("收录与完善，各自向前一步")}</p></div><button class="text-link" data-action="export-report">${I("download", 15)} ${t("导出进度报告")}</button></div><div class="panel-body progress-list">${progressRow(t("收录范围已判断"), total - pending, total)}${progressRow(t("已关联数据集"), withData, total, "blue")}${progressRow(t("已记录全文入口"), withFulltext, total, "gold")}</div></section>`

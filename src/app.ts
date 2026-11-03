@@ -306,6 +306,7 @@ export class App {
     }
     const actions = $(".heading-actions");
     if (actions) actions.hidden = this.page === "settings" || this.page === "agent";
+    $$<HTMLElement>("[data-overview-only]").forEach((el) => { el.hidden = this.page !== "overview"; }); // The sidebar already reaches the assistant elsewhere.
     const [title, subtitle] = PAGES[this.page];
     for (const [selector, value] of [["#page-title", title], ["#page-subtitle", subtitle]] as const) {
       const el = $(selector);

@@ -61,7 +61,7 @@
   .batch-steps { font-size: 13px; gap: 8px }
 }
 #runtime-message { min-width: 0 }
-.heading-actions[hidden] { display: none }
+.heading-actions[hidden], .heading-actions > [hidden] { display: none }
 .real-mode [data-action="import-json"], .real-mode [data-action="add-resource"], .real-mode [data-action="reset-demo"] { display: none !important }
 .sidebar-settings { margin-bottom: 12px }
 /* 侧栏折叠按钮:置于顶栏左端,ghost 样式;悬停 tooltip"折叠侧栏/展开侧栏" */
@@ -1292,21 +1292,6 @@ select.input { appearance: auto }
 .agent-queue .btn-icon { width: 22px; height: 22px; flex: 0 0 auto }
 .agent-queue-edit { flex: 1; min-width: 0; font: inherit; font-size: calc(13px * var(--font-scale, 1)); line-height: 1.6; padding: 6px 9px; border: 1px solid #c8bda0; border-radius: 4px; background: #fffdf7; color: #333a2d; resize: vertical; field-sizing: content; min-height: 34px }
 .agent-queue-edit:focus { border-color: var(--primary); outline: none }
-
-/* Overview quick entry to the assistant */
-.agent-entry { display: flex; align-items: center; gap: 18px; padding: 18px 22px; margin-bottom: 18px; overflow: visible }
-.agent-entry-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; color: var(--primary); background: var(--surface-deep) }
-.agent-entry-body { flex: 1; min-width: 0 }
-.agent-entry-body h2 { font-size: calc(17px * var(--font-scale, 1)); margin-bottom: 2px }
-.agent-entry-body p { font-size: calc(13px * var(--font-scale, 1)) }
-.agent-entry-prompts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px }
-.agent-entry-prompt { font-family: inherit; font-size: calc(12.5px * var(--font-scale, 1)); color: #4b5544; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-deep); cursor: pointer; text-align: left }
-.agent-entry-prompt:hover { border-color: var(--primary); color: var(--primary) }
-.agent-entry > .btn { flex: 0 0 auto }
-@media (max-width: 760px) {
-  .agent-entry { flex-wrap: wrap }
-  .agent-entry > .btn { width: 100% }
-}
 
 /* History of assistant conversations (modal) */
 .agent-history { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto }

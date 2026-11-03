@@ -262,8 +262,6 @@ export const views: Record<string, string> = {
   "组": "datasets",
   "篇": "papers",
   "AI 助手": "AI assistant",
-  "用自己的模型，通过 MCP 工具检索、导入、补元数据、提收录建议。": "Use your own model to search, import, fill in metadata and suggest screening through MCP tools.",
-  "打开助手": "Open assistant",
   "最近收录": "Recently added",
   "新线索先留下，整理慢慢来": "Save new leads now, curate later",
   "查看全部": "View all",
