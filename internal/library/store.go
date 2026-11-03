@@ -14,7 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const SchemaVersion = 13
+const SchemaVersion = 14
 
 //go:embed schema.sql
 var schemaSQL string

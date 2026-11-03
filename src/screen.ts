@@ -5,10 +5,12 @@ import { metadataButton } from "./metadata.ts";
 // drops the paper from under the reader.
 import type { App } from "./app.ts";
 import { editableDetail } from "./paper-fields.ts";
-import type { Judgement, Paper } from "./mygo.ts";
+import { Library, type Evidence, type Paper, type ScreeningSuggestion } from "./mygo.ts";
+import { FIELD_LABELS } from "./drawer.ts";
+import { confidenceText } from "./calibration.ts";
 import { configured, modelFor } from "./models.ts";
-import { READING, SCREEN, arr, dateText, decideScreening, esc, joinList, speciesDisplay, speciesNames } from "./model.ts";
-import { $, I, badge, demoBadge, screenBadge } from "./ui.ts";
+import { READING, SCREEN, arr, dateText, decideScreening, esc, evidenceValueText, joinList, speciesDisplay, speciesNames } from "./model.ts";
+import { $, I, badge, demoBadge, errorMessage, screenBadge } from "./ui.ts";
 import { listSeparator, t, tv } from "./i18n.ts";
 
 export interface ScreenState {
@@ -17,6 +19,8 @@ export interface ScreenState {
   index: number;
   /** AI suggestions for this run: the requirement the model judges against, and its answers so far. */
   ai: ScreenAI | null;
+  /** Where leaving screening goes back to, when not the papers table. */
+  returnTo?: "calibration";
 }
 
 export interface ScreenAI {
@@ -26,7 +30,7 @@ export interface ScreenAI {
 
 export type AIResult =
   | { state: "loading" }
-  | { state: "done"; judgement: Judgement }
+  | { state: "done"; judgement: ScreeningSuggestion }
   | { state: "error"; message: string };
 
 export const AI_ASK_KEY = "bibliocell-screen-ai-ask";
@@ -124,7 +128,50 @@ function aiBox(app: App, p: Paper): string {
   const adopt = p.screening === j.verdict
     ? `<span class="muted small">${t("与当前判断一致")}</span>`
     : `<button class="btn btn-secondary btn-compact" data-action="screen-ai-adopt" data-id="${esc(p.id)}">${kbd("A")} ${t("采纳为“{label}”", { label: SCREEN[j.verdict] ?? j.verdict })}</button>`;
-  return `<div class="ai-box ${esc(j.verdict)}">${head}${badge(SCREEN[j.verdict] ?? j.verdict, VERDICT_COLOR[j.verdict] ?? "gray")}<span class="ai-box-basis muted">${esc(BASIS[j.basis] ?? j.basis)}</span><p class="ai-box-reason">${esc(j.reason)}</p><span class="section-actions">${adopt}</span></div>`;
+  const model = j.profileName || j.model ? `<span class="ai-box-model muted small" title="${esc(j.requirement)}">${esc(j.profileName || j.profileId)}${j.model ? ` · ${esc(j.model)}` : ""}${j.createdAt ? ` · ${esc(dateText(j.createdAt))}` : ""}</span>` : "";
+  const confidence = j.confidence == null ? "" : `<span class="ai-box-basis muted">${esc(confidenceText(j.confidence))}</span>`;
+  const excerpt = j.excerpt ? `<blockquote class="ai-box-excerpt">${esc(j.excerpt)}${pageJump(app, p, j.page, j.excerpt)}</blockquote>` : "";
+  return `<div class="ai-box ${esc(j.verdict)}">${head}${badge(SCREEN[j.verdict] ?? j.verdict, VERDICT_COLOR[j.verdict] ?? "gray")}<span class="ai-box-basis muted">${esc(BASIS[j.basis] ?? j.basis)}</span>${confidence}${model}<p class="ai-box-reason">${esc(j.reason)}</p>${excerpt}<span class="section-actions">${adopt}</span></div>`;
+}
+
+/** pageJump is the button that takes the embedded PDF to a quoted passage: to its
+ * recorded page, or by searching the PDF text when no page was recorded. */
+function pageJump(app: App, p: Paper, page: number, excerpt: string): string {
+  if (!hasPdf(app, p)) return "";
+  const label = page > 0 ? t("PDF 第 {n} 页", { n: page }) : t("在 PDF 中查找");
+  return `<button class="text-link evidence-jump" data-action="screen-jump-page" data-id="${esc(p.id)}" data-page="${page > 0 ? page : 0}" data-excerpt="${esc(excerpt)}" title="${t("在右侧 PDF 中定位这段原文")}">${I("file", 13)} ${label}</button>`;
+}
+
+/** fulltextEvidence lists what agents extracted from this paper's full text, each with a way into the PDF. */
+function fulltextEvidence(app: App, p: Paper): string {
+  const items = app.evidenceFor("paperId", p.id);
+  if (!items.length) return "";
+  const row = (e: Evidence): string => `<div class="evidence-item ${esc(e.status)}"><div class="evidence-head"><strong>${esc(FIELD_LABELS[e.field] ?? e.field)}${e.value ? `: ${esc(evidenceValueText(e.value))}` : ""}</strong>${badge(e.status === "verified" ? t("已确认") : e.status === "rejected" ? t("已驳回") : t("待核对"), e.status === "verified" ? "green" : e.status === "rejected" ? "gray" : "amber")}</div><blockquote>${esc(e.excerpt)}${e.fileId ? pageJump(app, p, e.page, e.excerpt) : ""}</blockquote>${e.extractor ? `<div class="evidence-foot"><span class="evidence-source muted small">${esc(e.extractor)}</span></div>` : ""}</div>`;
+  return `<section class="detail-section screen-evidence"><h3>${t("全文依据")} <span class="count-pill">${items.length}</span></h3>${items.map(row).join("")}</section>`;
+}
+
+/** jumpToPdfPage takes the screening PDF to a page, searching the full text for
+ * the passage when no page is known. Outside screening it opens the paper in
+ * screening first, so the drawer's evidence can jump too. */
+export async function jumpToPdfPage(app: App, paperId: string, page: number, excerpt: string): Promise<void> {
+  if (!app.paperById(paperId) || !app.env.desktop || !app.env.real) return;
+  if (!app.screen || screenPapers(app)[app.screen.index]?.id !== paperId) {
+    app.closeDrawer();
+    app.screen = { ids: [paperId], index: 0, ai: null };
+    app.navigate("papers");
+  }
+  if (!app.screenPdf) app.toggleScreenPdf();
+  let target = page > 0 ? page : 0;
+  if (!target && excerpt) {
+    try { target = await Library.locateFulltextPage(paperId, excerpt); } catch (error) { app.toast(errorMessage(error, t("读取 PDF 文本失败。")), true); return; }
+  }
+  if (!target) { app.toast(t("未在 PDF 文本中找到这段原文。"), true); return; }
+  const frame = $<HTMLIFrameElement>(".screen-pdf-frame");
+  if (!frame) { app.toast(t("这篇文献没有可显示的 PDF。"), true); return; }
+  // The viewer reads #page= when the document loads, so the frame is reloaded at the page.
+  const base = frame.getAttribute("src")?.split("#")[0] ?? "";
+  frame.src = "about:blank";
+  requestAnimationFrame(() => { frame.src = `${base}#page=${target}`; });
 }
 
 /** Update only the suggestion: rebuilding the page would reload the PDF iframe. */
@@ -168,8 +215,10 @@ export function updateScreeningContent(content: HTMLElement, html: string): void
     template.innerHTML = html;
     const nextPanel = template.content.querySelector<HTMLElement>(".screen-panel");
     const nextFrame = nextPanel?.querySelector<HTMLIFrameElement>(".screen-pdf-frame");
+    // A #page= fragment from a jump does not count as a different document.
+    const base = (f: HTMLIFrameElement | null | undefined): string | undefined => f?.getAttribute("src")?.split("#")[0];
     if (panel.dataset.paperId && panel.dataset.paperId === nextPanel?.dataset.paperId
-      && frame.getAttribute("src") === nextFrame?.getAttribute("src")) {
+      && base(frame) === base(nextFrame)) {
       const regions = [".screen-toolbar", ".screen-counts", ".screen-body", ".screen-pdf-head"].map(selector =>
         [panel.querySelector(selector), nextPanel.querySelector(selector)] as const);
       if (regions.every(([current, next]) => current && next)) {
@@ -223,6 +272,7 @@ export function renderScreening(app: App): string {
     + metadataButton(app, p)
     + `<div class="detail-grid screen-grid">${editableDetail(p.id, "species", t("研究物种"), esc(speciesDisplay(p) || t("待补")) + (speciesNames(p).length ? `<small class="muted"> ${esc(joinList(speciesNames(p), listSeparator))}</small>` : ""))}${editableDetail(p.id, "organs", t("组织 / 部位"), esc(displayList(p.organs) || t("待补")))}${editableDetail(p.id, "modalities", t("测序类型"), esc(displayList(p.modalities) || t("待补")))}${editableDetail(p.id, "platforms", t("测序平台"), esc(displayList(p.platforms) || t("待补")))}${editableDetail(p.id, "articleTypes", t("文献类型"), esc(displayList(p.articleTypes) || t("待判断")))}${editableDetail(p.id, "datasets", t("关联数据集"), ds.length ? esc(ds.map((d) => d.accession || d.title).join(listSeparator)) : `<span class="muted">${t("未关联")}</span>`)}${editableDetail(p.id, "source", t("发现来源"), esc(tv(p.source || "手动添加")))}${editableDetail(p.id, "addedAt", t("加入时间"), dateText(p.addedAt))}</div>`
     + `<section class="detail-section"><h3>${t("摘要")}</h3><p class="abstract-text">${esc(p.abstract || t("摘要尚未补充。先保留这条文献，之后可以继续完善。"))}</p></section>`
+    + fulltextEvidence(app, p)
     + (arr(p.tags).length ? `<section class="detail-section"><h3>${t("主题标签")}</h3><div class="tag-list">${arr(p.tags).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}</div></section>` : "")
     + (p.notes ? `<section class="detail-section"><h3>${t("研究笔记")}</h3><p class="abstract-text">${esc(p.notes)}</p></section>` : "")
     + `</div>${pdf}</div>`
@@ -244,6 +294,8 @@ export const screenActions = (app: App): Record<string, (el: HTMLElement, id: st
   "screen-translate": (_el, id) => app.translateInScreening(id),
   "screen-translate-clear": () => app.clearTranslation(),
   "screen-pdf-toggle": () => app.toggleScreenPdf(),
+  "screen-jump-page": (el, id) => { void jumpToPdfPage(app, id, Number(el.dataset.page ?? 0), el.dataset.excerpt ?? ""); },
+  "evidence-jump": (el, id) => { void jumpToPdfPage(app, id, Number(el.dataset.page ?? 0), el.dataset.excerpt ?? ""); },
 });
 
 /** screenModelReady: the desktop app on a real library, with a model bound to screening. */

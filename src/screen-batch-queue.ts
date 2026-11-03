@@ -1,4 +1,4 @@
-import type { Judgement } from "./mygo.ts";
+import type { ScreeningSuggestion } from "./mygo.ts";
 import type { AIResult } from "./screen.ts";
 
 /** A bounded pool. Stopping drains in-flight calls, leaving untouched papers queued. */
@@ -10,18 +10,23 @@ export class ScreeningBatch {
   readonly requirement: string;
   readonly modelId: string;
   readonly concurrency: number;
+  /** Every answer of this run is recorded under runId, as a batch or a calibration rerun. */
+  readonly runId: string;
+  readonly kind: "batch" | "rerun";
 
-  constructor(ids: string[], requirement: string, modelId: string, concurrency: number) {
+  constructor(ids: string[], requirement: string, modelId: string, concurrency: number, runId = "", kind: "batch" | "rerun" = "batch") {
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) throw new Error("Invalid concurrency");
     this.ids = [...new Set(ids)];
     this.requirement = requirement;
     this.modelId = modelId;
     this.concurrency = concurrency;
+    this.runId = runId;
+    this.kind = kind;
   }
 
   stop(): void { this.stopping = true; }
 
-  async run(request: (id: string) => Promise<Judgement>, changed: (id?: string) => void): Promise<void> {
+  async run(request: (id: string) => Promise<ScreeningSuggestion>, changed: (id?: string) => void): Promise<void> {
     if (this.running) return;
     this.running = true;
     this.stopping = false;

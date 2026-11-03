@@ -3,9 +3,9 @@ import { test, type TestContext } from "node:test";
 import { setImmediate } from "node:timers/promises";
 import { App } from "../src/app.ts";
 import { demoState } from "../src/demo-data.ts";
-import { Library, type Judgement } from "../src/mygo.ts";
+import { Library, type ScreeningSuggestion } from "../src/mygo.ts";
 
-const judgement = { verdict: "included", reason: "Evidence <confirmed>", basis: "fulltext", skipped: false } as Judgement;
+const judgement = { verdict: "included", reason: "Evidence <confirmed>", basis: "fulltext", skipped: false } as ScreeningSuggestion;
 
 function setup(t: TestContext) {
   const app = Object.create(App.prototype) as App;
@@ -27,7 +27,7 @@ function setup(t: TestContext) {
     if (previous) Object.defineProperty(globalThis, "document", previous);
     else Reflect.deleteProperty(globalThis, "document");
   });
-  const pending = Promise.withResolvers<Judgement>();
+  const pending = Promise.withResolvers<ScreeningSuggestion>();
   const call = t.mock.method(Library, "screenPaper", () => pending.promise);
   return { app, id, region, pending, call };
 }
@@ -51,7 +51,7 @@ test("AI failure, retry and skipped results stay within the suggestion region", 
   await setImmediate();
   assert.match(region.innerHTML, /Model unavailable/);
   assert.match(region.innerHTML, /data-action="screen-ai-retry"/);
-  const retry = Promise.withResolvers<Judgement>();
+  const retry = Promise.withResolvers<ScreeningSuggestion>();
   t.mock.method(Library, "screenPaper", () => retry.promise);
   app.requestJudgement(id, true);
   assert.match(region.innerHTML, /is-loading/);

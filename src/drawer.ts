@@ -3,7 +3,7 @@ import { metadataButton } from "./metadata.ts";
 import type { App } from "./app.ts";
 import { editableDetail } from "./paper-fields.ts";
 import type { DatasetPaperLink, Evidence, Paper } from "./mygo.ts";
-import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, datasetLocation, dateText, esc, fileSize, joinList, repositoryLabel, repositoryURL, safeURL, speciesDisplay, speciesNames, type Resource } from "./model.ts";
+import { AVAILABILITY, READING, RESOURCE_TYPES, ROLE, SCREEN, arr, datasetLocation, dateText, esc, fileSize, joinList, repositoryLabel, repositoryURL, safeURL, speciesDisplay, speciesNames, type Resource, evidenceValueText } from "./model.ts";
 import { I, badge, datasetStatusBadge, demoBadge, options, screenBadge } from "./ui.ts";
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 
@@ -39,7 +39,7 @@ const proposalBox = (p: Paper): string => p.proposedScreening
 const reviewBox = (kind: "paper" | "dataset", id: string, text: string): string =>
   `<div class="notice-box compact proposal-box">${I("alert", 16)}<span><strong>${t("来源新增 · 尚未人工核查")}</strong><br>${esc(text)}</span><span class="section-actions"><button class="text-link" data-action="finish-review" data-kind="${kind}" data-id="${esc(id)}">${t("核查完成")}</button></span></div>`;
 
-const FIELD_LABELS: Record<string, string> = {
+export const FIELD_LABELS: Record<string, string> = {
   title: t("题目"), doi: "DOI", pmid: "PMID", authors: t("作者"), year: t("年份"), journal: t("期刊"), abstract: t("摘要"),
   species: t("物种"), organs: t("组织"), modalities: t("测序类型"), platforms: t("测序平台"), articleTypes: t("文献类型"),
   screening: t("收录判断"), repositories: t("数据仓库"), accession: "Accession", availability: t("数据可用性"), cellsReported: t("细胞数"),
@@ -56,12 +56,13 @@ function evidenceRow(e: Evidence): string {
   const source = [
     sourceLink(e.sourceUrl),
     e.fileId ? `<button class="text-link" data-action="open-file" data-id="${esc(e.fileId)}">${t("打开文件")}</button>` : "",
-    e.location ? `<span>${esc(e.location)}</span>` : "",
+    e.fileId && e.paperId ? `<button class="text-link" data-action="evidence-jump" data-id="${esc(e.paperId)}" data-page="${e.page}" data-excerpt="${esc(e.excerpt)}" title="${t("在筛选页的 PDF 中定位这段原文")}">${e.page ? t("PDF 第 {n} 页", { n: e.page }) : t("在 PDF 中查找")}</button>` : "",
+    e.location && !e.page ? `<span>${esc(e.location)}</span>` : "",
     e.extractor ? `<span>${esc(e.extractor)}</span>` : "",
   ].join("");
   const verdict = (status: string, text: string) => `<button class="text-link" data-action="review-evidence" data-id="${esc(e.id)}" data-status="${status}">${text}</button>`;
   const actions = e.status === "unreviewed" ? verdict("verified", t("确认")) + verdict("rejected", t("驳回")) : verdict("unreviewed", t("撤销"));
-  return `<div class="evidence-item ${esc(e.status)}"><div class="evidence-head"><strong>${esc(FIELD_LABELS[e.field] ?? e.field)}${e.value ? `${locale === "en" ? ": " : "："}${esc(e.value)}` : ""}</strong>${badge(label, color)}</div><blockquote>${esc(e.excerpt)}</blockquote><div class="evidence-foot"><span class="evidence-source">${source}</span><span class="section-actions">${actions}</span></div></div>`;
+  return `<div class="evidence-item ${esc(e.status)}"><div class="evidence-head"><strong>${esc(FIELD_LABELS[e.field] ?? e.field)}${e.value ? `${locale === "en" ? ": " : "："}${esc(evidenceValueText(e.value))}` : ""}</strong>${badge(label, color)}</div><blockquote>${esc(e.excerpt)}</blockquote><div class="evidence-foot"><span class="evidence-source">${source}</span><span class="section-actions">${actions}</span></div></div>`;
 }
 
 const evidenceSection = (items: Evidence[]): string => items.length
