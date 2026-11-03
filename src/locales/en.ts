@@ -4,7 +4,8 @@
 import { agent } from "./en/agent.ts";
 import { core } from "./en/core.ts";
 import { forms } from "./en/forms.ts";
+import { research } from "./en/research.ts";
 import { settings } from "./en/settings.ts";
 import { views } from "./en/views.ts";
 
-export const en: Record<string, string> = { ...core, ...views, ...forms, ...settings, ...agent };
+export const en: Record<string, string> = { ...core, ...views, ...forms, ...settings, ...agent, ...research };

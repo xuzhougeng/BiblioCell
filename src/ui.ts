@@ -1,5 +1,6 @@
 // Small HTML fragment builders and DOM helpers. Every dynamic value passes
 // through esc(); fragments that are already HTML are composed as strings.
+import { speciesText } from "./species.ts";
 import type { Dataset, SpeciesEntry } from "./mygo.ts";
 import { icon } from "./icons.ts";
 import { FULL, SCREEN, arr, esc, splitList, type Filters } from "./model.ts";
@@ -79,7 +80,7 @@ export const customField = (name: string, placeholder: string): string =>
 
 export function speciesRow(entry: Partial<SpeciesEntry> = {}, choices = plantChoices()): string {
   const selected = choices.find(s => s.name.toLowerCase() === entry.name?.trim().toLowerCase());
-  return `<div class="species-row"><select class="input species-picker" data-species-picker aria-label="${t("选择植物物种")}">${option("", t("选择常见植物，或在下方填写其他物种"), selected?.name ?? "")}${choices.map(s => `<option value="${esc(s.name)}" data-label="${esc(s.label)}"${s === selected ? " selected" : ""}>${esc(s.label ? `${s.label} · ${s.name}` : s.name)}</option>`).join("")}</select><input class="input" name="speciesName" type="text" value="${esc(entry.name ?? "")}" placeholder="${t("例如 Arabidopsis thaliana")}" maxlength="500" aria-label="${t("物种学名")}"><input class="input" name="speciesLabel" type="text" value="${esc(entry.label ?? "")}" placeholder="${t("例如 拟南芥")}" maxlength="500" aria-label="${t("物种中文名")}"><button type="button" class="btn-icon" data-action="remove-species-row" aria-label="${t("移除该物种")}">${I("x", 16)}</button></div>`;
+  return `<div class="species-row"><select class="input species-picker" data-species-picker aria-label="${t("选择植物物种")}">${option("", t("选择常见植物，或在下方填写其他物种"), selected?.name ?? "")}${choices.map(s => `<option value="${esc(s.name)}" data-label="${esc(s.label)}"${s === selected ? " selected" : ""}>${esc(speciesText(s, true))}</option>`).join("")}</select><input class="input" name="speciesName" type="text" value="${esc(entry.name ?? "")}" placeholder="${t("例如 Arabidopsis thaliana")}" maxlength="500" aria-label="${t("物种学名")}"><input class="input" name="speciesLabel" type="text" value="${esc(entry.label ?? "")}" placeholder="${t("例如 拟南芥")}" maxlength="500" aria-label="${t("物种中文名")}"><button type="button" class="btn-icon" data-action="remove-species-row" aria-label="${t("移除该物种")}">${I("x", 16)}</button></div>`;
 }
 
 export function selectPlant(select: HTMLSelectElement): void {
