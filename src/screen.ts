@@ -135,8 +135,9 @@ const VERDICT_COLOR: Record<string, string> = { included: "green", excluded: "gr
 const BASIS: Record<string, string> = { fulltext: t("依据全文"), abstract: t("依据摘要") };
 
 /** aiBox shows where the model's answer for this paper stands, beside the decision
- * buttons: verdict, confidence and the reason in one row, with the quoted passage
- * and the model behind a disclosure. Without a run it offers to start one. */
+ * buttons: verdict, confidence and the adopt button in one row, the full reason on
+ * its own line below, and the quoted passage and the model behind a disclosure.
+ * Without a run it offers to start one. */
 function aiBox(app: App, p: Paper): string {
   const ai = app.screen?.ai;
   if (!ai) return app.canScreenWithAI() ? `<div class="ai-box is-off"><button class="text-link" data-action="screen-ai-open">${I("sparkle", 15)} ${t("获取 AI 建议")}</button></div>` : "";
@@ -153,7 +154,7 @@ function aiBox(app: App, p: Paper): string {
   const confidence = j.confidence == null ? "" : `<span class="ai-box-basis muted">${esc(confidenceText(j.confidence))}</span>`;
   const excerpt = j.excerpt ? `<blockquote class="ai-box-excerpt">${esc(j.excerpt)}${pageJump(app, p, j.page, j.excerpt)}</blockquote>` : "";
   const more = excerpt || model ? `<details class="ai-box-more"><summary>${t("依据与模型")}</summary>${excerpt}${model}</details>` : "";
-  return `<div class="ai-box ${esc(j.verdict)}">${head}${badge(SCREEN[j.verdict] ?? j.verdict, VERDICT_COLOR[j.verdict] ?? "gray")}<span class="ai-box-basis muted">${esc(BASIS[j.basis] ?? j.basis)}</span>${confidence}<p class="ai-box-reason" title="${esc(j.reason)}">${esc(j.reason)}</p><span class="section-actions">${adopt}</span>${more}</div>`;
+  return `<div class="ai-box ${esc(j.verdict)}">${head}${badge(SCREEN[j.verdict] ?? j.verdict, VERDICT_COLOR[j.verdict] ?? "gray")}<span class="ai-box-basis muted">${esc(BASIS[j.basis] ?? j.basis)}</span>${confidence}<span class="section-actions">${adopt}</span><p class="ai-box-reason">${esc(j.reason)}</p>${more}</div>`;
 }
 
 /** Status dot colours of the queue rail, by screening status. */
