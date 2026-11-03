@@ -1153,6 +1153,13 @@ a.link-chip:hover svg { color: var(--primary) }
 .paper-context-menu { position: fixed; z-index: 1000; padding: 6px; background: #faf8ef; border: 1px solid #c9bd99; border-radius: 6px; box-shadow: 0 4px 16px #0003; }
 
 .column-toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+.export-group { border: 1px solid var(--line, #e3e5dc); border-radius: 10px; padding: 10px 14px 12px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px }
+.export-group legend { font-size: calc(13px * var(--font-scale, 1)); font-weight: 600; color: #5c6547; padding: 0 6px }
+.radio-choice { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: calc(14px * var(--font-scale, 1)) }
+.radio-choice input { margin-top: 4px; accent-color: #5c7c46; cursor: pointer; flex: none }
+.radio-choice span { display: flex; flex-direction: column; gap: 2px }
+.radio-choice small { font-size: calc(12.5px * var(--font-scale, 1)); line-height: 1.45 }
+.export-option { margin-bottom: 12px }
 .column-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
 .paper-table .journal-cell { min-width: 120px; max-width: 240px; overflow-wrap: anywhere; font-size: calc(13.5px * var(--font-scale, 1)) }
 
