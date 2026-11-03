@@ -1,4 +1,4 @@
-import type { ScreeningSuggestion } from "./mygo.ts";
+import type { JudgeTask, ScreeningSuggestion } from "./mygo.ts";
 import type { AIResult } from "./screen.ts";
 
 /** A bounded pool. Stopping drains in-flight calls, leaving untouched papers queued. */
@@ -13,8 +13,10 @@ export class ScreeningBatch {
   /** Every answer of this run is recorded under runId, as a batch or a calibration rerun. */
   readonly runId: string;
   readonly kind: "batch" | "rerun";
+  /** The "is this paper X?" task being asked; null for screening against the requirement. */
+  readonly task: JudgeTask | null;
 
-  constructor(ids: string[], requirement: string, modelId: string, concurrency: number, runId = "", kind: "batch" | "rerun" = "batch") {
+  constructor(ids: string[], requirement: string, modelId: string, concurrency: number, runId = "", kind: "batch" | "rerun" = "batch", task: JudgeTask | null = null) {
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) throw new Error("Invalid concurrency");
     this.ids = [...new Set(ids)];
     this.requirement = requirement;
@@ -22,6 +24,7 @@ export class ScreeningBatch {
     this.concurrency = concurrency;
     this.runId = runId;
     this.kind = kind;
+    this.task = task;
   }
 
   stop(): void { this.stopping = true; }

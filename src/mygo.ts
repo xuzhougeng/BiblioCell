@@ -4,6 +4,11 @@ import { call, event } from "mygo-runtime";
 
 // ---- Types ----
 
+export interface AdoptResult {
+  adopted: number;
+  skipped: number;
+}
+
 export interface AgentConfig {
   protocol: string;
   baseUrl: string;
@@ -214,6 +219,19 @@ export interface HarvestRun {
   errorMessage: string;
 }
 
+export interface JudgeTarget {
+  kind: string;
+  value: string;
+}
+
+export interface JudgeTask {
+  id: string;
+  name: string;
+  question: string;
+  basis: string;
+  target: JudgeTarget;
+}
+
 /** MCPInfo describes the optional local AI integration. */
 export interface MCPInfo {
   enabled: boolean;
@@ -370,6 +388,10 @@ export interface ScreeningSuggestion {
   kind: string;
   inputTokens: number;
   outputTokens: number;
+  taskId: string;
+  taskName: string;
+  targetKind: string;
+  targetValue: string;
   skipped: boolean;
   createdAt: string;
 }
@@ -483,6 +505,13 @@ export interface Usage {
 /** Library exposes local library operations to the frontend. */
 export const Library = {
   /**
+   * AdoptJudgements marks the papers whose suggestions answered yes, see
+   * Store.AdoptJudgements.
+   */
+  adoptJudgements(ids: string[]): Promise<AdoptResult> {
+    return call("Library.AdoptJudgements", ids);
+  },
+  /**
    * AgentChat runs the built-in agent over the conversation and returns it grown
    * by the model's turns and tool calls. The window keeps the transcript, so
    * the next call sends it back whole. Tools run in-process against the real
@@ -551,6 +580,20 @@ export const Library = {
   /** ImportPaperFiles asks for files and copies them into the storage folder. */
   importPaperFiles(paperID: string, resourceType: string): Promise<PaperFile[]> {
     return call("Library.ImportPaperFiles", paperID, resourceType);
+  },
+  /**
+   * JudgePaperInRun asks the model one task's question about one paper and
+   * records the answer under runID. A preset id in task.ID uses the preset's
+   * question and target; anything else is a custom task that must say both.
+   * The paper is never changed: AdoptJudgements applies the answers a person
+   * accepts.
+   */
+  judgePaperInRun(paperID: string, task: JudgeTask, modelID: string, runID: string): Promise<ScreeningSuggestion> {
+    return call("Library.JudgePaperInRun", paperID, task, modelID, runID);
+  },
+  /** JudgePresets lists the built-in "is this paper X?" tasks. */
+  judgePresets(): Promise<JudgeTask[]> {
+    return call("Library.JudgePresets");
   },
   /** ListAgentConversations lists saved conversations, newest first. */
   listAgentConversations(): Promise<ConversationSummary[]> {

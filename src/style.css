@@ -44,6 +44,7 @@
 .batch-row-result { font-size: 13px; margin-top: 7px; overflow-wrap: anywhere }
 .batch-row-result p { margin: 5px 0 0; line-height: 1.6 }
 .batch-reading { display: flex; align-items: center; gap: 8px; color: #286347 }
+.batch-question { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--surface-2, rgba(127,127,127,.08)); white-space: pre-wrap }
 .batch-verdict { font-weight: 700 }
 .batch-verdict.included { color: #286347 }
 .batch-verdict.excluded { color: #756b60 }

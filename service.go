@@ -398,6 +398,50 @@ func (l *Library) ScreenPaperWithModel(paperID, requirement, modelID string) (li
 // batch or rerun) so a whole run can be compared with the person's decisions.
 // An empty modelID uses the profile bound to screening.
 func (l *Library) ScreenPaperInRun(paperID, requirement, modelID, runID, kind string) (library.ScreeningSuggestion, error) {
+	if strings.TrimSpace(requirement) == "" {
+		return library.ScreeningSuggestion{}, errors.New("筛选要求不能为空")
+	}
+	return l.judge(paperID, library.ScreeningTask, requirement, modelID, runID, kind)
+}
+
+// JudgePresets lists the built-in "is this paper X?" tasks.
+func (l *Library) JudgePresets() ([]library.JudgeTask, error) {
+	return library.JudgePresets(), nil
+}
+
+// JudgePaperInRun asks the model one task's question about one paper and
+// records the answer under runID. A preset id in task.ID uses the preset's
+// question and target; anything else is a custom task that must say both.
+// The paper is never changed: AdoptJudgements applies the answers a person
+// accepts.
+func (l *Library) JudgePaperInRun(paperID string, task library.JudgeTask, modelID, runID string) (library.ScreeningSuggestion, error) {
+	if preset, ok := library.JudgePreset(task.ID); ok {
+		task = preset
+	}
+	task, err := library.NormalizeJudgeTask(task)
+	if err != nil {
+		return library.ScreeningSuggestion{}, err
+	}
+	if task.Target.Kind == "screening" {
+		return library.ScreeningSuggestion{}, errors.New("收录筛选请使用批量筛选")
+	}
+	return l.judge(paperID, task, task.Question, modelID, runID, "batch")
+}
+
+// AdoptJudgements marks the papers whose suggestions answered yes, see
+// Store.AdoptJudgements.
+func (l *Library) AdoptJudgements(ids []string) (library.AdoptResult, error) {
+	if l.store == nil {
+		return library.AdoptResult{}, errors.New("library database is not ready")
+	}
+	return l.store.AdoptJudgements(context.Background(), ids)
+}
+
+// judge runs one task over one paper. For screening, requirement is the
+// person's requirement; for every other task it is the task's question. A
+// task that reads the abstract never loads the stored full text, which keeps
+// a pass over hundreds of papers cheap.
+func (l *Library) judge(paperID string, task library.JudgeTask, requirement, modelID, runID, kind string) (library.ScreeningSuggestion, error) {
 	if l.store == nil || l.settings == nil {
 		return library.ScreeningSuggestion{}, errors.New("library database is not ready")
 	}
@@ -415,11 +459,14 @@ func (l *Library) ScreenPaperInRun(paperID, requirement, modelID, runID, kind st
 	if err != nil {
 		return library.ScreeningSuggestion{}, err
 	}
-	_, pages, err := l.store.PaperFulltextPages(ctx, paperID)
-	if err != nil {
-		// The abstract still tells something; the reason says the full text was not read.
-		log.Printf("screen %s: %v", paperID, err)
-		pages = nil
+	var pages []string
+	if task.Basis == "fulltext" {
+		_, pages, err = l.store.PaperFulltextPages(ctx, paperID)
+		if err != nil {
+			// The abstract still tells something; the reason says the full text was not read.
+			log.Printf("screen %s: %v", paperID, err)
+			pages = nil
+		}
 	}
 	species := make([]string, 0, len(paper.Species))
 	for _, entry := range paper.Species {
@@ -433,18 +480,23 @@ func (l *Library) ScreenPaperInRun(paperID, requirement, modelID, runID, kind st
 	if paper.Year != nil {
 		year = fmt.Sprint(*paper.Year)
 	}
-	judgement, err := agent.Screen(ctx, provider, agent.ScreenInput{
-		Requirement: requirement,
-		Title:       paper.Title,
-		Authors:     paper.Authors,
-		Year:        year,
-		Journal:     paper.Journal,
-		Species:     strings.Join(species, "、"),
-		Organs:      strings.Join(paper.Organs, "、"),
-		Modalities:  strings.Join(paper.Modalities, "、"),
-		Abstract:    paper.Abstract,
-		Fulltext:    strings.TrimSpace(strings.Join(pages, "\n\n")),
-	})
+	input := agent.ScreenInput{
+		Title:      paper.Title,
+		Authors:    paper.Authors,
+		Year:       year,
+		Journal:    paper.Journal,
+		Species:    strings.Join(species, "、"),
+		Organs:     strings.Join(paper.Organs, "、"),
+		Modalities: strings.Join(paper.Modalities, "、"),
+		Abstract:   paper.Abstract,
+		Fulltext:   strings.TrimSpace(strings.Join(pages, "\n\n")),
+	}
+	if task.Target.Kind == "screening" {
+		input.Requirement = requirement
+	} else {
+		input.Question = requirement
+	}
+	judgement, err := agent.Screen(ctx, provider, input)
 	if err != nil {
 		return library.ScreeningSuggestion{}, err
 	}
@@ -454,6 +506,10 @@ func (l *Library) ScreenPaperInRun(paperID, requirement, modelID, runID, kind st
 		Verdict: judgement.Verdict, Reason: judgement.Reason, Basis: judgement.Basis, Excerpt: judgement.Excerpt,
 		Confidence: judgement.Confidence, RunID: runID, Kind: kind,
 		InputTokens: judgement.Usage.InputTokens, OutputTokens: judgement.Usage.OutputTokens, Skipped: judgement.Skipped,
+		TargetKind: task.Target.Kind, TargetValue: task.Target.Value,
+	}
+	if task.Target.Kind != "screening" {
+		suggestion.TaskID, suggestion.TaskName = task.ID, task.Name
 	}
 	if judgement.Skipped {
 		return suggestion, nil

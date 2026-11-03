@@ -22,7 +22,7 @@ func TestTranslationCacheMigrationAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.Upgraded == nil || store.Upgraded.From != 14 || store.Upgraded.To != 15 {
+	if store.Upgraded == nil || store.Upgraded.From != 14 || store.Upgraded.To != SchemaVersion {
 		t.Fatalf("upgrade = %+v", store.Upgraded)
 	}
 	ctx := context.Background()

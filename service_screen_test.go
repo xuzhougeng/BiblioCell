@@ -217,3 +217,92 @@ func TestScreenPaperUsesSelectedModelWithoutChangingLibrary(t *testing.T) {
 		t.Fatal("empty paper made a model call")
 	}
 }
+
+func TestJudgePaperInRunAsksTheQuestionAndRecordsTheTarget(t *testing.T) {
+	prompts := make(chan [2]string, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Messages) < 2 {
+			t.Error("invalid judge request")
+			w.WriteHeader(400)
+			return
+		}
+		prompts <- [2]string{body.Messages[0].Content, body.Messages[1].Content}
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"{\"verdict\":\"yes\",\"reason\":\"A review\",\"excerpt\":\"We review\",\"confidence\":0.9}"}}]}`)
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	config := settings.Config{StoragePath: dir, FontSize: 15, MCPToken: strings.Repeat("a", 64), Models: []settings.ModelProfile{
+		{ID: "default", Name: "Default", Config: agent.Config{Protocol: "openai", Model: "default-model", BaseURL: server.URL}},
+	}, Tasks: settings.TaskModels{Screen: "default"}}
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	preferences, err := settings.Open(path, dir, config.MCPToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := library.Open(filepath.Join(dir, "test.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	paper, err := store.AddPaper(ctx, library.Paper{Title: "Root atlases", Abstract: "We review root atlases"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Library{store: store, settings: preferences}
+
+	// A preset is looked up by id: the question and target come from it.
+	answer, err := service.JudgePaperInRun(paper.ID, library.JudgeTask{ID: "review"}, "", "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answer.Verdict != "included" || answer.TaskID != "review" || answer.TargetKind != "articleType" || answer.TargetValue != "review" || answer.Basis != "abstract" || answer.RunID != "run-1" {
+		t.Fatalf("answer = %+v", answer)
+	}
+	got := <-prompts
+	if !strings.Contains(got[0], "判断问题") || !strings.Contains(got[1], "## 判断问题") || !strings.Contains(got[1], "综述") || strings.Contains(got[1], "筛选要求") {
+		t.Fatalf("prompt = %q", got)
+	}
+	if after, _ := store.GetPaper(ctx, paper.ID); len(after.ArticleTypes) != 0 {
+		t.Fatalf("judging changed the paper: %+v", after.ArticleTypes)
+	}
+
+	// A custom task names its own question and tag.
+	custom, err := service.JudgePaperInRun(paper.ID, library.JudgeTask{Question: "是否涉及根？", Target: library.JudgeTarget{Kind: "tag", Value: "根"}}, "", "run-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if custom.TaskID != "custom" || custom.TargetKind != "tag" || custom.TargetValue != "根" || custom.Requirement != "是否涉及根？" {
+		t.Fatalf("custom = %+v", custom)
+	}
+	<-prompts
+	if _, err := service.JudgePaperInRun(paper.ID, library.JudgeTask{Question: "q", Target: library.JudgeTarget{Kind: "tag"}}, "", ""); err == nil {
+		t.Fatal("a tag task without a tag ran")
+	}
+
+	result, err := service.AdoptJudgements([]string{answer.ID, custom.ID})
+	if err != nil || result.Adopted != 2 {
+		t.Fatalf("adopt = %+v, %v", result, err)
+	}
+	after, _ := store.GetPaper(ctx, paper.ID)
+	if len(after.ArticleTypes) != 1 || after.ArticleTypes[0] != "综述" || len(after.Tags) != 1 || after.Tags[0] != "根" {
+		t.Fatalf("adopted paper = %+v", after)
+	}
+	// The calibration view compares screening suggestions only.
+	report, err := service.CalibrationReport(library.CalibrationFilter{})
+	if err != nil || report.Total != 0 {
+		t.Fatalf("report = %+v, %v", report, err)
+	}
+}
