@@ -85,9 +85,10 @@ test("datasets page has its own review tab for what a source update added", () =
 
   const app = {
     state: { ...demoState(), datasets: [added, known] }, datasetSearch: "", datasetReview: false,
-    datasetView: "table", datasetPage: 1, datasetPageSize: 10, paperById: () => undefined,
+    datasetView: "table", datasetPage: 1, datasetPageSize: 10, paperById: () => undefined, env: { readOnly: false },
   } as unknown as App;
   const all = renderDatasets(app);
+  assert.match(all, /data-action="start-dataset-review"/);
   assert.match(all, /全部数据集 <span>2<\/span>/);
   assert.match(all, /需核对 <span>1<\/span>/);
   assert.doesNotMatch(all, /class="review-summary"/); // No banner: the tab count and the row carry the state.

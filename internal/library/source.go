@@ -83,6 +83,8 @@ type SyncResult struct {
 	Duplicates     int          `json:"duplicates"`
 	Status         SourceStatus `json:"status"`
 	Papers         []Paper      `json:"papers"`
+	// AddedPaperIDs are the papers this run created, for the AI second check.
+	AddedPaperIDs []string `json:"-"`
 }
 
 type sourceDefinition struct {
@@ -461,6 +463,9 @@ func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarve
 		return SyncResult{}, err
 	}
 	result.SourceID = id
+	if hook := s.harvested.Load(); hook != nil && len(result.AddedPaperIDs) > 0 {
+		(*hook)(id, result.AddedPaperIDs)
+	}
 	result.Status, err = s.SourceStatus(ctx, id)
 	if err != nil {
 		return SyncResult{}, err
@@ -571,6 +576,7 @@ func (s *Store) commitSourceRecords(ctx context.Context, sourceID, runID, query 
 					return SyncResult{}, fmt.Errorf("save harvested paper %s: %w", record.ExternalID, err)
 				}
 				result.PapersAdded++
+				result.AddedPaperIDs = append(result.AddedPaperIDs, paperID)
 			} else {
 				if err := fillPaperIdentifiers(ctx, tx, paperID, paper); err != nil {
 					return SyncResult{}, fmt.Errorf("fill paper identifiers %s: %w", record.ExternalID, err)

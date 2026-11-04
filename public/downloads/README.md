@@ -43,7 +43,7 @@ http://127.0.0.1:37841/mcp
 - **无认证**：只读，可调用 `describe_library`、`library_status`、`list_papers`、`get_paper`，并读取 Schema 资源。
 - **Bearer Token 认证**：额外允许 `add_paper`、`import_papers` 和 `update_paper`。
 - 无 Token 的写调用会被拒绝；错误 Token 返回 HTTP 401。
-- Token 是应用首次启动时生成的 256 位随机密钥，持久化保存在用户数据目录的 `mcp-token` 中。可以在应用的“来源与更新”页面复制，不会通过 MCP 暴露。
+- Token 是应用首次启动时生成的 256 位随机密钥，持久化保存在用户数据目录的 `mcp-token` 中。可以在应用的“文献跟踪”页面复制，不会通过 MCP 暴露。
 - `describe_library` 返回当前连接的 `accessRole`（`read-only` 或 `read-write`）和 `canWrite`。
 
 `update_paper` 使用 `id` 和 `patch`。例如只修改期刊时传入 `{"id":"P-...","patch":{"journal":"New journal"}}`，未提供的 DOI、作者、笔记等字段保持不变；`clearYear: true` 可以将年份清空。多值字段（`species`、`organs`、`modalities`、`platforms`、`articleTypes`）以数组整体替换，例如 `{"patch":{"platforms":["10x Genomics Chromium","BD Rhapsody"]}}`，空数组表示清空。

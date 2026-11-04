@@ -145,6 +145,6 @@ export function renderDrawer(app: App): string | null {
     + evidenceSection(app.evidenceFor("datasetId", d.id))
     + `<section class="detail-section"><div class="section-title"><h3>${t("数据与资料入口")}</h3><button class="text-link" data-action="add-resource" data-id="${esc(d.id)}" data-kind="dataset">${I("plus", 15)} ${t("添加链接")}</button></div>${resourceRows(app.state.resources.filter((r) => r.datasetId === d.id))}</section>`
     + `<section class="detail-section"><h3>${t("整理备注")}</h3><p class="abstract-text">${esc(d.notes || t("尚未填写。"))}</p></section></div>`
-    + `<div class="drawer-footer"><span class="muted">${t("独立记录数据，保留复用关系")}</span><button class="btn btn-primary" data-action="edit-dataset" data-id="${esc(d.id)}">${t("编辑信息")}</button></div>`;
+    + `<div class="drawer-footer"><span class="muted">${t("独立记录数据，保留复用关系")}</span><span class="section-actions">${app.env.readOnly ? "" : `<button class="btn btn-secondary" data-action="delete-dataset" data-id="${esc(d.id)}">${I("trash", 16)} ${t("删除")}</button>`}<button class="btn btn-primary" data-action="edit-dataset" data-id="${esc(d.id)}">${t("编辑信息")}</button></span></div>`;
   return drawerFrame(d.id, d.title, `<p class="species-name">${esc(speciesDisplay(d))}</p>`, body);
 }

@@ -1,4 +1,4 @@
-// "更新与来源" page: automatic updates, connector cards, configuration, records and manual sync.
+// "文献跟踪" page: automatic updates, connector cards, configuration, records and manual sync.
 import type { App } from "./app.ts";
 import { Library, events, type QueryChange, type SourceConfig, type SourceStatus } from "./mygo.ts";
 import { locale, t, tv } from "./i18n.ts";
@@ -6,6 +6,7 @@ import { arr, dateText, esc, nextRunText, safeURL, shortTime } from "./model.ts"
 import { enqueue } from "./store.ts";
 import { $, I, badge, empty, errorMessage, option, setFormError, text } from "./ui.ts";
 import { canWrite } from "./env.ts";
+import { screenModelReady } from "./screen.ts";
 
 const fallbackSource = (partial: Partial<SourceStatus> & Pick<SourceStatus, "id" | "name" | "kind" | "description" | "homeUrl">): SourceStatus => ({
   supported: true, enabled: true, query: "", maxResults: 20, provider: "", recordCount: 0, queryVersion: "1", queryChange: null, lastSuccessAt: "", lastRun: null, recentRecords: [], ...partial,
@@ -59,6 +60,41 @@ function renderAutomation(app: App): string {
     + `<div class="automation-notes"><p class="muted">${t("新增与跳过是各来源最近一次运行的合计，手动同步也计入。")}</p>${failures}</div></section>`;
 }
 
+/** renderSourceCheck is the switch and prompt of the AI second check of papers that updates add. */
+function renderSourceCheck(app: App): string {
+  const check = app.env.settings.sourceCheck ?? { enabled: false, prompt: "" };
+  const disabled = canWrite(app.env) ? "" : " disabled";
+  const ready = screenModelReady(app);
+  const pending = app.sourceCheckPending > 0 ? `<p class="source-check-status" role="status"><span class="ai-spinner"></span>${t("正在核查 {n} 篇新增文献…", { n: app.sourceCheckPending })}</p>` : "";
+  const model = ready || !canWrite(app.env) ? "" : `<p class="source-error" role="alert">${t("还没有可用于筛选的 AI 模型，核查不会运行。")} <button type="button" class="text-link" data-page="settings">${t("去设置添加模型")}</button></p>`;
+  return `<section class="panel automation-panel source-check-panel"><div class="panel-header"><div><h2>${I("sparkle", 17)} ${t("AI 二次核查")}</h2><p>${t("来源更新新增的文献，由筛选模型按你的提示词再判断一次。结论只作为建议显示在文献库“需核对”中，采纳与否由你决定；数据集不参与。")}</p></div><input class="settings-switch" id="source-check-enabled" type="checkbox" role="switch" aria-label="${t("AI 二次核查")}" ${check.enabled ? "checked" : ""}${disabled}></div>`
+    + `<form id="source-check-form" class="source-check-body"><label class="form-field"><span>${t("核查提示词")}</span><textarea class="textarea" name="prompt" rows="4" maxlength="4000" placeholder="${t("例如：只保留对植物组织做了单细胞或单核测序的原创研究；综述、方法学和动物研究判为排除")}"${disabled}>${esc(check.prompt)}</textarea></label>`
+    + `<div class="source-check-footer"><small class="muted">${t("每篇读摘要（有全文时读全文），没有摘要的跳过；结果同时记入“AI 对照”。")}</small><button class="btn btn-secondary" type="submit"${disabled}>${I("check", 15)} ${t("保存提示词")}</button></div><p id="source-check-error" class="form-error" role="alert"></p></form>`
+    + `<div class="automation-notes">${pending}${model}</div></section>`;
+}
+
+/** saveSourceCheck stores the switch and prompt together; turning it on needs a prompt. */
+export function saveSourceCheck(app: App): void {
+  if (!canWrite(app.env)) return;
+  const toggle = $<HTMLInputElement>("#source-check-enabled");
+  const field = $<HTMLTextAreaElement>('#source-check-form [name="prompt"]');
+  const error = $("#source-check-error");
+  const enabled = toggle?.checked ?? false;
+  const prompt = field?.value.trim() ?? "";
+  if (enabled && !prompt) {
+    if (toggle) toggle.checked = false;
+    if (error) error.textContent = t("请先填写核查提示词，再开启 AI 二次核查。");
+    field?.focus();
+    return;
+  }
+  Library.saveSettings({ ...app.env.settings, sourceCheck: { enabled, prompt } }).then((result) => {
+    app.env.settings = result.settings;
+    app.toast(enabled ? t("AI 二次核查已开启，之后新增的文献会自动核查。") : t("AI 二次核查已关闭。"));
+  }).catch((reason: unknown) => {
+    app.toast(t("保存失败：{error}", { error: errorMessage(reason, t("请重试。")) }), true);
+  }).finally(() => app.render());
+}
+
 export function renderSources(app: App): string {
   const realMode = canWrite(app.env);
   const items = app.env.sources.length ? app.env.sources : FALLBACK_SOURCES;
@@ -91,7 +127,7 @@ export function renderSources(app: App): string {
   const activityList = activities.length
     ? `<div class="activity-list">${activities.slice(0, 20).map((a) => `<div class="activity-item"><span class="activity-dot"></span><div><p>${esc(a.message)}</p><span class="muted">${dateText(a.at)} · ${new Date(a.at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</span></div></div>`).join("")}</div>`
     : empty(t("暂无整理活动"), t("添加文献、保存笔记、导入数据或同步来源后，可以在这里查看记录。"));
-  return `<div class="notice-box">${I("info", 18)}<span>${notice}</span></div>${renderAutomation(app)}<div class="source-grid">${cards}</div><section class="panel activity-panel"><div class="panel-header"><div><h2>${t("整理活动")}</h2><p class="muted">${t("记录当前会话中的整理与同步操作")}</p></div><button class="text-link" data-action="export-json">${I("download", 15)} ${t("导出备份")}</button></div>${activityList}</section>`;
+  return `<div class="notice-box">${I("info", 18)}<span>${notice}</span></div>${renderAutomation(app)}${renderSourceCheck(app)}<div class="source-grid">${cards}</div><section class="panel activity-panel"><div class="panel-header"><div><h2>${t("整理活动")}</h2><p class="muted">${t("记录当前会话中的整理与同步操作")}</p></div><button class="text-link" data-action="export-json">${I("download", 15)} ${t("导出备份")}</button></div>${activityList}</section>`;
 }
 
 const changedByLabel = (change: QueryChange): string => (change.changedBy === "agent" ? t("AI 助手") : t("手动"));
@@ -245,6 +281,7 @@ export async function syncSource(app: App, id: string): Promise<void> {
       : t("{name} 同步完成：{seen} 条外部记录，新增 {added} 篇文献（进入需核对），{duplicates} 条已存在。", { ...params, added: result.papersAdded });
     app.logActivity(message, "sync");
     app.toast(message);
+    if (result.papersAdded > 0 && app.env.settings.sourceCheck?.enabled && screenModelReady(app)) app.toast(t("AI 正在后台二次核查新增的文献，完成后结论显示在“需核对”中。"));
   } catch (error) {
     app.toast(t("同步失败：{error}", { error: errorMessage(error, t("请检查网络和来源配置。")) }), true);
     await refreshSources(app);
@@ -256,7 +293,7 @@ export async function syncSource(app: App, id: string): Promise<void> {
 
 export async function refreshSources(app: App): Promise<void> {
   try {
-    [app.env.sources, app.env.automation] = await Promise.all([Library.listSources(), Library.sourceAutomation()]);
+    [app.env.sources, app.env.automation, app.sourceCheckPending] = await Promise.all([Library.listSources(), Library.sourceAutomation(), Library.sourceCheckPending().catch(() => 0)]);
   } catch {
     // Keep the stale list; the next render still shows the failure toast.
   }

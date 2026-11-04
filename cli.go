@@ -534,6 +534,7 @@ func (c *cli) web(args []string) error {
 		return err
 	}
 	service := &Library{store: c.store, settings: c.settings, events: newEventHub()}
+	c.store.OnPapersHarvested(service.checkHarvested)
 	server, err := newWebServer(service, frontend, password, mygo.App.Version())
 	if err != nil {
 		return err

@@ -22,7 +22,7 @@ import {
   PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
-import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, toggleSource, useSourceQuery, watchSources } from "./sources.ts";
+import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceCheck, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, toggleSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
 import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
@@ -34,6 +34,7 @@ import { plantChoices } from "./research-options.ts";
 import { $, $$, I, addMetadataChoice, selectPlant, downloadFile, errorMessage, speciesRow } from "./ui.ts";
 import { exportModal, runExport } from "./export.ts";
 import { renderDatasets, renderOverview, renderPapers, renderTasks } from "./views.ts";
+import { DATASET_REVIEW_KEYS, datasetReviewActions, renderDatasetReview, reviewDatasets, type DatasetReviewState } from "./dataset-review.ts";
 import { t } from "./i18n.ts";
 import { datasetPickerMode, paperFieldKey, paperFieldModal, savePaperFields, searchDatasetPicker, selectPaperField, stepPaperField } from "./paper-fields.ts";
 import { VIEWER_ACTIONS, VIEWER_FORMS, hasBackend, isAdmin, pageAllowed } from "./env.ts";
@@ -96,6 +97,8 @@ export class App {
   datasetPage = 1;
   datasetPageSize = PAGE_SIZES.includes(Number(localStorage.getItem("bibliocell-datasets-page-size"))) ? Number(localStorage.getItem("bibliocell-datasets-page-size")) : PAGE_SIZES[0]!;
   drawer: Drawer | null = null;
+  /** Datasets page: review mode shows one dataset at a time instead of the list. */
+  datasetScreen: DatasetReviewState | null = null;
   /** Papers page: screening mode shows one paper at a time instead of the table. */
   screen: ScreenState | null = null;
   batch: ScreeningBatch | null = null;
@@ -121,6 +124,8 @@ export class App {
   drawerTab = "overview";
   syncing = new Set<string>();
   togglingSources = new Set<string>();
+  /** Papers a source update added whose AI second check is still running. */
+  sourceCheckPending = 0;
   pendingImport: { next: LibraryState; stats: ImportStats } | null = null;
 
   private readonly store: LibraryStore;
@@ -150,7 +155,7 @@ export class App {
 
   start(): void {
     document.addEventListener("contextmenu", (e) => {
-      const row = e.target instanceof Element ? e.target.closest<HTMLElement>('tr[data-action="open-paper"]') : null;
+      const row = e.target instanceof Element ? e.target.closest<HTMLElement>('tr[data-action="open-paper"], tr[data-action="open-dataset"]') : null;
       if (!row || this.drawer || $("#modal-root .modal") || this.env.readOnly) return;
       e.preventDefault();
       this.closeContextMenu();
@@ -162,9 +167,10 @@ export class App {
       menu.setAttribute("role", "menu");
       const button = document.createElement("button");
       button.className = "btn btn-danger";
-      button.textContent = t("删除文献");
+      const dataset = row.dataset.action === "open-dataset";
+      button.textContent = dataset ? t("删除数据集") : t("删除文献");
       button.setAttribute("role", "menuitem");
-      button.dataset.action = "delete-paper";
+      button.dataset.action = dataset ? "delete-dataset" : "delete-paper";
       button.dataset.id = row.dataset.id;
       menu.appendChild(button);
       document.body.appendChild(menu);
@@ -269,6 +275,43 @@ export class App {
     }
   }
 
+  private requestDeleteDataset(id: string): void {
+    const dataset = this.state.datasets.find((d) => d.id === id);
+    if (!dataset) return;
+    this.showModal(t("删除数据集"), `<p>${t("确定删除数据集《{title}》？", { title: esc(dataset.title) })}</p><p>${t("将删除数据集、它与文献的关联、相关证据和只属于它的资料入口。文献会保留。来源更新不会再把同一编号加回来。此操作无法撤销。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-dataset" data-id="${esc(id)}">${t("确认删除")}</button>`);
+  }
+
+  /** deleteDatasets removes datasets with their paper links, evidence and resource entries; papers stay. */
+  async deleteDatasets(ids: string[], button: HTMLElement): Promise<void> {
+    ids = ids.filter((id) => this.state.datasets.some((d) => d.id === id));
+    if (this.deleting || !ids.length) return;
+    this.deleting = true;
+    button.setAttribute("disabled", "");
+    try {
+      if (this.env.real) for (const id of ids) await enqueue(() => Library.deleteDataset(id));
+      const gone = new Set(ids);
+      const next = clone(this.state);
+      next.datasets = next.datasets.filter((d) => !gone.has(d.id));
+      next.resources = next.resources.filter((r) => !gone.has(r.datasetId ?? ""));
+      next.evidence = (next.evidence ?? []).filter((e) => !gone.has(e.datasetId ?? ""));
+      if (!this.env.real) await this.store.save(next, this.saved);
+      this.state = next;
+      this.saved = clone(next);
+      this.edits++;
+      if (this.datasetScreen) this.datasetScreen.deleted += ids.length;
+      this.closeModal();
+      if (this.drawer?.type === "dataset" && gone.has(this.drawer.id)) this.closeDrawer();
+      this.render();
+      if (this.env.real) await this.reload();
+      this.toast(ids.length === 1 ? t("数据集已删除。") : t("已删除 {n} 组数据集。", { n: ids.length }));
+    } catch (error) {
+      this.toast(errorMessage(error, t("删除失败，请重试。")), true);
+    } finally {
+      this.deleting = false;
+      button.removeAttribute("disabled");
+    }
+  }
+
   private showPaperColumns(): void {
     this.showModal(t("显示列"), `<p class="muted">${t("勾选要显示的列，至少保留一列。设置自动保存到当前设备。")}</p><div class="column-options">` + PAPER_COLUMNS.map(([id, label]) => '<label class="checkbox-choice"><input type="checkbox" data-paper-column="' + id + '"' + (this.paperColumns.includes(id) ? ' checked' : '') + '><span>' + label + '</span></label>').join("") + '</div>', `<button class="btn btn-secondary" data-action="reset-paper-columns">${t("恢复默认")}</button><button class="btn btn-primary" data-action="close-modal">${t("完成")}</button>`);
   }
@@ -345,13 +388,14 @@ export class App {
     const renderers: Record<Page, () => string> = {
       overview: () => renderOverview(this),
       papers: () => (this.screen ? renderScreening(this) : renderPapers(this)),
-      datasets: () => renderDatasets(this),
+      datasets: () => (this.datasetScreen ? renderDatasetReview(this) : renderDatasets(this)),
       tasks: () => renderTasks(this),
       sources: () => renderSources(this),
       agent: () => renderAgent(this),
       settings: () => renderSettings(this),
     };
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
+    if (this.page !== "datasets") this.datasetScreen = null;
     if (!this.screen) this.clearTranslation();
     pruneSelection(this);
     const html = renderers[this.page]();
@@ -365,6 +409,7 @@ export class App {
       }
       $(".screen-queue-item[aria-current]")?.scrollIntoView({ block: "nearest" });
     }
+    if (this.datasetScreen) $(".screen-queue-item[aria-current]")?.scrollIntoView({ block: "nearest" });
     document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
     if (this.page === "agent") afterAgentRender(this);
     // "Import records / Add paper" belong to the library pages; settings, sources and the assistant have their own actions.
@@ -736,6 +781,96 @@ export class App {
     else this.render();
   }
 
+  // ---- dataset review mode ----
+  /** startDatasetReview snapshots the filtered datasets and opens them one at a time, from the row cursor if any. */
+  startDatasetReview(): void {
+    const ids = filterDatasets(this.state.datasets, this.datasetSearch, (id) => this.paperById(id)?.title ?? "", this.datasetReview).map((d) => d.id);
+    const index = this.datasetView === "table" && this.datasetCursor != null ? (this.datasetPage - 1) * this.datasetPageSize + this.datasetCursor : 0;
+    this.datasetScreen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)), deleted: 0 };
+    this.screenQueueOpen = wideWindow();
+    this.closeDrawer();
+    this.render();
+    window.scrollTo({ top: 0 });
+    $("#app-content")?.focus({ preventScroll: true });
+  }
+  exitDatasetReview(): void {
+    if (!this.datasetScreen) return;
+    const id = reviewDatasets(this)[this.datasetScreen.index]?.id;
+    this.datasetScreen = null;
+    this.closeDrawer();
+    if (id && this.datasetView === "table") {
+      const index = filterDatasets(this.state.datasets, this.datasetSearch, (pid) => this.paperById(pid)?.title ?? "", this.datasetReview).findIndex((d) => d.id === id);
+      if (index >= 0) {
+        this.datasetPage = Math.floor(index / this.datasetPageSize) + 1;
+        this.datasetCursor = index % this.datasetPageSize;
+      }
+    }
+    this.render();
+    if (this.datasetCursor != null && this.datasetView === "table") this.focusTableRow(true, this.datasetCursor);
+  }
+  moveDatasetReview(delta: number): void {
+    if (this.datasetScreen) this.goToDatasetReview(this.datasetScreen.index + delta);
+  }
+  goToDatasetReview(index: number): void {
+    if (!this.datasetScreen) return;
+    const datasets = reviewDatasets(this);
+    if (!Number.isInteger(index) || index < 0 || index >= datasets.length || index === this.datasetScreen.index) return;
+    this.datasetScreen.index = index;
+    if (this.screenQueueOpen && !wideWindow()) this.screenQueueOpen = false;
+    this.render();
+    window.scrollTo({ top: 0 });
+  }
+  /** keepInDatasetReview marks the dataset reviewed when a source update added it, then moves on. */
+  async keepInDatasetReview(id: string): Promise<void> {
+    const dataset = this.state.datasets.find((d) => d.id === id);
+    if (!dataset || !this.datasetScreen) return;
+    const last = this.datasetScreen.index >= reviewDatasets(this).length - 1;
+    if (!dataset.awaitingReview) {
+      if (!last) this.moveDatasetReview(1);
+      return;
+    }
+    try {
+      if (this.env.real) await enqueue(() => Library.markDatasetReviewed(id));
+      dataset.awaitingReview = false;
+      const saved = this.saved.datasets.find((d) => d.id === id);
+      if (this.env.real && saved) saved.awaitingReview = false; // Already in SQLite; not an edit for save().
+      else this.persist();
+      this.toast(t("已保留，核查完成。"));
+      if (!last) this.moveDatasetReview(1);
+      else this.render();
+    } catch (error) {
+      this.toast(t("保存失败：{reason}", { reason: errorMessage(error, t("请重试。")) }), true);
+    }
+  }
+  /** datasetReviewKey handles the single-key shortcuts of dataset review; true when the key was one of them. */
+  private datasetReviewKey(e: KeyboardEvent): boolean {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      this.moveDatasetReview(e.key === "ArrowRight" ? 1 : -1);
+      return true;
+    }
+    const current = reviewDatasets(this)[this.datasetScreen!.index];
+    if (!current) return false;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const has = (keys: readonly string[]): boolean => keys.includes(key);
+    if (has(DATASET_REVIEW_KEYS.keep)) {
+      void this.keepInDatasetReview(current.id);
+      return true;
+    }
+    if (has(DATASET_REVIEW_KEYS.remove)) {
+      void this.deleteDatasets([current.id], document.createElement("button"));
+      return true;
+    }
+    if (has(DATASET_REVIEW_KEYS.edit)) {
+      datasetModal(this, current.id);
+      return true;
+    }
+    if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLAnchorElement)) {
+      this.openDataset(current.id);
+      return true;
+    }
+    return false;
+  }
+
   // ---- modal ----
   showModal(title: string, body: string, footer: string, wide = false): void {
     this.modalLastFocus = document.activeElement;
@@ -839,6 +974,8 @@ export class App {
     },
     "remove-species-row": (el) => el.closest(".species-row")?.remove(),
     "delete-paper": (_el, id) => this.requestDeletePaper(id),
+    "delete-dataset": (_el, id) => this.requestDeleteDataset(id),
+    "confirm-delete-dataset": (el, id) => { void this.deleteDatasets([id], el); },
     "confirm-delete-paper": (el, id) => { void this.deletePaper(id, el); },
     "open-paper": (_el, id) => this.openPaper(id),
     "supplement-fulltext": (_el, id) => this.openPaperResources(id),
@@ -1015,6 +1152,7 @@ export class App {
     ...doiActions(this),
     ...reviewActions(this),
     ...screenActions(this),
+    ...datasetReviewActions(this),
     ...batchActions(this),
     ...calibrationActions(this),
     ...selectionActions(this),
@@ -1060,7 +1198,7 @@ export class App {
       "batch-screen-form": startBatch, "export-form": runExport,
       "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
-      "web-login-form": submitWebLogin,
+      "web-login-form": submitWebLogin, "source-check-form": (app) => saveSourceCheck(app),
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
     const id = form.getAttribute("id") ?? "";
@@ -1105,6 +1243,10 @@ export class App {
     }
     if (target instanceof HTMLInputElement && target.dataset.sourceToggle) {
       toggleSource(this, target);
+      return;
+    }
+    if (target.id === "source-check-enabled") {
+      saveSourceCheck(this);
       return;
     }
     if (target.id === "automation-enabled" || target.id === "automation-interval") {
@@ -1246,11 +1388,16 @@ export class App {
       else if ($("#modal-root .modal")) this.closeModal();
       else if (this.drawer) this.closeDrawer();
       else if (this.screen) this.exitScreening();
+      else if (this.datasetScreen) this.exitDatasetReview();
       else if (this.page === "agent" && this.agentPdf) closeAgentPdf(this);
       else document.body.classList.remove("nav-open");
       return;
     }
     if (this.screen && this.page === "papers" && !this.drawer && !$("#modal-root .modal") && !target?.matches("input,textarea,select") && !e.altKey && !e.ctrlKey && !e.metaKey && this.screenKey(e)) {
+      e.preventDefault();
+      return;
+    }
+    if (this.datasetScreen && this.page === "datasets" && !this.drawer && !$("#modal-root .modal") && !target?.matches("input,textarea,select") && !e.altKey && !e.ctrlKey && !e.metaKey && this.datasetReviewKey(e)) {
       e.preventDefault();
       return;
     }

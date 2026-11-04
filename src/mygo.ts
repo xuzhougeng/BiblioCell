@@ -93,6 +93,7 @@ export interface Config {
   models: ModelProfile[];
   tasks: TaskModels;
   quitOnWindowClose: boolean;
+  sourceCheck: SourceCheck;
 }
 
 export interface ConversationSummary {
@@ -416,6 +417,11 @@ export interface SourceAutomation {
   failures: SourceFailure[];
 }
 
+export interface SourceCheck {
+  enabled: boolean;
+  prompt: string;
+}
+
 export interface SourceConfig {
   id: string;
   enabled: boolean;
@@ -563,6 +569,10 @@ export const Library = {
   /** DeleteAgentConversation removes a saved conversation. */
   deleteAgentConversation(id: string): Promise<void> {
     return call("Library.DeleteAgentConversation", id);
+  },
+  /** DeleteDataset removes a dataset with its links and evidence; papers stay. */
+  deleteDataset(id: string): Promise<void> {
+    return call("Library.DeleteDataset", id);
   },
   /** DeletePaper removes a paper and its stored attachments, preserving datasets. */
   deletePaper(id: string): Promise<void> {
@@ -757,6 +767,13 @@ export const Library = {
   /** SourceAutomation returns the update schedule and the latest runs' results. */
   sourceAutomation(): Promise<SourceAutomation> {
     return call("Library.SourceAutomation");
+  },
+  /**
+   * SourceCheckPending says how many papers a source update added are still
+   * waiting for their AI second check.
+   */
+  sourceCheckPending(): Promise<number> {
+    return call("Library.SourceCheckPending");
   },
   /**
    * SourceQueryHistory lists a source's query changes, newest first, so a person
