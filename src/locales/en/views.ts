@@ -224,7 +224,11 @@ export const views: Record<string, string> = {
   "下一篇": "Next",
   "判断依据：{reason}": "Rationale: {reason}",
   "完整详情": "Full details",
-  "←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · 判断后自动跳到下一篇": "←→ previous / next · Y include · N exclude · U uncertain · moves on after each decision",
+  "←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · D 删除 · 判断后自动跳到下一篇": "←→ previous / next · Y include · N exclude · U uncertain · D delete · moves on after each decision",
+  "已删除 {n} 篇": "{n} deleted",
+  "从文献库删除": "Delete from library",
+  "从文献库永久删除这篇文献": "Permanently delete this paper from the library",
+  "删除后接着显示下一篇。Enter 确认，Esc 取消。": "The next paper shows after deleting. Enter to confirm, Esc to cancel.",
   "已记为：{label}": "Marked as {label}",
   // views.ts: task groups and overview
   "确认收录范围": "Confirm screening",
