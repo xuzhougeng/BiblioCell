@@ -67,9 +67,7 @@ func main() {
 				log.Printf("read source automation: %v", err)
 				return
 			}
-			if err := sourcesChanged.Broadcast(automation); err != nil {
-				log.Printf("announce source update: %v", err)
-			}
+			libraryService.announceSources(automation)
 		})
 
 		// Stored files reach the page as paperfile://localhost/<file id>, so a PDF

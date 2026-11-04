@@ -1,5 +1,7 @@
 // English strings for agent.
 export const agent: Record<string, string> = {
+  "AI 助手仅限管理员": "The AI assistant is for admins",
+  "助手通过 MCP 工具读写正式数据库，并使用服务器上配置的模型；请先登录管理员。": "The assistant reads and writes the real database through MCP tools with the model configured on the server; sign in as admin first.",
   // agent-tools.ts
   "\n…（已省略）": "\n… (truncated)",
   "[{n} 项]": "[{n} items]",

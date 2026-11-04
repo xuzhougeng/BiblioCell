@@ -1,6 +1,12 @@
 // English strings for settings and Sources & updates.
 export const settings: Record<string, string> = {
   "批量筛选默认并发数": "Default batch screening concurrency",
+  // the web server's settings page
+  "设置保存在服务器的用户配置目录。": "Settings are saved in the server's user configuration directory.",
+  "只读访问：登录管理员后可以修改 AI 模型和 API 配置。": "Read-only access: sign in as admin to change AI models and API settings.",
+  "网页版显示服务器上的存放文件夹，不能在这里更改；请在服务器上运行 settings set -storage 修改。": "The website shows the server's storage folder; it cannot be changed here. Run settings set -storage on the server.",
+  "服务器 SQLite": "SQLite on the server",
+  "<strong>存放文件夹在服务器上修改</strong><br>用 settings set -storage 改好后重启服务；字号保存后立即应用。": "<strong>The storage folder is changed on the server</strong><br>Run settings set -storage there and restart the service; the font size applies as soon as it is saved.",
   "同时筛查的文献数，默认 3，最多 8。保存后用于新任务，也可在启动批量筛选时临时调整。": "Number of papers screened at once: 3 by default, up to 8. Save to apply to new runs; you can override it when starting a batch.",
   // models.ts and the AI model section
   "AI 对话": "AI chat",

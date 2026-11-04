@@ -4,6 +4,7 @@ import { DownloadManager, EventBus, PDFFindController, PDFLinkService, PDFViewer
 import "pdfjs-dist/web/pdf_viewer.css";
 import "./pdf-viewer.css";
 import { t } from "./i18n.ts";
+import { isMyGo } from "mygo-runtime";
 
 // This document owns its find controller. No native PDF plug-in or window.find
 // is involved, so toolbar clicks and Ctrl/Cmd+F stay within this frame.
@@ -12,7 +13,10 @@ const file = new URLSearchParams(location.search).get("file") ?? "";
 const title = window.frameElement?.getAttribute("title") || file;
 const filename = /\.pdf$/i.test(title) ? title : `${title}.pdf`;
 document.title = filename;
-const source = `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(file)}`;
+// In the window the file comes through the paperfile scheme; from the web server it is a plain route.
+const source = isMyGo()
+  ? `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(file)}`
+  : `/paperfile/${encodeURIComponent(file)}`;
 const root = document.createElement("main");
 root.innerHTML = `<div class="pdf-toolbar" role="toolbar"></div><div class="pdf-find" hidden></div><p class="pdf-status" role="status"></p><aside class="pdf-outline" hidden></aside><div class="pdf-container"><div class="pdfViewer"></div></div>`;
 document.body.append(root);

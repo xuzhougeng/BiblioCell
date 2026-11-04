@@ -5,6 +5,7 @@ import { locale, t, tv } from "./i18n.ts";
 import { arr, dateText, esc, nextRunText, safeURL, shortTime } from "./model.ts";
 import { enqueue } from "./store.ts";
 import { $, I, badge, empty, errorMessage, option, setFormError, text } from "./ui.ts";
+import { canWrite } from "./env.ts";
 
 const fallbackSource = (partial: Partial<SourceStatus> & Pick<SourceStatus, "id" | "name" | "kind" | "description" | "homeUrl">): SourceStatus => ({
   supported: true, enabled: true, query: "", maxResults: 20, provider: "", recordCount: 0, queryVersion: "1", queryChange: null, lastSuccessAt: "", lastRun: null, recentRecords: [], ...partial,
@@ -43,7 +44,7 @@ const INTERVALS: [number, string][] = [[6, t("每 {n} 小时", { n: 6 })], [12, 
 
 function renderAutomation(app: App): string {
   const automation = app.env.automation;
-  const disabled = app.env.real ? "" : " disabled";
+  const disabled = canWrite(app.env) ? "" : " disabled";
   // Another interval can come from the command line.
   const choices = INTERVALS.some(([hours]) => hours === automation.intervalHours) ? INTERVALS : [...INTERVALS, [automation.intervalHours, t("每 {n} 小时", { n: automation.intervalHours })] as [number, string]];
   const facts = [
@@ -59,7 +60,7 @@ function renderAutomation(app: App): string {
 }
 
 export function renderSources(app: App): string {
-  const realMode = app.env.real;
+  const realMode = canWrite(app.env);
   const items = app.env.sources.length ? app.env.sources : FALLBACK_SOURCES;
   const notice = realMode
     ? t("自动更新开启后才会在后台访问公开 API，否则只在点击“同步”时访问。新增的文献和数据集都进入文献库与数据集的“需核对”，等你确认；按 DOI、PMID、题目判定已存在的文献、按 accession 判定已存在的数据集会跳过，不改动人工内容；仓库结果不自动关联文献。")
@@ -155,7 +156,7 @@ export function applyProviderDefault(select: HTMLSelectElement): void {
 }
 
 export function saveSourceConfig(app: App, form: HTMLFormElement): void {
-  if (!app.env.desktop) return;
+  if (!canWrite(app.env)) return;
   const data = new FormData(form);
   const config: SourceConfig = { id: text(data, "id"), enabled: data.get("enabled") === "on", query: text(data, "query"), maxResults: Number(data.get("maxResults")), provider: text(data, "provider") };
   if (!config.query) {
@@ -202,7 +203,7 @@ export function sourceRecordsModal(app: App, id: string): void {
 }
 
 export async function syncSource(app: App, id: string): Promise<void> {
-  if (app.syncing.has(id) || !app.env.desktop) return;
+  if (app.syncing.has(id) || !canWrite(app.env)) return;
   app.syncing.add(id);
   app.render();
   try {
@@ -234,7 +235,7 @@ export async function refreshSources(app: App): Promise<void> {
 }
 
 export function saveAutomation(app: App): void {
-  if (!app.env.real) return;
+  if (!canWrite(app.env)) return;
   const enabled = $<HTMLInputElement>("#automation-enabled")?.checked ?? false;
   const hours = Number($<HTMLSelectElement>("#automation-interval")?.value);
   Library.saveSourceAutomation(enabled, hours).then((automation) => {
