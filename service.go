@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -132,12 +134,48 @@ func (l *Library) LookupDOI(doi string) (library.Paper, error) {
 // http://paperfile.localhost/<id> on Windows, which mygo maps back) with the
 // stored file, for the window to render a PDF beside the paper. Only files the
 // library knows are served, so the scheme cannot reach anything else on disk.
+//
+// The file goes out whole, never in byte ranges. On Windows the scheme is an
+// http URL, so PDF.js would read the file in range requests as it does from a
+// web server; the WebView2 scheme bridge answers each request from a buffer of
+// the whole response, which does not line up with the ranges PDF.js asked for,
+// and the document comes out as "Invalid PDF structure". Without Accept-Ranges
+// PDF.js reads the one response from start to end, as it does on macOS, where
+// the custom scheme is not http.
 func (l *Library) servePaperFile(w http.ResponseWriter, r *http.Request) {
 	if l.store == nil {
 		http.Error(w, "library database is not ready", http.StatusServiceUnavailable)
 		return
 	}
-	l.serveStoredFile(w, r, strings.Trim(r.URL.Path, "/"))
+	p, err := l.store.PaperFilePath(r.Context(), strings.Trim(r.URL.Path, "/"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("file is missing from the storage folder: %s", filepath.Base(p)), http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
+		http.Error(w, fmt.Sprintf("file is missing from the storage folder: %s", filepath.Base(p)), http.StatusNotFound)
+		return
+	}
+	if strings.EqualFold(filepath.Ext(p), ".pdf") {
+		w.Header().Set("Content-Type", "application/pdf")
+	}
+	w.Header().Set("Accept-Ranges", "none")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		return
+	}
+	if _, err := io.Copy(w, f); err != nil {
+		log.Printf("serve paper file %s: %v", filepath.Base(p), err)
+	}
 }
 
 // OpenPaperFile opens a stored file with its default application.
