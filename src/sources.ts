@@ -24,9 +24,9 @@ const FALLBACK_SOURCES: SourceStatus[] = [
 const QUERY_HINTS: Record<string, string> = {
   pubmed: t('使用 PubMed 检索语法，例如 ("single cell"[Title/Abstract]) AND Arabidopsis[Title/Abstract]。'),
   "europe-pmc": t('使用 Europe PMC 检索语法，例如 TITLE_ABS:"single cell" AND TITLE_ABS:plant。'),
-  crossref: t("输入书目关键词；Crossref 按相关性返回 DOI 和出版信息。"),
+  crossref: t("输入书目关键词；Crossref 按相关性返回 DOI 和出版信息，只取上次成功同步前一个月以来新注册的 DOI（首次或改了检索式后取最近一年）。"),
   biorxiv: t("输入空格分隔的普通关键词，所有词都需匹配题目、摘要或分类；扫描最近 30 天，最多检查 10 页。"),
-  "sequence-repositories": t('GEO / SRA 使用 NCBI 检索语法；ENA 使用 Portal API 语法，例如 description="*single*" AND tax_tree(33090)。'),
+  "sequence-repositories": t('GEO / SRA 使用 NCBI 检索语法，按发布时间从新到旧；ENA 使用 Portal API 语法，例如 description="*single*" AND tax_tree(33090)，只取上次成功同步前一个月以来公开的研究（首次或改了检索式后取最近一年）。'),
 };
 
 /** SOURCE_CREDENTIALS are the per-machine settings that raise a source's rate limit. */
@@ -77,7 +77,11 @@ export function renderSources(app: App): string {
     const actions = source.supported
       ? `<button class="btn btn-secondary" data-action="configure-source" data-id="${esc(source.id)}"${!realMode || running ? " disabled" : ""}>${t("配置")}</button><button class="btn btn-primary" data-action="sync-source" data-id="${esc(source.id)}"${!realMode || !source.enabled || running || app.env.automation.running ? " disabled" : ""}>${I(running ? "clock" : "refresh", 15)}${running ? ` ${t("正在同步")}` : ` ${t("同步")}`}</button>`
       : "";
-    return `<section class="source-card"><div class="source-heading"><span class="source-letter">${esc(tv(source.name).slice(0, 1))}</span><div><h3>${esc(tv(source.name))}</h3><p class="muted">${source.kind === "repository" ? t("数据仓库") : t("文献元数据")}</p></div>${badge(stateLabel, stateColor)}</div><p class="source-description">${esc(tv(source.description))}</p>`
+    const off = !source.supported || !source.enabled;
+    const toggle = source.supported
+      ? `<input class="settings-switch source-toggle" type="checkbox" role="switch" data-source-toggle="${esc(source.id)}" aria-label="${esc(t("启用 {name}", { name: tv(source.name) }))}" title="${source.enabled ? t("已启用，点击停用") : t("已停用，点击启用")}"${source.enabled ? " checked" : ""}${!realMode || running || app.togglingSources.has(source.id) ? " disabled" : ""}>`
+      : "";
+    return `<section class="source-card${off ? " is-off" : ""}"><div class="source-heading"><span class="source-letter">${esc(tv(source.name).slice(0, 1))}</span><div><h3>${esc(tv(source.name))}</h3><p class="muted">${source.kind === "repository" ? t("数据仓库") : t("文献元数据")}</p></div>${badge(stateLabel, stateColor)}${toggle}</div><p class="source-description">${esc(tv(source.description))}</p>`
       + (source.supported ? `<div class="source-query" title="${esc(query)}"><code>${esc(query || t("查询待配置"))}</code></div>${queryChangeLine(source)}` : "")
       + (failed ? `<p class="source-error" role="alert">${esc(source.lastRun?.errorMessage || t("同步失败，请检查配置和网络。"))}</p>` : "")
       + `<div class="source-footer"><span class="muted">${esc(last)}</span><a href="${esc(safeURL(source.homeUrl))}" target="_blank" rel="noopener noreferrer" class="text-link">${t("官方入口")} ${I("arrow-up-right", 14)}</a></div>`
@@ -182,6 +186,30 @@ export function saveSourceConfig(app: App, form: HTMLFormElement): void {
   }).catch((error: unknown) => {
     setFormError(errorMessage(error, t("保存失败，请重试。")));
     if (button) button.disabled = false;
+  });
+}
+
+/** toggleSource turns a source on or off from its card, keeping the rest of its configuration. */
+export function toggleSource(app: App, input: HTMLInputElement): void {
+  const id = input.dataset.sourceToggle ?? "";
+  const source = app.env.sources.find((item) => item.id === id);
+  if (!source || !canWrite(app.env) || app.togglingSources.has(id)) return;
+  const enabled = input.checked;
+  if (enabled && !source.query.trim()) {
+    input.checked = false;
+    sourceConfigModal(app, id);
+    return;
+  }
+  app.togglingSources.add(id);
+  const config: SourceConfig = { id, enabled, query: source.query, maxResults: source.maxResults || 20, provider: source.provider };
+  Library.saveSourceConfig(config).then((status) => {
+    app.env.sources = app.env.sources.map((item) => (item.id === status.id ? status : item));
+    app.toast(enabled ? t("{name} 已启用。", { name: tv(status.name) }) : t("{name} 已停用。", { name: tv(status.name) }));
+  }).catch((error: unknown) => {
+    app.toast(t("保存失败：{error}", { error: errorMessage(error, t("请重试。")) }), true);
+  }).finally(() => {
+    app.togglingSources.delete(id);
+    app.render();
   });
 }
 

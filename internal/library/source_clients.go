@@ -287,7 +287,7 @@ func (h *remoteHarvester) harvestPubMed(ctx context.Context, config SourceConfig
 func (h *remoteHarvester) harvestEuropePMC(ctx context.Context, config SourceConfig) ([]harvestRecord, error) {
 	params := url.Values{
 		"query": {config.Query}, "format": {"json"}, "resultType": {"core"},
-		"pageSize": {strconv.Itoa(config.MaxResults)},
+		"pageSize": {strconv.Itoa(config.MaxResults)}, "sort": {"P_PDATE_D desc"},
 	}
 	var response struct {
 		Results struct {
@@ -316,6 +316,11 @@ func (h *remoteHarvester) harvestCrossref(ctx context.Context, config SourceConf
 	params := url.Values{
 		"query.bibliographic": {config.Query}, "rows": {strconv.Itoa(config.MaxResults)},
 		"select": {"DOI,title,author,published,container-title,abstract,type,URL"},
+	}
+	// Crossref matches any query word, so sorting by date returns noise; keep
+	// relevance and only ask for DOIs registered since the last sync.
+	if !config.Since.IsZero() {
+		params.Set("filter", "from-created-date:"+config.Since.UTC().Format(time.DateOnly))
 	}
 	if email := h.credentials().ContactEmail; email != "" {
 		params.Set("mailto", email)
