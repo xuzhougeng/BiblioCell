@@ -13,9 +13,10 @@ const previewEnv = (): Env => ({
   automation: { enabled: false, intervalHours: 24, running: false, lastRunAt: "", nextRunAt: "", added: 0, skipped: 0, failures: [] },
 });
 
-function overviewApp() {
+function overviewApp(state = demoState(), screening = "") {
   resetDom("#overview");
-  const state = demoState();
+  // The statistics default to the included papers; these tests count every status unless they say otherwise.
+  localStorage.setItem("bibliocell-overview-screening", screening);
   const app = new App({ initial: state, store: { load: async () => state, save: async () => {} }, env: previewEnv() });
   app.start();
   return { app, state };
@@ -75,6 +76,26 @@ test("the overview counts article types and can leave preprints out of the stati
   assert.equal(app.filters.articleType, "原创研究");
   assert.equal(app.filters.preprint, "no", "the library shows the papers the bar counted");
   assert.equal($$("#app-content .paper-table tbody tr").length, published);
+});
+
+test("the overview counts included papers by default and never the irrelevant ones", () => {
+  resetDom("#overview");
+  localStorage.removeItem("bibliocell-overview-screening");
+  const state = demoState();
+  const dropped = state.papers.find((p) => p.screening === "pending")!;
+  dropped.screening = "irrelevant";
+  const app = new App({ initial: state, store: { load: async () => state, save: async () => {} }, env: previewEnv() });
+  app.start();
+  const active = state.papers.filter((p) => p.screening !== "irrelevant");
+  const included = active.filter((p) => p.screening === "included");
+  assert.deepEqual(app.overviewScreening, ["included"]);
+  assert.equal($<HTMLInputElement>('[data-overview-screening="included"]').checked, true);
+  assert.equal(document.querySelector('[data-overview-screening="irrelevant"]'), null, "no checkbox offers the irrelevant papers");
+  assert.match(text(".stat-card:first-child .stat-value"), new RegExp(`^${active.length}`), "the paper count leaves the irrelevant one out");
+  assert.match(text(".dashboard-panel .panel-header p"), new RegExp(`/ ${active.length} 篇`));
+  assert.match(text(".overview-section-head"), new RegExp(`当前统计 ${included.length} 篇`));
+  const year = String(included.find((p) => p.year)!.year);
+  assert.match($(`.year-col[data-value="${year}"]`).title, new RegExp(`${year}：${included.filter((p) => String(p.year) === year).length} 篇`));
 });
 
 test("? opens the shortcut sheet unless typing, and the top bar has the same button", () => {

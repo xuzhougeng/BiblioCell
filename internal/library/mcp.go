@@ -289,7 +289,7 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 			ImportTool: "import_papers", RequiredFields: []string{"title"},
 			Enums: map[string][]string{
 				"publicationStatus": {"unknown", "preprint", "published", "unpublished"},
-				"screening":         {"pending", "included", "excluded", "uncertain"},
+				"screening":         {"pending", "included", "excluded", "uncertain", "irrelevant"},
 				"proposedScreening": {"included", "excluded", "uncertain"},
 				"reading":           {"unread", "skimmed", "read"},
 				"articleTypes":      {"original", "method", "review", "other"},

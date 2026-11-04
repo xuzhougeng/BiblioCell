@@ -578,6 +578,10 @@ export const Library = {
   deletePaper(id: string): Promise<void> {
     return call("Library.DeletePaper", id);
   },
+  /** DismissPaper marks a paper irrelevant and removes its stored attachments; the record stays so imports skip it. */
+  dismissPaper(id: string): Promise<void> {
+    return call("Library.DismissPaper", id);
+  },
   /**
    * ExportLibrary renders the records the window sends (the current filter in
    * either mode, Demo included) and saves the file where the person chooses.

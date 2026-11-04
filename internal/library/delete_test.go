@@ -106,3 +106,60 @@ func TestPapersHarvestedHookHearsNewPapersOnly(t *testing.T) {
 		t.Errorf("heard = %v", heard)
 	}
 }
+
+func TestDismissPaperKeepsRecordForDedupAndDropsStoredFiles(t *testing.T) {
+	ctx := context.Background()
+	storage := t.TempDir()
+	store, paper := fileFixture(t, storage)
+	if _, err := store.db.Exec("UPDATE paper_curation SET awaiting_review = 1, proposed_screening = 'included', proposed_reason = 'looks relevant', notes = 'keep this note' WHERE paper_id = ?", paper.ID); err != nil {
+		t.Fatal(err)
+	}
+	file, err := store.ImportPaperFile(ctx, paper.ID, writeSource(t, "original.pdf", "pdf content"), "fulltext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DismissPaper(ctx, paper.ID); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := store.GetPaper(ctx, paper.ID)
+	if err != nil {
+		t.Fatalf("dismissed paper is gone: %v", err)
+	}
+	if kept.Screening != "irrelevant" || kept.ReviewedAt == "" || kept.AwaitingReview || kept.ProposedScreening != "" || kept.Notes != "keep this note" {
+		t.Fatalf("dismissed paper = %+v", kept)
+	}
+	if kept.Fulltext == "stored" {
+		t.Fatalf("full text still counts as stored: %q", kept.Fulltext)
+	}
+	if _, err := os.Stat(filepath.Join(storage, filepath.FromSlash(file.LocalPath))); !os.IsNotExist(err) {
+		t.Fatalf("stored copy remains: %v", err)
+	}
+	var count int
+	if err := store.db.QueryRow("SELECT count(*) FROM resources WHERE id = ?", file.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("resource remains: %d, %v", count, err)
+	}
+
+	// The record is what keeps the paper from coming back.
+	again, err := store.ImportPapers(ctx, []Paper{{Title: paper.Title}}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Count != 0 || len(again.Skipped) != 1 || again.Skipped[0].ExistingID != paper.ID {
+		t.Fatalf("re-import = %+v", again)
+	}
+
+	// Listings for agents leave it out unless they ask for it; the desktop reads everything.
+	papers, err := store.ListPapers(ctx)
+	if err != nil || len(papers) != 1 {
+		t.Fatalf("ListPapers = %d, %v", len(papers), err)
+	}
+	if shown, total := FilterPapers(papers, PaperFilter{}); total != 0 || len(shown) != 0 {
+		t.Fatalf("default filter shows the irrelevant paper: %d", total)
+	}
+	if shown, total := FilterPapers(papers, PaperFilter{Screening: "irrelevant"}); total != 1 || len(shown) != 1 {
+		t.Fatalf("explicit filter hides the irrelevant paper: %d", total)
+	}
+	if err := store.DismissPaper(ctx, "P-missing"); err == nil {
+		t.Fatal("dismissing a missing paper should fail")
+	}
+}

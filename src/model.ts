@@ -71,7 +71,10 @@ export function reviewConcern(p: Paper): "excluded" | "uncertain" | "source" | n
   return screeningConcern(p) ?? (p.awaitingReview ? "source" : null);
 }
 
-export const SCREEN: Record<string, string> = { included: t("已纳入"), pending: t("待判断"), uncertain: t("证据不足"), excluded: t("相关 / 排除") };
+export const SCREEN: Record<string, string> = { included: t("已纳入"), pending: t("待判断"), uncertain: t("证据不足"), excluded: t("相关 / 排除"), irrelevant: t("无关") };
+/** activePapers leaves out the papers marked irrelevant: they stay in the library only so
+ * that imports and source updates skip them, and no default view or count shows them. */
+export const activePapers = (papers: Paper[]): Paper[] => papers.filter((p) => p.screening !== "irrelevant");
 export const READING: Record<string, string> = { unread: t("未读"), skimmed: t("已浏览"), read: t("已精读") };
 export const FULL: Record<string, string> = { missing: t("待补入口"), linked: t("已有入口"), stored: t("已保存文件") };
 export const ROLE: Record<string, string> = { generated: t("新生成"), reused: t("复用"), reprocessed: t("重新处理"), benchmarked: t("基准比较"), unknown: t("关系待确认") };
@@ -268,7 +271,7 @@ export function filterPapers(papers: Paper[], filters: Filters): Paper[] {
         && (!filters.platform || listValues.platform(p).includes(filters.platform))
         && (!filters.articleType || listValues.articleType(p).includes(filters.articleType))
         && (!filters.fulltext || p.fulltext === filters.fulltext)
-        && (!filters.screening || p.screening === filters.screening)
+        && (filters.screening ? p.screening === filters.screening : p.screening !== "irrelevant")
         && (!filters.review || reviewConcern(p) !== null)
         && (!filters.source || p.source === filters.source)
         && (!filters.preprint || (filters.preprint === "yes" ? p.publicationStatus === "preprint" : p.publicationStatus !== "preprint"))
@@ -385,6 +388,7 @@ export function tasksFor(papers: Paper[], datasets: Dataset[], evidence: Evidenc
   const open = new Map<string, number>();
   for (const e of evidence) if (e.paperId && e.status === "unreviewed") open.set(e.paperId, (open.get(e.paperId) ?? 0) + 1);
   for (const p of papers) {
+    if (p.screening === "irrelevant") continue;
     const differs = p.proposedScreening && p.proposedScreening !== p.screening;
     const claims = open.get(p.id) ?? 0;
     const review = [
@@ -475,7 +479,7 @@ export interface ImportStats {
   renamed: number;
 }
 
-const SCREENINGS = ["pending", "included", "excluded", "uncertain"];
+const SCREENINGS = ["pending", "included", "excluded", "uncertain", "irrelevant"];
 const READINGS = ["unread", "skimmed", "read"];
 const FULLTEXTS = ["missing", "linked", "stored"];
 const PUBLICATION_STATUSES = ["unknown", "published", "preprint", "unpublished"];

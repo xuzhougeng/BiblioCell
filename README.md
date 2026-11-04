@@ -299,7 +299,8 @@ http://127.0.0.1:37841/mcp
 
 收录判断只由人做出，agent 只能提议：
 
-- `screening`（`pending` / `included` / `excluded` / `uncertain`）只记录人的决定，MCP 和命令行都不能写入。agent 用 `proposedScreening` 和 `proposedReason` 提出建议，提议排除时必须写理由。
+- `screening`（`pending` / `included` / `excluded` / `uncertain` / `irrelevant`）只记录人的决定，MCP 和命令行都不能写入。agent 用 `proposedScreening` 和 `proposedReason` 提出建议，提议排除时必须写理由。
+- `excluded` 是相关但不收录，`irrelevant`（无关）是清理：逐篇筛选里按 D 把文献标为无关，同时删除已保存的附件副本。记录本身留在库中，所以来源更新和导入会把它当作已有文献跳过，不会再加回来；文献库列表、首页统计、待补事项和 `list_papers` 默认都不显示无关文献，要看或改回来可在文献库按收录状态筛选 `irrelevant`。
 - 建议显示在“待补事项”和文献详情的“收录判断”里，人可以采纳、忽略，或自行选择。做出决定后建议随即失效。
 - 数据库记录真实来源：只有人的决定会把 `screening_method` 写成 `human` 并记下 `screening_reviewed_at`，接口里对应 `reviewedAt`。未决定的文献是 `unreviewed`。
 - 文献一经人工确认，`update_paper` 就只接受建议，不再允许修改 metadata。把判断改回“待判断”即可解除。数据集同理：经人工核实后 `update_dataset` 被拒绝，改回其他状态即可解除。

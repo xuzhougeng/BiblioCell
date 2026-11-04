@@ -78,6 +78,15 @@ func (l *Library) DeletePaper(id string) error {
 	return l.store.DeletePaper(context.Background(), id)
 }
 
+// DismissPaper marks a paper irrelevant and removes its stored attachments; the
+// record stays so that source updates and imports skip it.
+func (l *Library) DismissPaper(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.DismissPaper(context.Background(), id)
+}
+
 // SavePaperEdits stores what a person changed and returns the titles of papers
 // left unsaved because another writer changed the same fields.
 func (l *Library) SavePaperEdits(edits []library.PaperEdit) ([]string, error) {

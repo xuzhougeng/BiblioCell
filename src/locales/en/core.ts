@@ -134,6 +134,7 @@ export const core: Record<string, string> = {
   "待判断": "Pending",
   "证据不足": "Uncertain",
   "相关 / 排除": "Related / excluded",
+  "无关": "Irrelevant",
   "未读": "Unread",
   "已浏览": "Skimmed",
   "已精读": "Read closely",

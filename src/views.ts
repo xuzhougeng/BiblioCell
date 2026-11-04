@@ -4,7 +4,7 @@ import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf, listValues,
+  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, activePapers, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf, listValues,
   type ListField,
   reviewConcern, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
@@ -174,7 +174,7 @@ const WEEK = 7 * 24 * 60 * 60 * 1000;
  * a bar of decisions, what arrived this week, what waits for review, and a
  * button that opens screening on the first undecided paper. */
 export function screeningDashboard(app: App, now = Date.now()): string {
-  const papers = app.state.papers;
+  const papers = activePapers(app.state.papers);
   const total = papers.length;
   const by = (status: string) => papers.filter((p) => p.screening === status).length;
   const undecided = by("pending");
@@ -195,7 +195,7 @@ export function screeningDashboard(app: App, now = Date.now()): string {
 }
 
 export function renderOverview(app: App): string {
-  const papers = app.state.papers;
+  const papers = activePapers(app.state.papers); // Irrelevant papers count nowhere on the overview.
   const total = papers.length;
   const missing = papers.filter((p) => p.screening === "included" && p.fulltext !== "stored").length;
   const pending = papers.filter((p) => p.screening === "pending" || p.screening === "uncertain").length;
@@ -218,7 +218,7 @@ export function renderOverview(app: App): string {
   const screening = app.overviewScreening;
   const counted = papers.filter((p) => (!app.overviewHidePreprint || p.publicationStatus !== "preprint") && (!screening.length || screening.includes(p.screening)));
   const screeningChoices = `<div class="overview-screening" role="group" aria-label="${t("按收录状态统计")}"><span class="muted">${t("收录状态")}</span>`
-    + Object.entries(SCREEN).map(([status, label]) => `<label class="checkbox-choice"><input type="checkbox" data-overview-screening="${status}"${screening.includes(status) ? " checked" : ""}><span>${esc(label)} (${papers.filter((p) => p.screening === status).length})</span></label>`).join("")
+    + Object.entries(SCREEN).filter(([status]) => status !== "irrelevant").map(([status, label]) => `<label class="checkbox-choice"><input type="checkbox" data-overview-screening="${status}"${screening.includes(status) ? " checked" : ""}><span>${esc(label)} (${papers.filter((p) => p.screening === status).length})</span></label>`).join("")
     + `</div>`;
   return `<div class="stat-grid">${statCards}</div><div class="overview-progress-grid">${screeningDashboard(app)}${coverage}</div>`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>${t("最近收录")}</h2><p class="muted">${t("新线索先留下，整理慢慢来")}</p></div><button class="text-link" data-page="papers">${t("查看全部")} ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} ${t("当前条目为原型示例，可通过新增或导入建立自己的目录。")}</div></section>`

@@ -19,12 +19,12 @@ import {
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
-  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
+  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, activePapers, clone, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceCheck, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, toggleSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, askAIDisabled, renderScreening, screenDeleteModal, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { afterAgentRender, agentActions, closeAgentPdf, emptyAgentState, renderAgent, sendAgentMessage, updateAgentContent, watchAgent, type AgentPdfState, type AgentState } from "./agent.ts";
 import { watchFrames } from "./pdf-frame.ts";
@@ -113,7 +113,7 @@ export class App {
   screenPdf = localStorage.getItem("bibliocell-screen-pdf") !== "off";
   overviewHidePreprint = localStorage.getItem("bibliocell-overview-hide-preprint") === "on";
   /** Screening statuses the overview statistics count; empty counts every status. */
-  overviewScreening: string[] = (localStorage.getItem("bibliocell-overview-screening") ?? "").split(",").filter((s) => s in SCREEN);
+  overviewScreening: string[] = (localStorage.getItem("bibliocell-overview-screening") ?? "included").split(",").filter((s) => s in SCREEN && s !== "irrelevant");
   /** Screening mode: the queue rail is open by default on wide windows; narrow ones show it as an overlay on request. */
   screenQueueOpen = wideWindow();
   private translationAnchor: DOMRect | null = null;
@@ -138,6 +138,7 @@ export class App {
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private warning: string;
   private deleting = false;
+  private dismissing = false;
   private contextRow: HTMLElement | null = null;
 
   constructor(options: AppOptions) {
@@ -230,6 +231,46 @@ export class App {
     if (menu?.contains(document.activeElement)) this.contextRow?.focus();
     menu?.remove();
     this.contextRow = null;
+  }
+
+  /** dismissPaper marks a paper irrelevant and drops its stored attachments. The record
+   * stays, which is what keeps imports and source updates from adding the paper back;
+   * no default view or count shows it afterwards. In screening the run moves on. */
+  async dismissPaper(id: string): Promise<void> {
+    const p = this.paperById(id);
+    if (!p || this.env.readOnly || this.dismissing) return;
+    this.dismissing = true;
+    try {
+      if (this.env.real) await enqueue(() => Library.dismissPaper(id));
+      const next = clone(this.state);
+      const fileIds = new Set(next.resources.filter((r) => r.paperId === id).map((r) => r.id));
+      next.resources = next.resources.filter((r) => r.paperId !== id);
+      next.evidence = (next.evidence ?? []).filter((e) => !fileIds.has(e.fileId));
+      const paper = next.papers.find((x) => x.id === id)!;
+      decideScreening(paper, "irrelevant");
+      paper.fulltext = "missing";
+      paper.fulltextUrl = "";
+      if (!this.env.real) await this.store.save(next, this.saved);
+      this.state = next;
+      this.saved = clone(next);
+      this.edits++;
+      this.selectedPapers.delete(id);
+      if (this.screen?.ids.includes(id)) {
+        // Taken out of the run before rendering, so the paper that followed it is on screen.
+        this.screen.dismissed = (this.screen.dismissed ?? 0) + 1;
+        this.screen.ids = this.screen.ids.filter((x) => x !== id);
+      }
+      if (this.drawer?.type === "paper" && this.drawer.id === id) this.closeDrawer();
+      this.logActivity(t("标为无关：{title}", { title: p.title }));
+      this.render();
+      if (this.screen) window.scrollTo({ top: 0 });
+      if (this.env.real) await this.reload();
+      this.toast(t("已标为无关，保存的附件已清理。"));
+    } catch (error) {
+      this.toast(errorMessage(error, t("操作失败，请重试。")), true);
+    } finally {
+      this.dismissing = false;
+    }
   }
 
   private requestDeletePaper(id: string): void {
@@ -430,7 +471,7 @@ export class App {
       if (active) el.setAttribute("aria-current", "page");
       else el.removeAttribute("aria-current");
     });
-    const counts: [string, number][] = [["#count-papers", this.state.papers.length], ["#count-datasets", this.state.datasets.length], ["#count-tasks", this.tasks().length]];
+    const counts: [string, number][] = [["#count-papers", activePapers(this.state.papers).length], ["#count-datasets", this.state.datasets.length], ["#count-tasks", this.tasks().length]];
     for (const [selector, value] of counts) {
       const el = $(selector);
       if (el) el.textContent = String(value);
@@ -1478,7 +1519,7 @@ export class App {
       return true;
     }
     if (key === "d" && !this.env.readOnly) {
-      screenDeleteModal(this, current.id);
+      void this.dismissPaper(current.id);
       return true;
     }
     if (key === "a" && this.screen!.ai) {

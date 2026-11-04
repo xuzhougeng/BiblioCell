@@ -1,6 +1,7 @@
 package library
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -520,5 +521,44 @@ func TestInspectReportsVersionWithoutChangingTheFile(t *testing.T) {
 	}
 	if upgrade, err := Migrate(path); err != nil || upgrade != nil {
 		t.Errorf("second Migrate() = %+v, %v", upgrade, err)
+	}
+}
+
+func TestMigration19RebuildsPaperCurationWithItsRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bibliocell.sqlite")
+	buildDatabase(t, path, "schema_v13.sql",
+		"INSERT INTO papers(id, title) VALUES ('P-1', 'Excluded one'), ('P-2', 'Pending one')",
+		"UPDATE paper_curation SET screening_status = 'excluded', screening_reason = 'wrong organism', notes = 'a note', tags_json = '[\"x\"]', starred = 1 WHERE paper_id = 'P-1'")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	excluded, err := store.GetPaper(ctx, "P-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if excluded.Screening != "excluded" || excluded.ScreeningReason != "wrong organism" || excluded.Notes != "a note" || !excluded.Starred || len(excluded.Tags) != 1 {
+		t.Fatalf("curation lost in the rebuild: %+v", excluded)
+	}
+	var ddl string
+	if err := store.db.QueryRow("SELECT sql FROM sqlite_master WHERE name = 'paper_curation'").Scan(&ddl); err != nil || !strings.Contains(ddl, "'irrelevant'") {
+		t.Fatalf("paper_curation not rebuilt: %v\n%s", err, ddl)
+	}
+	if err := store.DismissPaper(ctx, "P-2"); err != nil {
+		t.Fatalf("irrelevant not admitted after the rebuild: %v", err)
+	}
+	// The trigger and views come back from schema.sql.
+	added, err := store.AddPaper(ctx, Paper{Title: "Added after"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.GetPaper(ctx, added.ID); err != nil || got.Screening != "pending" {
+		t.Fatalf("curation row for a new paper: %+v, %v", got, err)
+	}
+	var views int
+	if err := store.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type = 'view' AND name IN ('v_paper_overview', 'v_work_queue')").Scan(&views); err != nil || views != 2 {
+		t.Fatalf("views = %d, %v", views, err)
 	}
 }

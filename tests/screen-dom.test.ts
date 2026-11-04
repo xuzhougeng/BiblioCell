@@ -284,7 +284,8 @@ test("editing metadata in place keeps the PDF and the list shows the change afte
   assert.equal(document.activeElement, row);
   assert.match(row.textContent ?? "", /Fixture-seq/);
   assert.match(row.textContent ?? "", /Barley/);
-  // And the overview counts the new species as well.
+  // And the overview counts the new species as well, once its statistics take in pending papers.
+  app.overviewScreening = [];
   app.navigate("overview");
   assert.match(text(".species-bars"), /Barley/);
 });
@@ -352,43 +353,37 @@ test("the queue rail lists the run, jumps between papers and tracks decisions wi
   assert.ok(!$(".screen-queue").classList.contains("is-open"));
 });
 
-test("D deletes the paper on screen from the library after one confirmation, and the run moves on", async (t: TestContext) => {
+test("D marks the paper on screen irrelevant without asking, and the run moves on", async (t: TestContext) => {
   const { app, state } = screeningApp();
   const ids = state.papers.slice(0, 3).map((p) => p.id);
   app.screen!.ids = [...ids];
   app.render();
-  const removed: string[] = [];
-  t.mock.method(Library, "deletePaper", async (id: string) => {
-    removed.push(id);
-    state.papers = state.papers.filter((p) => p.id !== id); // What the next reload reads back.
+  const dismissed: string[] = [];
+  t.mock.method(Library, "dismissPaper", async (id: string) => {
+    dismissed.push(id);
+    // What the next reload reads back: the record stays, without its stored copy.
+    state.papers.find((p) => p.id === id)!.screening = "irrelevant";
+    state.resources = state.resources.filter((r) => r.paperId !== id);
   });
   const settle = async () => { for (let i = 0; i < 5; i++) await setImmediate(); };
-  const confirm = () => $<HTMLButtonElement>('#modal-root [data-action="confirm-delete-paper"]');
 
-  // D asks first, with the confirm button focused so Enter deletes; Esc backs out untouched.
   $("#app-content").focus();
   keydown("d");
-  assert.equal(document.activeElement, confirm());
-  keydown("Escape");
-  assert.equal(document.querySelector("#modal-root .modal"), null);
-  assert.deepEqual(removed, []);
-
-  keydown("d");
-  confirm().click();
   await settle();
-  assert.deepEqual(removed, [ids[0]]);
-  assert.equal(app.paperById(ids[0]!), undefined);
-  assert.equal($(".screen-panel").dataset.paperId, ids[1], "the paper after the deleted one is on screen");
+  assert.equal(document.querySelector("#modal-root .modal"), null, "no confirmation: the decision can be reversed");
+  assert.deepEqual(dismissed, [ids[0]]);
+  assert.equal(app.paperById(ids[0]!)?.screening, "irrelevant", "the record stays in the library");
+  assert.equal(state.resources.some((r) => r.paperId === ids[0]), false);
+  assert.equal($(".screen-panel").dataset.paperId, ids[1], "the paper after the dismissed one is on screen");
   assert.match(text(".screen-progress"), /第 1 \/ 2 篇/);
-  assert.match(text(".screen-progress"), /已删除 1 篇/);
+  assert.match(text(".screen-progress"), /已标无关 1 篇/);
 
-  // The button does the same; deleting the last paper lands on the one before it.
+  // The button does the same; dismissing the last paper lands on the one before it.
   app.goToScreening(1);
-  $('[data-action="screen-delete"]').click();
-  confirm().click();
+  $('[data-action="screen-dismiss"]').click();
   await settle();
-  assert.deepEqual(removed, [ids[0], ids[2]]);
+  assert.deepEqual(dismissed, [ids[0], ids[2]]);
   assert.equal($(".screen-panel").dataset.paperId, ids[1]);
   assert.match(text(".screen-progress"), /第 1 \/ 1 篇/);
-  assert.match(text(".screen-progress"), /已删除 2 篇/);
+  assert.match(text(".screen-progress"), /已标无关 2 篇/);
 });
