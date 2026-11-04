@@ -45,7 +45,7 @@ export interface AgentPdfState {
 export const AGENT_EXAMPLES = [
   t("库里现在有多少篇文献？哪些还没有判断收录？"),
   t("找出所有拟南芥根的 scRNA-seq 文献，为每篇提一个收录建议并说明理由。"),
-  t("检查待判断的文献里哪些是综述，建议排除并记录依据。"),
+  t("检查待判断的文献里哪些是综述，建议不纳入并记录依据。"),
 ];
 
 const paragraphs = (text: string): string =>

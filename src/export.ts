@@ -17,7 +17,7 @@ export type ExportScope = "papers" | "datasets";
 const PAPER_FORMATS: [ExportKind, string, string][] = [
   ["bibtex", "BibTeX (.bib)", t("导入 Zotero、EndNote 或 LaTeX 参考文献。")],
   ["papers-csv", t("CSV 表格 (.csv)"), t("每行一篇：题目、作者、期刊、年份、DOI、物种、组织、测序类型、平台、文献类型、收录状态、关联数据集 accession。")],
-  ["report", t("筛选进度报告 (Markdown)"), t("收录、排除、待核对数量，按物种 / 测序类型 / 组织的数据集统计，以及已收录文献清单。")],
+  ["report", t("筛选进度报告 (Markdown)"), t("纳入、不纳入、待核对数量，按物种 / 测序类型 / 组织的数据集统计，以及已收录文献清单。")],
 ];
 const DATASET_FORMATS: [ExportKind, string, string][] = [
   ["datasets-csv", t("数据集清单 CSV (.csv)"), t("每行一个数据集：全部 accession、仓库类型、关联文献 DOI、整理状态、可用性。")],

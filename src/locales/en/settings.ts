@@ -249,7 +249,7 @@ export const settings: Record<string, string> = {
   "AI 二次核查": "AI second check",
   "来源更新新增的文献，由筛选模型按你的提示词再判断一次。结论只作为建议显示在文献库“需核对”中，采纳与否由你决定；数据集不参与。": "Papers that source updates add are judged once more by the screening model against your prompt. The verdict appears only as a suggestion under “Needs review” in the library, and you decide whether to adopt it. Datasets are not checked.",
   "核查提示词": "Check prompt",
-  "例如：只保留对植物组织做了单细胞或单核测序的原创研究；综述、方法学和动物研究判为排除": "For example: keep only original research that did single-cell or single-nucleus sequencing on plant tissue; exclude reviews, methods papers and animal studies",
+  "例如：只保留对植物组织做了单细胞或单核测序的原创研究；综述、方法学和动物研究判为不纳入": "For example: keep only original research that did single-cell or single-nucleus sequencing on plant tissue; exclude reviews, methods papers and animal studies",
   "每篇读摘要（有全文时读全文），没有摘要的跳过；结果同时记入“AI 对照”。": "Each paper is judged on its abstract (full text when stored); papers without one are skipped. Results also appear in “AI comparison”.",
   "保存提示词": "Save prompt",
   "请先填写核查提示词，再开启 AI 二次核查。": "Fill in the check prompt before turning on the AI second check.",

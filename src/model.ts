@@ -71,7 +71,14 @@ export function reviewConcern(p: Paper): "excluded" | "uncertain" | "source" | n
   return screeningConcern(p) ?? (p.awaitingReview ? "source" : null);
 }
 
-export const SCREEN: Record<string, string> = { included: t("已纳入"), pending: t("待判断"), uncertain: t("证据不足"), excluded: t("相关 / 排除"), irrelevant: t("无关") };
+export const SCREEN: Record<string, string> = { included: t("已纳入"), pending: t("待判断"), uncertain: t("证据不足"), excluded: t("相关不纳入"), irrelevant: t("无关 / 排除") };
+/** DECISION_HINTS say what each decision keeps, where the labels alone read alike. */
+export const DECISION_HINTS: Record<string, string> = {
+  included: t("符合纳入标准"),
+  excluded: t("有点关系但够不上纳入标准：记录、笔记和附件都保留"),
+  uncertain: t("暂时判断不了，留待补充证据"),
+  irrelevant: t("与主题无关：清掉已保存的附件，记录只留作去重，来源更新与导入不会再加回"),
+};
 /** activePapers leaves out the papers marked irrelevant: they stay in the library only so
  * that imports and source updates skip them, and no default view or count shows them. */
 export const activePapers = (papers: Paper[]): Paper[] => papers.filter((p) => p.screening !== "irrelevant");

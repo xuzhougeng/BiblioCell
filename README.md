@@ -100,7 +100,7 @@ BiblioCell agent "库里有多少篇还没判断收录的文献？"
 
 每条建议都记进 `screening_suggestions` 表：生成时间、所用模型配置（设置里的名称 + 模型 id + 协议）、筛选要求、结论、理由、置信度、引用原文及其 PDF 页码、所属批次。文献库顶部的 **AI 对照** 标签把这些建议和你最终的收录判定放在一起：
 
-- **一致率**、已对照 / 待判定篇数，以及 AI 建议 × 人工判定的 3×3 **混淆矩阵**（收录 / 排除 / 证据不足）。
+- **一致率**、已对照 / 待判定篇数，以及 AI 建议 × 人工判定的 3×3 **混淆矩阵**（纳入 / 不纳入 / 证据不足）。
 - 可按**模型配置**、**批次**和**时间范围**筛选；不按批次筛选时，同一篇文献同一模型只取最新一条建议，所以重跑会替换旧答案而不是重复计数。
 - **按模型配置**和**按批次**两张表分别给出各自的一致率，换模型或改提示词后的差异一眼可见。
 - **不一致样本**列出 AI 与人判断不同的文献，点开直接进入逐篇筛选页，建议、理由和模型信息原样显示，退出后回到对照页。
@@ -188,9 +188,9 @@ Zhang 等[在方法部分说明了建库平台](cite:P-1699…#page=3 "Libraries
 
 可以直接对 AI 助手说“帮我改进 PubMed 的检索式”。助手按这样的流程做：
 
-1. `list_sources` 读取各来源当前的检索式和检索语法；`list_papers` 看你已收录和已排除的文献，从中提炼关键词、同义词和应排除的方向。
+1. `list_sources` 读取各来源当前的检索式和检索语法；`list_papers` 看你已纳入和判为不纳入的文献，从中提炼关键词、同义词和应排除的方向。
 2. `try_source_query` 先用当前检索式跑一次作为基准，再逐个试候选检索式。试检索只访问远程来源，**不写入任何文献、记录或运行**，返回命中总数（PubMed、Europe PMC、Crossref、GEO、SRA 支持）和取回的每条结果：题目、摘要片段，以及它对应库里哪篇文献、你对它的收录判断。
-3. 比较各检索式：取回结果里命中已收录的多、命中已排除的少、新结果的题目摘要切题、命中总数在可处理的范围内，就是更好的检索式。
+3. 比较各检索式：取回结果里命中已纳入的多、命中不纳入的少、新结果的题目摘要切题、命中总数在可处理的范围内，就是更好的检索式。
 4. 只有候选明显优于基准时，助手才用 `update_source_query` 保存，必须写明理由（例如两次试检索的对比）。来源的启用状态不变，下一次同步起生效。
 
 检索式的每次修改都记入 `source_query_history`（schema v11）：版本号、手动还是助手改的、理由、改前的检索式。来源卡片显示检索式版本和最近一次由谁修改；配置窗口列出全部版本，“填入”可以把任一旧版本放回输入框，保存后即恢复，记为手动修改。每次同步运行记录当时的检索式版本。
@@ -300,7 +300,7 @@ http://127.0.0.1:37841/mcp
 收录判断只由人做出，agent 只能提议：
 
 - `screening`（`pending` / `included` / `excluded` / `uncertain` / `irrelevant`）只记录人的决定，MCP 和命令行都不能写入。agent 用 `proposedScreening` 和 `proposedReason` 提出建议，提议排除时必须写理由。
-- `excluded` 是相关但不收录，`irrelevant`（无关）是清理：逐篇筛选里按 D 把文献标为无关，同时删除已保存的附件副本。记录本身留在库中，所以来源更新和导入会把它当作已有文献跳过，不会再加回来；文献库列表、首页统计、待补事项和 `list_papers` 默认都不显示无关文献，要看或改回来可在文献库按收录状态筛选 `irrelevant`。
+- 界面上 `excluded` 叫“相关不纳入”：有点关系但够不上标准，记录、笔记和附件都保留。`irrelevant` 叫“无关 / 排除”，是清理：逐篇筛选里按 D 把文献标为无关，同时删除已保存的附件副本。记录本身留在库中，所以来源更新和导入会把它当作已有文献跳过，不会再加回来；文献库列表、首页统计、待补事项和 `list_papers` 默认都不显示无关文献，要看或改回来可在文献库按收录状态筛选 `irrelevant`。
 - 建议显示在“待补事项”和文献详情的“收录判断”里，人可以采纳、忽略，或自行选择。做出决定后建议随即失效。
 - 数据库记录真实来源：只有人的决定会把 `screening_method` 写成 `human` 并记下 `screening_reviewed_at`，接口里对应 `reviewedAt`。未决定的文献是 `unreviewed`。
 - 文献一经人工确认，`update_paper` 就只接受建议，不再允许修改 metadata。把判断改回“待判断”即可解除。数据集同理：经人工核实后 `update_dataset` 被拒绝，改回其他状态即可解除。
@@ -361,7 +361,7 @@ MCP 始终操作正式数据库，与界面是否开启 Demo 无关。MCP 新增
 |---|---|---|
 | `bibtex` | `.bib` | 每篇一个 `@article`，题目加双层花括号保留大小写，`\&`、`\%`、`\_` 等已转义，作者 `A; B` 写成 `A and B`，附 DOI、URL、PMID、物种/组织/测序类型/平台作 `keywords`，预印本加 `note = {Preprint}`。引用键为“第一作者姓 + 年份 + 题目首个长词”，重复时加 a、b 后缀 |
 | `papers-csv` | `.csv` | 每行一篇：`id, title, authors, journal, year, doi, pmid, publication_status, species, species_label, organs, modalities, platforms, article_types, screening, screening_reason, fulltext, reading, tags, dataset_accessions, dataset_ids, source, added_at`。多值字段用 `; ` 连接 |
-| `report` | `.md` | 筛选进度报告：收录 / 排除 / 证据不足 / 待判断数量、待处理的 agent 建议、来源更新新增未核查数、已收录文献的全文覆盖；数据集整理状态与可用性；按物种、测序类型、组织的数据集数（含已核实、公开）和已收录文献数；最后列出已收录文献的题目、年份、DOI 和 accession。`-title` 自定义标题 |
+| `report` | `.md` | 筛选进度报告：纳入 / 不纳入 / 证据不足 / 待判断数量、待处理的 agent 建议、来源更新新增未核查数、已收录文献的全文覆盖；数据集整理状态与可用性；按物种、测序类型、组织的数据集数（含已核实、公开）和已收录文献数；最后列出已收录文献的题目、年份、DOI 和 accession。`-title` 自定义标题 |
 | `datasets-csv` | `.csv` | 每行一个数据集：`accessions`、`repositories`、`accession_kinds`（如 `geo/series; sra/run`）、`verified_accessions`、整理状态、可用性、细胞数、关联文献 DOI / ID / 角色 |
 | `datasets-summary` | `.csv` | 按 `-group-by species|organ|modality` 聚合：数据集数、已核实数、公开数、关联文献数、accession 数。多物种的数据集在每个物种下各计一次，没填的记为 `(unspecified)` |
 | `download-script` | `.sh` | 批量下载脚本。按 accession 前缀分类：GEO 系列用 wget 取 `suppl/` 和 SOFT family 文件；SRA 的 SRP/SRX/SRS/SRR 用 `prefetch` + `fasterq-dump`；ENA / DDBJ 的 ERR/ERP/PRJEB 等从 ENA 文件报告取 fastq 链接；PRJNA 用 entrez-direct 展开成 SRR 再 prefetch；GSA、BioStudies、Zenodo 等没有批量工具的列为 `manual`，附页面地址。每条命令上方注释数据集题目和关联文献 DOI。应用只生成文件，不运行；`OUT=/data/scrna bash xxx.sh` 指定目标目录 |

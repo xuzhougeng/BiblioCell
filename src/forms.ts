@@ -56,7 +56,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   else if (pmid && !/^\d{1,10}$/.test(pmid)) error = t("PMID 应为纯数字。");
   else if (year !== null && (!Number.isInteger(year) || year < 1800 || year > 2100)) error = t("请填写 1800–2100 之间的年份，或留空。");
   else if (!Object.hasOwn(PUBLICATION_STATUSES, publicationStatus)) error = t("请选择有效的发表状态。");
-  else if (existing && existing.screening === "excluded" && !reason) error = t("相关 / 排除条目需要保留判断理由。");
+  else if (existing && existing.screening === "excluded" && !reason) error = t("相关不纳入的条目需要保留判断理由。");
   if (error) {
     setFormError(error);
     return;
@@ -91,7 +91,7 @@ export function savePaper(app: App, form: HTMLFormElement): void {
 }
 
 export function exclusionReasonModal(app: App, p: Paper): void {
-  app.showModal(t("补充排除理由"), `<form id="exclusion-reason-form"><input type="hidden" name="paperId" value="${esc(p.id)}"><p class="muted">${t("为了保留筛选依据，请记录为何将这篇文献归为相关资料或排除。")}</p><label class="form-field"><span>${t("判断理由")} <b class="required">*</b></span><textarea class="textarea" name="reason" rows="4" maxlength="3000" required placeholder="${t("例如：仅包含空间转录组，没有实际分析单细胞或单核测序数据")}"></textarea></label><p id="form-error" class="form-error" role="alert"></p></form>`, `${cancelButton}<button class="btn btn-primary" type="submit" form="exclusion-reason-form">${t("保存判断")}</button>`);
+  app.showModal(t("补充不纳入的理由"), `<form id="exclusion-reason-form"><input type="hidden" name="paperId" value="${esc(p.id)}"><p class="muted">${t("为了保留筛选依据，请记录这篇文献为何只算相关、不予纳入。与主题无关的文献请改按 D 标为无关 / 排除。")}</p><label class="form-field"><span>${t("判断理由")} <b class="required">*</b></span><textarea class="textarea" name="reason" rows="4" maxlength="3000" required placeholder="${t("例如：仅包含空间转录组，没有实际分析单细胞或单核测序数据")}"></textarea></label><p id="form-error" class="form-error" role="alert"></p></form>`, `${cancelButton}<button class="btn btn-primary" type="submit" form="exclusion-reason-form">${t("保存判断")}</button>`);
 }
 
 export function saveExclusionReason(app: App, form: HTMLFormElement): void {
@@ -103,7 +103,7 @@ export function saveExclusionReason(app: App, form: HTMLFormElement): void {
     return;
   }
   decideScreening(p, "excluded", reason);
-  app.logActivity(t("保存排除判断：{title}", { title: p.title }));
+  app.logActivity(t("保存不纳入判断：{title}", { title: p.title }));
   app.persist();
   app.closeModal();
   app.render();
