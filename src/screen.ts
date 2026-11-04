@@ -10,7 +10,7 @@ import { Library, type Evidence, type Paper, type ScreeningSuggestion } from "./
 import { FIELD_LABELS } from "./drawer.ts";
 import { confidenceText } from "./calibration.ts";
 import { configured, modelFor } from "./models.ts";
-import { READING, SCREEN, arr, dateText, decideScreening, esc, evidenceValueText, joinList, speciesDisplay, speciesNames } from "./model.ts";
+import { DECISION_HINTS, READING, SCREEN, arr, dateText, decideScreening, esc, evidenceValueText, joinList, speciesDisplay, speciesNames } from "./model.ts";
 import { $, I, badge, demoBadge, screenBadge } from "./ui.ts";
 import { listSeparator, t, tv } from "./i18n.ts";
 import { locateInFrame, paperFileURL } from "./pdf-frame.ts";
@@ -291,9 +291,11 @@ export function renderScreening(app: App): string {
     ? `<a class="text-link" href="https://doi.org/${esc(encodeURI(p.doi))}" target="_blank" rel="noopener noreferrer">${esc(p.doi)}${I("arrow-up-right", 13)}</a>`
     : `<span class="muted">${t("尚未记录")}</span>`;
   const decisionButtons = DECISIONS.map(([key, status, color]) =>
-    `<button class="btn ${color} screen-decision${p.screening === status ? " is-current" : ""}" data-action="screen-decide" data-id="${esc(p.id)}" data-status="${status}" aria-pressed="${p.screening === status}">${kbd(key.toUpperCase())} ${esc(SCREEN[status]!)}</button>`,
+    `<button class="btn ${color} screen-decision${p.screening === status ? " is-current" : ""}" data-action="screen-decide" data-id="${esc(p.id)}" data-status="${status}" aria-pressed="${p.screening === status}" title="${esc(DECISION_HINTS[status] ?? "")}">${kbd(key.toUpperCase())} ${esc(SCREEN[status]!)}</button>`,
   ).join("")
-    + `<button class="btn btn-secondary screen-decision screen-dismiss${p.screening === "irrelevant" ? " is-current" : ""}" data-action="screen-dismiss" data-id="${esc(p.id)}" aria-pressed="${p.screening === "irrelevant"}" title="${t("标为无关并删除已保存的附件；文献留在库中，来源更新与导入不会再把它加回来")}">${kbd("D")} ${I("trash", 16)} ${t("无关")}</button>`;
+    + `<button class="btn btn-secondary screen-decision screen-dismiss${p.screening === "irrelevant" ? " is-current" : ""}" data-action="screen-dismiss" data-id="${esc(p.id)}" aria-pressed="${p.screening === "irrelevant"}" title="${esc(DECISION_HINTS.irrelevant!)}">${kbd("D")} ${I("trash", 16)} ${esc(SCREEN.irrelevant!)}</button>`;
+  // The two negative decisions read alike, so the bar says what each one keeps.
+  const decisionHelp = `<p class="muted small screen-decision-help"><strong>${kbd("N")} ${esc(SCREEN.excluded!)}</strong> ${esc(DECISION_HINTS.excluded!)} · <strong>${kbd("D")} ${esc(SCREEN.irrelevant!)}</strong> ${esc(DECISION_HINTS.irrelevant!)}</p>`;
   const reason = p.screeningReason ? `<p class="muted small screen-reason">${t("判断依据：{reason}", { reason: esc(p.screeningReason) })}</p>` : "";
   const pdf = pdfPane(app, p);
   const pdfToggle = hasPdf(app, p) && !app.screenPdf ? `<button class="btn btn-secondary" data-action="screen-pdf-toggle">${I("file", 16)} ${t("显示 PDF")}</button>` : "";
@@ -306,7 +308,7 @@ export function renderScreening(app: App): string {
     + `<div class="screen-toolbar"><button class="btn btn-secondary" data-action="exit-screening">${I("x", 16)} ${t("退出筛选")} ${kbd("Esc")}</button><div class="screen-progress"><strong>${t("第 {n} / {total} 篇", { n: screen.index + 1, total })}</strong><span class="muted">${t("已判断 {done} 篇", { done: decided })}${screen.dismissed ? ` · ${t("已标无关 {n} 篇", { n: screen.dismissed })}` : ""}${screen.deleted ? ` · ${t("已删除 {n} 篇", { n: screen.deleted })}` : ""}</span></div><div class="screen-nav">${queueToggle}${pdfToggle}${aiToggle}<button class="btn btn-secondary" data-action="screen-prev" ${screen.index === 0 ? "disabled" : ""} aria-label="${t("上一篇")}">${I("chevron-left", 16)} ${t("上一篇")}</button><button class="btn btn-secondary" data-action="screen-next" ${screen.index >= total - 1 ? "disabled" : ""} aria-label="${t("下一篇")}">${t("下一篇")} ${I("chevron-right", 16)}</button></div></div>`
     + `<div class="screen-counts">${counts}</div>`
     + `<div class="screen-split${pdf ? " has-pdf" : ""}">${queueRail(app, papers, screen.index)}<div class="screen-body">`
-    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div><div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("翻译整段摘要并原位显示；划选文字可单独翻译")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 排除 · U 证据不足 · D 无关 · 判断后自动跳到下一篇")}</span></div></div>`
+    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div>${decisionHelp}<div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("翻译整段摘要并原位显示；划选文字可单独翻译")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 相关不纳入 · U 证据不足 · D 无关 / 排除 · 判断后自动跳到下一篇")}</span></div></div>`
     + `<div class="screen-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? t("未读"))}${p.publicationStatus === "preprint" ? badge(t("预印本"), "amber") : ""}${demoBadge(p)}${p.starred ? badge(t("已收藏"), "amber") : ""}<span class="muted screen-id">${esc(p.id)}</span></div>`
     + `<h2 class="screen-title">${esc(p.title)}</h2>`
     + `<p class="paper-meta">${esc(p.authors || t("作者待补"))} · ${esc(p.journal || t("期刊待补"))} · ${esc(p.year || t("年份待补"))}</p>`
