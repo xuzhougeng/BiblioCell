@@ -1,7 +1,7 @@
 // Datasets list in a real DOM: the table names its columns so narrow windows
 // can fold the modality column into the title cell without the accession
 // column losing its width (it used to overlap the status column at 1024px).
-import { $, $$, resetDom } from "./dom.ts";
+import { $, $$, keydown, resetDom } from "./dom.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -52,4 +52,27 @@ test("the stylesheet hides the modality column and shows its badges in the title
   // Accessions wrap instead of overflowing into the next column.
   assert.match(css, /\.dataset-table \.repo-cell \{[^}]*overflow-wrap: anywhere/);
   assert.doesNotMatch(css, /\.dataset-table \.repo-cell \{[^}]*white-space: nowrap/);
+});
+
+test("review mode walks the datasets one at a time: Y keeps, D deletes, Esc returns to the list", async () => {
+  const { app } = datasetsApp();
+  const total = app.state.datasets.length;
+  assert.ok(total >= 3);
+  app.state.datasets[0]!.awaitingReview = true;
+  const [first, second, third] = app.state.datasets.map((d) => d.id);
+  $<HTMLButtonElement>("[data-action=start-dataset-review]").click();
+  assert.equal($(".dataset-review-panel").dataset.datasetId, first);
+  keydown("y");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(app.state.datasets.find((d) => d.id === first)?.awaitingReview, false);
+  assert.equal($(".dataset-review-panel").dataset.datasetId, second);
+  keydown("d");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(!app.state.datasets.some((d) => d.id === second), "D deletes the dataset on screen");
+  assert.equal(app.state.datasets.length, total - 1);
+  assert.equal($(".dataset-review-panel").dataset.datasetId, third, "the next dataset takes its place");
+  assert.match($(".screen-counts").textContent ?? "", /本次删除 1/);
+  keydown("Escape");
+  assert.equal(document.querySelector(".dataset-review-panel"), null);
+  assert.ok($(".dataset-table"));
 });

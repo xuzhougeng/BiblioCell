@@ -44,7 +44,20 @@ type Config struct {
 	// default: closing hides the window and the app keeps running in the
 	// background, with MCP and source updates, until it is quit.
 	QuitOnWindowClose bool `json:"quitOnWindowClose"`
+	// SourceCheck asks the screening model to check each paper a source
+	// update adds against the person's prompt, so the review queue shows its
+	// verdict and reason as a suggestion.
+	SourceCheck SourceCheck `json:"sourceCheck"`
 }
+
+// SourceCheck is the AI second check of papers that source updates add.
+type SourceCheck struct {
+	Enabled bool   `json:"enabled"`
+	Prompt  string `json:"prompt"`
+}
+
+// MaxSourceCheckPrompt bounds the check prompt, like a screening requirement.
+const MaxSourceCheckPrompt = 4000
 
 // ModelProfile is one model service under a name the person chose.
 type ModelProfile struct {
@@ -200,6 +213,7 @@ func (s *Store) Save(config Config) error {
 	config.NCBIAPIKey = strings.TrimSpace(config.NCBIAPIKey)
 	config.ContactEmail = strings.TrimSpace(config.ContactEmail)
 	config.Models = trimModels(config.Models)
+	config.SourceCheck.Prompt = strings.TrimSpace(config.SourceCheck.Prompt)
 	if err := Validate(config); err != nil {
 		return err
 	}
@@ -275,6 +289,12 @@ func Validate(config Config) error {
 		if address, err := mail.ParseAddress(config.ContactEmail); err != nil || address.Address != config.ContactEmail {
 			return errors.New("contact email must be a plain email address")
 		}
+	}
+	if config.SourceCheck.Enabled && strings.TrimSpace(config.SourceCheck.Prompt) == "" {
+		return errors.New("请填写 AI 二次核查的提示词")
+	}
+	if len([]rune(config.SourceCheck.Prompt)) > MaxSourceCheckPrompt {
+		return fmt.Errorf("AI 二次核查的提示词不能超过 %d 字", MaxSourceCheckPrompt)
 	}
 	ids := map[string]bool{}
 	for _, profile := range config.Models {

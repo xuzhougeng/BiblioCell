@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	_ "modernc.org/sqlite"
 )
@@ -331,6 +332,16 @@ type Store struct {
 	integrity string // PRAGMA integrity_check result from Open; Open fails unless it is "ok"
 	// Upgraded says what Open changed when the file was behind this build; nil otherwise.
 	Upgraded *Upgrade
+	// harvested hears of the papers each source run adds; see OnPapersHarvested.
+	harvested atomic.Pointer[func(sourceID string, paperIDs []string)]
+}
+
+// OnPapersHarvested registers fn to hear of the papers every successful source
+// run adds, whoever started it: a person, the schedule, the CLI or an agent.
+// fn runs on the syncing goroutine after the run is committed, so anything
+// slow belongs on a goroutine of its own.
+func (s *Store) OnPapersHarvested(fn func(sourceID string, paperIDs []string)) {
+	s.harvested.Store(&fn)
 }
 
 const (

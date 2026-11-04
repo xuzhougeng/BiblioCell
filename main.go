@@ -52,6 +52,7 @@ func main() {
 			log.Fatalf("initialize BiblioCell: %v", err)
 		}
 		libraryService.store = store
+		store.OnPapersHarvested(libraryService.checkHarvested)
 
 		configuredToken := settingsStore.Get().MCPToken
 		if configuredToken == "" {

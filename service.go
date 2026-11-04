@@ -33,6 +33,8 @@ type Library struct {
 	// events reaches the browsers of web mode; nil in the desktop app, whose
 	// window hears the mygo events directly.
 	events *eventHub
+	// checks counts the AI second checks still running.
+	checks sourceChecks
 }
 
 // SettingsSaveResult tells the frontend which configuration changes need a restart.
@@ -263,6 +265,14 @@ func (l *Library) SaveDatasetEdits(edits []library.DatasetEdit) ([]string, error
 		return nil, errors.New("library database is not ready")
 	}
 	return l.store.SaveDatasetEdits(context.Background(), edits)
+}
+
+// DeleteDataset removes a dataset with its links and evidence; papers stay.
+func (l *Library) DeleteDataset(id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.DeleteDataset(context.Background(), id)
 }
 
 // ListEvidence returns every claim agents recorded, for the review views.
