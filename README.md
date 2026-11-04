@@ -144,6 +144,18 @@ Zhang 等[在方法部分说明了建库平台](cite:P-1699…#page=3 "Libraries
 
 补全期刊、作者、年份等书目信息：桌面端在文献表单里按 DOI 获取；agent 用 MCP 的 `lookup_metadata`（`doi` 或 `pmid` 二选一），命令行用 `papers lookup DOI|PMID`，纯数字按 PMID 处理，其余按 DOI。DOI 先查 Crossref，再用 Europe PMC 补 PMID 和摘要；PMID 先查 Europe PMC，记录里有 DOI 时再用 Crossref 的出版社记录。查询只返回结果，要保存请用 `update_paper` 或 `papers update`；已筛选的文献只会补上还空着的书目字段，已有的值不会被覆盖。
 
+预印本正式发表后可以合并掉：
+
+1. **找重复**：`find_duplicates`（`papers duplicates`）按题目匹配键分组，忽略大小写、标点和标记，只读本地库；每组给出建议保留的一篇，优先已发表，其次已人工筛选，再次最早加入。题目在发表时改过的，用 `find_published_versions`（`papers published`）逐篇问 Crossref 预印本的 `is-preprint-of` 关系，返回期刊版 DOI，以及期刊版是否已在库里。期刊版不在库里时，先 `lookup_metadata` 再 `add_paper`。
+2. **合并**：`merge_papers`（`papers merge 保留ID 合并ID -reason 理由`），`keepId` 一般是期刊版，`mergeId` 是预印本，必须写理由。合并在一个事务里完成：
+   - 附件、数据集关联、证据、AI 建议和来源记录移到保留的文献；同一数据集关联两边都有时，只要有一边核实过就算核实。
+   - 保留文献的书目信息不变，只有空着的摘要和分类字段（文章类型、物种、器官、技术、平台）用预印本的值补上。
+   - 笔记和标签合并，星标、阅读进度取两者中更进一步的。
+   - 人工筛选结果：只有一篇有时沿用那一篇；两篇都有而且结论不同时拒绝合并，要先在桌面端统一。
+3. **不会再回来**：被合并文献的原 ID、题目、DOI、PMID 和理由记在 `merged_papers` 表（schema v18），`list_merged_papers`（`papers merged ID`）可查。之后来源更新或导入再遇到这个 DOI、PMID 或 ID，都会认作保留的文献，不会把预印本重新加回来，也不会把预印本的标识符写到保留的文献上。
+
+合并会删除预印本，不能撤销。
+
 文献详情的“资料”页可以点“获取开放全文”，agent 用 MCP 的 `fetch_fulltext`，命令行用 `papers fetch ID`。按 DOI 或 PMID 依次尝试：
 
 1. **PMC 开放获取子集**：经 Europe PMC 查到 PMCID，再从 NCBI 公开的 S3 存储桶下载。
@@ -259,6 +271,10 @@ http://127.0.0.1:37841/mcp
 | `add_evidence` | 按字段记录提取依据：摘录和来源，供人核对，需要写权限 |
 | `list_evidence` | 读取证据及人的判断 |
 | `attach_file` | 把存放文件夹 `inbox/` 中的文件移入文库并挂到文献上，需要写权限 |
+| `find_duplicates` | 按题目找疑似重复的文献组，附建议保留的一篇，只读本地库 |
+| `find_published_versions` | 问 Crossref 库里的预印本有没有期刊版（`is-preprint-of`），不写入任何内容；会访问远程来源，需要写权限 |
+| `merge_papers` | 把重复文献（通常是预印本）合并进保留的文献并删除它，需填理由；两篇的人工筛选结论不同时拒绝，需要写权限 |
+| `list_merged_papers` | 列出合并进某篇文献的原记录：ID、题目、DOI、PMID、理由和时间 |
 | `lookup_metadata` | 按 `doi` 或 `pmid` 从 Crossref 和 Europe PMC 查书目信息（期刊、作者、年份、摘要等），不写入任何内容；会访问远程来源，需要写权限 |
 | `fetch_fulltext` | 通过 PMC 和 Unpaywall 查找开放获取 PDF 并保存，需要写权限 |
 | `list_files` | 列出文献的附件，路径相对存放文件夹 |
@@ -400,6 +416,12 @@ echo '{"journal":"Cell"}' | ./BiblioCell papers update P-xxxx
 ./BiblioCell papers files P-xxxx
 ./BiblioCell papers list -needs-review -batch run-1 -limit 100 -offset 100
 ./BiblioCell papers undo run-1
+
+# 预印本正式发表后：找重复、问 Crossref、合并（期刊版在前，预印本在后）
+./BiblioCell papers duplicates
+./BiblioCell papers published -limit 50
+./BiblioCell papers merge P-journal P-preprint -reason "Crossref is-preprint-of 10.1016/j.cell.2019.05.031"
+./BiblioCell papers merged P-journal
 
 # 永久删除单篇文献，成功返回 {"id":"P-...","deleted":true}
 ./BiblioCell papers delete P-...

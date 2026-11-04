@@ -637,8 +637,8 @@ func addHarvestedDataset(ctx context.Context, tx *sql.Tx, dataset Dataset) (bool
 }
 
 // existingPaperID finds the paper a normalized record describes, most certain
-// match first: DOI, PMID, then title. The title only stands in for a missing
-// identifier, so it never joins papers whose DOIs or PMIDs differ, such as a
+// match first: DOI, PMID, an identifier of a paper merged away, then title.
+// The title only stands in for a missing identifier, so it never joins papers whose DOIs or PMIDs differ, such as a
 // preprint and its journal version, or whose years are more than one apart.
 func existingPaperID(ctx context.Context, tx *sql.Tx, paper Paper) (string, error) {
 	for _, identifier := range [][2]string{{"doi", paper.DOI}, {"pmid", paper.PMID}} {
@@ -654,6 +654,11 @@ func existingPaperID(ctx context.Context, tx *sql.Tx, paper Paper) (string, erro
 		if !errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("check harvested %s: %w", identifier[0], err)
 		}
+	}
+	// A paper merged into another, such as a preprint after its journal
+	// version arrived, is found as the paper it was merged into.
+	if id, err := mergedPaperID(ctx, tx, paper); err != nil || id != "" {
+		return id, err
 	}
 	key := titleKey(paper.Title)
 	if key == "" {
@@ -691,6 +696,11 @@ func fillPaperIdentifiers(ctx context.Context, tx *sql.Tx, paperID string, paper
 	}
 	if current.ReviewedAt != "" {
 		return nil
+	}
+	// A record of a paper merged into this one, such as its preprint, carries
+	// the preprint's identifiers, which do not belong to the kept paper.
+	if merged, err := mergedPaperID(ctx, tx, paper); err != nil || merged != "" {
+		return err
 	}
 	for _, identifier := range []struct{ namespace, have, incoming string }{
 		{"doi", current.DOI, paper.DOI}, {"pmid", current.PMID, paper.PMID},

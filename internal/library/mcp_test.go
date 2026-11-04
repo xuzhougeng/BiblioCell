@@ -361,7 +361,7 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 	}
 	defer session.Close()
 
-	for _, name := range []string{"describe_library", "library_status", "list_papers"} {
+	for _, name := range []string{"describe_library", "library_status", "list_papers", "find_duplicates"} {
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name})
 		if err != nil || result.IsError {
 			t.Errorf("unauthenticated read %s failed: err=%v result=%+v", name, err, result)
@@ -380,6 +380,8 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 		{Name: "import_papers", Arguments: map[string]any{"dryRun": true, "papers": []map[string]any{{"title": "Unauthorized"}}}},
 		{Name: "update_paper", Arguments: map[string]any{"id": original.ID, "patch": map[string]any{"title": "Changed"}}},
 		{Name: "lookup_metadata", Arguments: map[string]any{"pmid": "12345"}},
+		{Name: "find_published_versions", Arguments: map[string]any{}},
+		{Name: "merge_papers", Arguments: map[string]any{"keepId": original.ID, "mergeId": "P-other", "reason": "same work"}},
 	}
 	for _, call := range writeCalls {
 		result, err := session.CallTool(ctx, &call)

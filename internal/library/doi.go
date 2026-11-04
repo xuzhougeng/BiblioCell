@@ -132,6 +132,15 @@ func fillBlank(target *string, value string) {
 
 // crossrefDOI returns an empty paper, not an error, when Crossref has no record.
 func (h *remoteHarvester) crossrefDOI(ctx context.Context, doi string) (Paper, error) {
+	work, found, err := h.crossrefWork(ctx, doi)
+	if err != nil || !found {
+		return Paper{}, err
+	}
+	return work.paper(), nil
+}
+
+// crossrefWork reads one Crossref record; found is false when there is none.
+func (h *remoteHarvester) crossrefWork(ctx context.Context, doi string) (crossrefWork, bool, error) {
 	endpoint := crossrefURL + "/" + strings.ReplaceAll(url.PathEscape(doi), "%2F", "/")
 	if email := h.credentials().ContactEmail; email != "" {
 		endpoint += "?" + url.Values{"mailto": {email}}.Encode()
@@ -141,11 +150,11 @@ func (h *remoteHarvester) crossrefDOI(ctx context.Context, doi string) (Paper, e
 	}
 	if err := h.getJSON(ctx, endpoint, &response); err != nil {
 		if strings.Contains(err.Error(), "HTTP 404") {
-			return Paper{}, nil
+			return crossrefWork{}, false, nil
 		}
-		return Paper{}, err
+		return crossrefWork{}, false, err
 	}
-	return response.Message.paper(), nil
+	return response.Message, true, nil
 }
 
 func (h *remoteHarvester) europePMCDOI(ctx context.Context, doi string) (Paper, error) {

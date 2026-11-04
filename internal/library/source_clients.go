@@ -394,6 +394,11 @@ type crossrefWork struct {
 		Given  string `json:"given"`
 		Family string `json:"family"`
 	} `json:"author"`
+	// Relation links versions, e.g. is-preprint-of names a preprint's journal article.
+	Relation map[string][]struct {
+		ID     string `json:"id"`
+		IDType string `json:"id-type"`
+	} `json:"relation"`
 }
 
 func (item crossrefWork) paper() Paper {
