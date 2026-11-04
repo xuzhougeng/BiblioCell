@@ -35,10 +35,20 @@ import { exportModal, runExport } from "./export.ts";
 import { renderDatasets, renderOverview, renderPapers, renderTasks } from "./views.ts";
 import { t } from "./i18n.ts";
 import { datasetPickerMode, paperFieldKey, paperFieldModal, savePaperFields, searchDatasetPicker, selectPaperField, stepPaperField } from "./paper-fields.ts";
+import { VIEWER_ACTIONS, VIEWER_FORMS, hasBackend, isAdmin, pageAllowed } from "./env.ts";
+import type { WebSession } from "./web-runtime.ts";
+import { initWebAuth, submitWebLogin, webActions } from "./web.ts";
 
-/** Env describes the runtime: desktop vs browser preview, real vs demo data, and backend-provided info. */
+/** Env describes the runtime: desktop window, web server or static preview; real vs demo data; and backend-provided info. See env.ts for what each allows. */
 export interface Env {
+  /** desktop: inside the mygo window, where native dialogs, the system shell and the app's updater exist. */
   desktop: boolean;
+  /** backend: a Go backend answers calls, in the desktop app or from the web server. */
+  backend: boolean;
+  /** readOnly: a viewer of the web server; every change is blocked and the admin-only pages are hidden. */
+  readOnly: boolean;
+  /** web: what the web server said about this session; null in the desktop app and the static preview. */
+  web: WebSession | null;
   real: boolean;
   settings: Config;
   mcp: MCPInfo;
@@ -126,14 +136,16 @@ export class App {
     this.saved = clone(options.initial);
     this.warning = options.warning ?? "";
     const hash = location.hash.slice(1);
-    this.page = isPage(hash) ? hash : "overview";
+    this.page = isPage(hash) && pageAllowed(this.env, hash) ? hash : "overview";
     if (this.env.real) document.body.classList.add("real-mode");
+    if (this.env.desktop) document.body.classList.add("desktop");
+    if (this.env.readOnly) document.body.classList.add("read-only");
   }
 
   start(): void {
     document.addEventListener("contextmenu", (e) => {
       const row = e.target instanceof Element ? e.target.closest<HTMLElement>('tr[data-action="open-paper"]') : null;
-      if (!row || this.drawer || $("#modal-root .modal")) return;
+      if (!row || this.drawer || $("#modal-root .modal") || this.env.readOnly) return;
       e.preventDefault();
       this.closeContextMenu();
       row.focus();
@@ -175,6 +187,7 @@ export class App {
       topbar.prepend(help);
     }
     initUpdate(this);
+    initWebAuth(this);
     // Selecting text while screening translates it: the card appears once the selection settles.
     document.addEventListener("selectionchange", () => {
       clearTimeout(this.selectionTimer);
@@ -183,14 +196,15 @@ export class App {
     window.addEventListener("resize", () => this.placeTranslationPop());
     window.addEventListener("hashchange", () => {
       const next = location.hash.slice(1);
-      if (isPage(next)) {
+      if (isPage(next) && pageAllowed(this.env, next)) {
         this.page = next;
         this.render();
       }
     });
-    // Agents write while the window sits in the background; show their work on return.
-    if (this.env.real) window.addEventListener("focus", () => void refreshSources(this).then(() => this.refresh()));
-    if (this.env.desktop) {
+    // Agents write while the window sits in the background; show their work on return. Sources are the admin's to reread.
+    if (this.env.real) window.addEventListener("focus", () => void (isAdmin(this.env) ? refreshSources(this) : Promise.resolve()).then(() => this.refresh()));
+    // Background updates and agent progress are the admin's to follow; the web server streams them only to admins.
+    if (isAdmin(this.env)) {
       watchSources(this);
       watchAgent(this);
     }
@@ -276,6 +290,12 @@ export class App {
 
   // ---- persistence ----
   persist(): void {
+    if (this.env.readOnly) {
+      // Every path here is gated before the state changes; should one slip through, the database wins.
+      this.toast(t("只读访问：登录管理员后才能修改。"), true);
+      void this.reload();
+      return;
+    }
     const next = clone(this.state);
     const saved = this.saved;
     this.saved = next;
@@ -364,7 +384,7 @@ export class App {
   }
 
   navigate(next: string): void {
-    if (!isPage(next)) return;
+    if (!isPage(next) || !pageAllowed(this.env, next)) return;
     this.page = next;
     if (location.hash !== `#${next}`) history.replaceState(null, "", `#${next}`);
     this.render();
@@ -505,7 +525,7 @@ export class App {
   }
   /** Restore a saved translation on entry, keeping the original visible until toggled. */
   private loadCachedAbstract(paper: Paper): void {
-    if (!this.env.desktop || !this.env.real || !paper.abstract.trim() || currentAbstractTranslation(this, paper)) return;
+    if (!hasBackend(this.env) || !paper.abstract.trim() || currentAbstractTranslation(this, paper)) return;
     const result: AbstractTranslation = { paperId: paper.id, source: paper.abstract.trim(), prompt: this.env.settings.translationPrompt ?? "", showOriginal: true, state: "checking" };
     this.abstractTranslations.set(paper.id, result);
     Library.cachedTranslation(result.source).then((text) => {
@@ -991,6 +1011,7 @@ export class App {
     ...calibrationActions(this),
     ...selectionActions(this),
     ...updateActions(this),
+    ...webActions(this),
   };
 
   private onClick(e: MouseEvent): void {
@@ -1010,6 +1031,10 @@ export class App {
         this.toast(t("真实模式暂不支持资料链接和 JSON 导入；文献文件可在详情的“数据与资料”中导入。"), true);
         return;
       }
+      if (this.env.readOnly && !VIEWER_ACTIONS.has(action)) {
+        this.toast(t("只读访问：登录管理员后才能修改。"), true);
+        return;
+      }
       const handler = this.actions[action];
       if (handler) {
         handler(el, el.dataset.id ?? "");
@@ -1027,11 +1052,17 @@ export class App {
       "batch-screen-form": startBatch, "export-form": runExport,
       "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
+      "web-login-form": submitWebLogin,
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
-    const handler = handlers[form.getAttribute("id") ?? ""];
+    const id = form.getAttribute("id") ?? "";
+    const handler = handlers[id];
     if (!handler) return;
     e.preventDefault();
+    if (this.env.readOnly && !VIEWER_FORMS.has(id)) {
+      this.toast(t("只读访问：登录管理员后才能修改。"), true);
+      return;
+    }
     handler(this, form);
   }
 
@@ -1107,6 +1138,11 @@ export class App {
       if (!p) return;
       const key = target.dataset.paperSetting;
       const value = target.value;
+      if (this.env.readOnly) {
+        target.value = key === "screening" ? p.screening : p.reading;
+        this.toast(t("只读访问：登录管理员后才能修改。"), true);
+        return;
+      }
       if (key === "screening" && Object.hasOwn(SCREEN, value)) {
         if (value === "excluded" && !String(p.screeningReason || "").trim()) {
           target.value = p.screening;

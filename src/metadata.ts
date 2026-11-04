@@ -1,4 +1,5 @@
 import { speciesText } from "./species.ts";
+import { canWrite } from "./env.ts";
 import type { App } from "./app.ts";
 import { Library, type MetadataClaim, type MetadataProposal, type Paper } from "./mygo.ts";
 import { arr, clone, esc, repositoryLabel } from "./model.ts";
@@ -17,7 +18,7 @@ const runs = new WeakMap<App, Set<string>>();
 const drafts = new WeakMap<HTMLFormElement, { before: Paper; proposal: MetadataProposal }>();
 
 export function metadataButton(app: App, p: Paper): string {
-  if (!app.env.desktop || !app.env.real) return "";
+  if (!canWrite(app.env)) return "";
   const modelReady = configured(modelFor(app.env.settings, "chat"));
   const fulltext = app.paperResources(p.id).some(r => r.type === "fulltext" && r.localPath);
   const busy = runs.get(app)?.has(p.id);
@@ -52,7 +53,7 @@ function reviewHTML(app: App, p: Paper, proposal: MetadataProposal): string {
 
 export async function extractPaperMetadata(app: App, id: string): Promise<void> {
   const p = app.paperById(id);
-  if (!p || !app.env.real || !app.env.desktop) return;
+  if (!p || !canWrite(app.env)) return;
   const pending = runs.get(app) ?? new Set<string>();
   if (pending.has(id)) { app.toast(t("正在读取全文并提取研究信息…")); return; }
   pending.add(id); runs.set(app, pending);

@@ -8,6 +8,7 @@ import { esc, shortTime } from "./model.ts";
 import { $, $$, I, empty, errorMessage } from "./ui.ts";
 import { formatElapsed, toolCardHTML, type ToolRun } from "./agent-tools.ts";
 import { t } from "./i18n.ts";
+import { isAdmin } from "./env.ts";
 
 export interface AgentState {
   /** The saved conversation this transcript belongs to; empty until the first completed run saves it. */
@@ -102,7 +103,8 @@ function tickElapsed(): void {
 
 export function renderAgent(app: App): string {
   const { env } = app;
-  if (!env.desktop) return empty(t("AI 助手需要桌面应用"), t("浏览器预览没有后端，也没有可操作的数据库。请在 BiblioCell 桌面应用中使用。"));
+  if (!env.backend) return empty(t("AI 助手需要桌面应用"), t("浏览器预览没有后端，也没有可操作的数据库。请在 BiblioCell 桌面应用中使用。"));
+  if (env.readOnly) return empty(t("AI 助手仅限管理员"), t("助手通过 MCP 工具读写正式数据库，并使用服务器上配置的模型；请先登录管理员。"));
   const profile = modelFor(env.settings, "chat");
   const ai = profile?.config ?? { protocol: "anthropic", baseUrl: "", apiKey: "", model: "", maxTokens: 0, maxSteps: 0, effort: "" };
   const protocol = ai.protocol || "anthropic";
@@ -173,7 +175,7 @@ function rerender(app: App, draft?: string, focus?: boolean): void {
 
 export function sendAgentMessage(app: App, form: HTMLFormElement): void {
   const state = app.agent;
-  if (!app.env.desktop) return;
+  if (!isAdmin(app.env)) return;
   const input = $<HTMLTextAreaElement>("#agent-input", form);
   const prompt = input?.value.trim() ?? "";
   if (!prompt) return;
@@ -244,7 +246,7 @@ async function saveConversation(app: App): Promise<void> {
 
 /** agentHistoryModal lists saved conversations to reopen or delete. */
 export function agentHistoryModal(app: App): void {
-  if (!app.env.desktop) return;
+  if (!isAdmin(app.env)) return;
   Library.listAgentConversations().then((list) => {
     const items = list.map((c) => {
       const current = c.id === app.agent.id;

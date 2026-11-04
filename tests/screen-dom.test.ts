@@ -13,7 +13,7 @@ import type { LibraryState } from "../src/model.ts";
 import { Library, type Judgement } from "../src/mygo.ts";
 
 const desktopEnv = (): Env => ({
-  desktop: true, real: true,
+  desktop: true, backend: true, readOnly: false, web: null, real: true,
   settings: { storagePath: "/tmp/library", fontSize: 15, batchScreenConcurrency: 3, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],

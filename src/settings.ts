@@ -7,38 +7,44 @@ import { esc } from "./model.ts";
 import { applyFontSize } from "./shell.ts";
 import { enqueue } from "./store.ts";
 import { $, I, badge, errorMessage, option, setFormError, text } from "./ui.ts";
+import { isAdmin } from "./env.ts";
+import { webViewerNotice } from "./web.ts";
 
 export function renderSettings(app: App): string {
   const { env } = app;
   const preferences = env.settings;
   const mcp = env.mcp;
-  const canSave = env.desktop;
+  const canSave = isAdmin(env);
+  const web = env.web !== null;
   const currentPath = env.status?.storagePath || preferences.storagePath || t("桌面应用启动后显示");
   const disabled = canSave ? "" : "disabled";
-  const pendingPath = preferences.storagePath && preferences.storagePath !== currentPath;
-  const pendingToken = preferences.mcpToken && preferences.mcpToken !== mcp.token;
+  // Only the desktop restarts into a new folder or token; the web page cannot change either.
+  const pendingPath = !web && preferences.storagePath && preferences.storagePath !== currentPath;
+  const pendingToken = !web && preferences.mcpToken && preferences.mcpToken !== mcp.token;
   const saveStatus = canSave
-    ? pendingToken ? t("MCP Token 已更改，将在下次重启后使用。") : pendingPath ? t("存放文件夹已更改，将在下次重启后使用。") : t("设置保存在本机用户配置目录。")
-    : t("浏览器预览仅用于查看；请在 mygo 桌面应用中修改设置。");
-  return '<div class="settings-layout"><form class="panel settings-panel" id="settings-form">'
-    + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("leaf", 21)}</span><div><h2>${t("数据模式")}</h2><p>${t("演示与正式研究记录分别保存。")}</p></div></div>`
+    ? pendingToken ? t("MCP Token 已更改，将在下次重启后使用。") : pendingPath ? t("存放文件夹已更改，将在下次重启后使用。") : web ? t("设置保存在服务器的用户配置目录。") : t("设置保存在本机用户配置目录。")
+    : env.readOnly ? t("只读访问：登录管理员后可以修改 AI 模型和 API 配置。") : t("浏览器预览仅用于查看；请在 mygo 桌面应用中修改设置。");
+  // The web server is always on the real database: no demo switch, no folder picker, no MCP endpoint of its own.
+  const modeSection = web ? "" : `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("leaf", 21)}</span><div><h2>${t("数据模式")}</h2><p>${t("演示与正式研究记录分别保存。")}</p></div></div>`
     + `<div class="settings-mode-row"><div><label for="demo-mode">${t("Demo 演示模式")}</label><p>${t("浏览虚构示例；关闭后使用真实 SQLite 数据库。")}</p></div><input class="settings-switch" id="demo-mode" type="checkbox" role="switch" ${env.real ? "" : "checked"}${env.desktop ? "" : " disabled"} aria-label="${t("Demo 演示模式")}"></div>`
-    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("切换后立即重新加载，不会复制、合并或清空任何一边的数据。MCP 始终连接正式数据库。")}</span></div></section>`
-    + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("folder", 21)}</span><div><h2>${t("数据存放位置")}</h2><p>${t("SQLite 数据库和文献文件都保存在这个文件夹。")}</p></div></div>`
-    + `<div class="settings-field"><label for="settings-storage-path">${t("存放文件夹")}</label><div class="settings-path-row"><input class="settings-path-input" id="settings-storage-path" name="storagePath" type="text" value="${esc(preferences.storagePath)}" placeholder="${t("在桌面应用中选择存放文件夹")}" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="choose-storage" ${disabled}>${I("folder", 16)} ${t("选择文件夹")}</button></div></div>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("切换后立即重新加载，不会复制、合并或清空任何一边的数据。MCP 始终连接正式数据库。")}</span></div></section>`;
+  const storageSection = env.readOnly ? "" : `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("folder", 21)}</span><div><h2>${t("数据存放位置")}</h2><p>${t("SQLite 数据库和文献文件都保存在这个文件夹。")}</p></div></div>`
+    + `<div class="settings-field"><label for="settings-storage-path">${t("存放文件夹")}</label><div class="settings-path-row"><input class="settings-path-input" id="settings-storage-path" name="storagePath" type="text" value="${esc(preferences.storagePath)}" placeholder="${t("在桌面应用中选择存放文件夹")}" autocomplete="off" spellcheck="false" required ${env.desktop ? disabled : "disabled"}>${env.desktop ? `<button class="btn btn-secondary" type="button" data-action="choose-storage" ${disabled}>${I("folder", 16)} ${t("选择文件夹")}</button>` : ""}</div></div>`
     + `<div class="settings-active-path"><span>${t("本次运行正在使用")}</span><code>${esc(currentPath)}</code></div>`
-    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("文件夹内是 bibliocell.sqlite 和 papers/。选择文件夹后，应用会自动重启并切换过去；手动输入路径时，点“保存设置”后切换。退出应用后也可以把整个文件夹复制到别处，再在这里选中副本。应用不会移动或覆盖旧数据；所选文件夹没有数据库时会新建空库。")}</span></div></section>`
-    + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("code", 21)}</span><div><h2>${t("外部 AI · MCP")}</h2><p>${t("允许本机 AI 查询正式库；认证后可导入和编辑。")}</p></div>${badge(mcp.enabled ? t("已启用") : t("未启动"), mcp.enabled ? "green" : "gray")}</div>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>${web ? t("网页版显示服务器上的存放文件夹，不能在这里更改；请在服务器上运行 settings set -storage 修改。") : t("文件夹内是 bibliocell.sqlite 和 papers/。选择文件夹后，应用会自动重启并切换过去；手动输入路径时，点“保存设置”后切换。退出应用后也可以把整个文件夹复制到别处，再在这里选中副本。应用不会移动或覆盖旧数据；所选文件夹没有数据库时会新建空库。")}</span></div></section>`;
+  const mcpSection = web ? "" : `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("code", 21)}</span><div><h2>${t("外部 AI · MCP")}</h2><p>${t("允许本机 AI 查询正式库；认证后可导入和编辑。")}</p></div>${badge(mcp.enabled ? t("已启用") : t("未启动"), mcp.enabled ? "green" : "gray")}</div>`
     + `<div class="settings-mcp-meta"><div><span>${t("Streamable HTTP 地址")}</span><code>${esc(mcp.enabled ? mcp.endpoint : t("启动桌面应用后监听 127.0.0.1:37841"))}</code></div><p><strong>${t("工具")}</strong>${esc(mcp.tools.join(" · "))}</p><p><strong>${t("Schema 资源")}</strong>${esc(mcp.resources.join(" · "))}</p></div>`
     + `<div class="settings-field"><label for="settings-mcp-token">Bearer Token</label><div class="settings-token-row"><input class="settings-path-input" id="settings-mcp-token" name="mcpToken" type="password" value="${esc(preferences.mcpToken)}" minlength="32" maxlength="256" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-mcp-token" ${disabled}>${t("显示")}</button><button class="btn btn-secondary" type="button" data-action="copy-mcp-token" ${disabled}>${t("复制")}</button><button class="btn btn-secondary" type="button" data-action="regenerate-mcp-token" ${disabled}>${t("重新生成")}</button></div><p class="form-hint">${t("32–256 个可见 ASCII 字符，不能包含空格。重新生成后，旧 Token 将在重启时失效。")}</p></div>`
-    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("无认证连接只读；写入使用 Authorization: Bearer &lt;TOKEN&gt;。Token 修改在重启后生效，且不会通过 MCP 返回。服务仅监听本机回环地址，不要转发到局域网或公网。")}</span></div></section>`
-    + `<div id="settings-ai-section">${aiSection(preferences, disabled)}</div>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("无认证连接只读；写入使用 Authorization: Bearer &lt;TOKEN&gt;。Token 修改在重启后生效，且不会通过 MCP 返回。服务仅监听本机回环地址，不要转发到局域网或公网。")}</span></div></section>`;
+  return '<div class="settings-layout"><form class="panel settings-panel" id="settings-form">'
+    + modeSection + storageSection + mcpSection
+    + (env.readOnly ? webViewerNotice(app) : `<div id="settings-ai-section">${aiSection(preferences, disabled)}</div>`)
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("book", 21)}</span><div><h2>${t("阅读样式")}</h2><p>${t("只调整文字大小，不改变面板宽度与整体布局。")}</p></div></div>`
     + `<div class="settings-field"><div class="settings-label-row"><label for="settings-font-size">${t("界面字号")}</label><output id="settings-font-size-value" for="settings-font-size">${esc(preferences.fontSize)} px</output></div><div class="settings-font-control"><span>${t("小")}</span><input id="settings-font-size" name="fontSize" type="range" min="12" max="20" step="1" value="${esc(preferences.fontSize)}" ${disabled}><span>${t("大")}</span><button class="text-link" type="button" data-action="reset-font-size" ${disabled}>${t("恢复 15 px")}</button></div></div>`
     + `<div class="settings-font-preview"><span>${t("阅读预览")}</span><p>${t("从一片叶、一个细胞，到一篇可追溯的研究。")}</p><small>${t("Plant single-cell research · 文献、数据与笔记")}</small></div></section>`
     + localeSection()
     + `<footer class="settings-footer"><p id="settings-save-status" role="status">${saveStatus}</p><button class="btn btn-primary" type="submit" ${disabled}>${I("check", 16)} ${t("保存设置")}</button></footer></form>`
-    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>${t("安静、清晰，<br>适合自己的阅读节奏。")}</h2><p>${t("字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。")}</p><div class="settings-aside-rule"></div><dl><div><dt>${t("当前模式")}</dt><dd>${env.real ? t("真实数据库") : "Demo"}</dd></div><div><dt>${t("正式数据")}</dt><dd>${t("本地 SQLite")}</dd></div><div><dt>${t("配置方式")}</dt><dd>${t("自动持久化")}</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p>${t("<strong>切换存放文件夹会自动重启</strong><br>MCP Token 在下次启动时生效；字体大小无需重启，保存前即可预览。")}</p></div></aside></div>`;
+    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>${t("安静、清晰，<br>适合自己的阅读节奏。")}</h2><p>${t("字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。")}</p><div class="settings-aside-rule"></div><dl><div><dt>${t("当前模式")}</dt><dd>${env.real ? t("真实数据库") : "Demo"}</dd></div><div><dt>${t("正式数据")}</dt><dd>${web ? t("服务器 SQLite") : t("本地 SQLite")}</dd></div><div><dt>${t("配置方式")}</dt><dd>${t("自动持久化")}</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p>${web ? t("<strong>存放文件夹在服务器上修改</strong><br>用 settings set -storage 改好后重启服务；字号保存后立即应用。") : t("<strong>切换存放文件夹会自动重启</strong><br>MCP Token 在下次启动时生效；字体大小无需重启，保存前即可预览。")}</p></div></aside></div>`;
 }
 
 /** localeSection picks the interface language; it works in browser preview too, so it is never disabled. */
@@ -99,7 +105,7 @@ export function modelModal(app: App, id = ""): void {
 
 /** saveModelProfile stores the modal's profile at once, since the key is useless until it is saved. */
 export function saveModelProfile(app: App, form: HTMLFormElement): void {
-  if (!app.env.desktop) return;
+  if (!isAdmin(app.env)) return;
   const data = new FormData(form);
   const config: AgentConfig = {
     protocol: text(data, "protocol"), baseUrl: text(data, "baseUrl"), apiKey: text(data, "apiKey"), model: text(data, "model"),
@@ -157,11 +163,12 @@ const setStatus = (message: string): void => {
 };
 
 export function saveSettings(app: App, form: HTMLFormElement): void {
-  if (!app.env.desktop) return;
+  if (!isAdmin(app.env)) return;
   const data = new FormData(form);
   const button = $<HTMLButtonElement>("button[type=submit]", form);
   const tasks: TaskModels = { chat: text(data, "task-chat"), screen: text(data, "task-screen"), translate: text(data, "task-translate") };
-  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath"), fontSize: Number(data.get("fontSize")), batchScreenConcurrency: Number(data.get("batchScreenConcurrency")), mcpToken: text(data, "mcpToken"), translationPrompt: text(data, "translationPrompt"), tasks };
+  // The web page has no folder or token fields: those stay what the server has.
+  const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath") || app.env.settings.storagePath, fontSize: Number(data.get("fontSize")), batchScreenConcurrency: Number(data.get("batchScreenConcurrency")), mcpToken: text(data, "mcpToken") || app.env.settings.mcpToken, translationPrompt: text(data, "translationPrompt"), tasks };
   if (!Number.isInteger(next.batchScreenConcurrency) || next.batchScreenConcurrency < 1 || next.batchScreenConcurrency > 8) {
     setStatus(t("并发文献数应为 1 到 8。"));
     return;
