@@ -1135,3 +1135,47 @@ func TestUnsortedSourcesAskForRecentRecords(t *testing.T) {
 		t.Errorf("ENA kept %+v, want the newest study", records)
 	}
 }
+
+func TestSourceProxyOptionDefaultsPersistsAndReachesSync(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "library.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	// Rows saved before the option existed have no proxy in config_json.
+	if _, err := store.ListSources(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE source_states SET config_json = '{"maxResults":5}' WHERE source_id = 'pubmed'`); err != nil {
+		t.Fatal(err)
+	}
+	status, err := store.SourceStatus(ctx, "pubmed")
+	if err != nil || status.Proxy != "inherit" {
+		t.Fatalf("legacy row proxy = %q, %v; want inherit", status.Proxy, err)
+	}
+
+	config := SourceConfig{ID: "pubmed", Enabled: true, Query: "plant", MaxResults: 5, Proxy: "direct"}
+	if status, err = store.SaveSourceConfig(ctx, config); err != nil || status.Proxy != "direct" {
+		t.Fatalf("saved proxy = %q, %v", status.Proxy, err)
+	}
+	var configs []SourceConfig
+	if _, err := store.syncSource(ctx, "pubmed", recordingHarvester{configs: &configs}); err != nil {
+		t.Fatal(err)
+	}
+	if len(configs) != 1 || configs[0].Proxy != "direct" {
+		t.Fatalf("sync saw %+v, want proxy direct", configs)
+	}
+	// An agent's query edit keeps the person's proxy choice.
+	if _, err := store.UpdateSourceQuery(ctx, QueryUpdate{SourceID: "pubmed", Query: "maize", Reason: "narrow"}); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ = store.SourceStatus(ctx, "pubmed"); status.Proxy != "direct" {
+		t.Fatalf("query edit reset proxy to %q", status.Proxy)
+	}
+
+	config.Proxy = "custom"
+	if _, err := store.SaveSourceConfig(ctx, config); err == nil {
+		t.Fatal("unknown proxy option succeeded")
+	}
+}

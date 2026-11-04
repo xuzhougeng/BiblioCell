@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"bibliocell/internal/proxy"
 )
 
 // Protocols the loop can speak. Each is a wire format, not a vendor: any
@@ -36,6 +38,9 @@ type Config struct {
 	// max; empty leaves the service's default. Anthropic takes it as
 	// output_config.effort, Chat Completions as reasoning_effort.
 	Effort string `json:"effort"`
+	// Proxy is inherit (empty in older settings) to follow the global proxy
+	// setting, or direct to always connect directly.
+	Proxy string `json:"proxy"`
 }
 
 // Efforts are the levels a person can pick, lowest first.
@@ -80,6 +85,7 @@ func Trim(config Config) Config {
 	config.APIKey = strings.TrimSpace(config.APIKey)
 	config.Model = strings.TrimSpace(config.Model)
 	config.Effort = strings.ToLower(strings.TrimSpace(config.Effort))
+	config.Proxy = strings.ToLower(strings.TrimSpace(config.Proxy))
 	return config
 }
 
@@ -129,6 +135,9 @@ func Validate(config Config) error {
 	if config.Effort != "" && !slices.Contains(Efforts, config.Effort) {
 		return fmt.Errorf("AI effort must be one of %s", strings.Join(Efforts, ", "))
 	}
+	if err := proxy.ValidateOverride(config.Proxy); err != nil {
+		return fmt.Errorf("AI %w", err)
+	}
 	for _, value := range []string{config.APIKey, config.Model} {
 		if strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
 			return errors.New("AI settings cannot contain control characters")
@@ -143,7 +152,7 @@ func NewProvider(config Config) (Provider, error) {
 		return nil, err
 	}
 	config = Normalize(config)
-	client := &http.Client{Timeout: requestTimeout}
+	client := proxy.Client(requestTimeout, config.Proxy)
 	switch config.Protocol {
 	case ProtocolAnthropic:
 		return &anthropicProvider{config: config, client: client}, nil

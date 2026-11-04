@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"bibliocell/internal/agent"
+	"bibliocell/internal/proxy"
 )
 
 const (
@@ -48,6 +49,10 @@ type Config struct {
 	// update adds against the person's prompt, so the review queue shows its
 	// verdict and reason as a suggestion.
 	SourceCheck SourceCheck `json:"sourceCheck"`
+	// Proxy is how outbound requests reach the network: the system's proxy
+	// by default (an empty mode), directly, or through a proxy URL. Each
+	// model and source can still choose to connect directly.
+	Proxy proxy.ProxySettings `json:"proxy"`
 }
 
 // SourceCheck is the AI second check of papers that source updates add.
@@ -214,6 +219,9 @@ func (s *Store) Save(config Config) error {
 	config.ContactEmail = strings.TrimSpace(config.ContactEmail)
 	config.Models = trimModels(config.Models)
 	config.SourceCheck.Prompt = strings.TrimSpace(config.SourceCheck.Prompt)
+	// An empty mode stays empty in the file and means system.
+	config.Proxy.Mode = strings.ToLower(strings.TrimSpace(config.Proxy.Mode))
+	config.Proxy.URL = strings.TrimSpace(config.Proxy.URL)
 	if err := Validate(config); err != nil {
 		return err
 	}
@@ -295,6 +303,9 @@ func Validate(config Config) error {
 	}
 	if len([]rune(config.SourceCheck.Prompt)) > MaxSourceCheckPrompt {
 		return fmt.Errorf("AI 二次核查的提示词不能超过 %d 字", MaxSourceCheckPrompt)
+	}
+	if err := proxy.Validate(config.Proxy); err != nil {
+		return err
 	}
 	ids := map[string]bool{}
 	for _, profile := range config.Models {

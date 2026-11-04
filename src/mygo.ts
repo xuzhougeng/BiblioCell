@@ -17,6 +17,7 @@ export interface AgentConfig {
   maxTokens: number;
   maxSteps: number;
   effort: string;
+  proxy: string;
 }
 
 /** AgentConversation is a saved exchange with the built-in assistant. */
@@ -94,6 +95,7 @@ export interface Config {
   tasks: TaskModels;
   quitOnWindowClose: boolean;
   sourceCheck: SourceCheck;
+  proxy: ProxySettings;
 }
 
 export interface ConversationSummary {
@@ -337,6 +339,11 @@ export interface PaperFile {
   addedAt: string;
 }
 
+export interface ProxySettings {
+  mode: string;
+  url: string;
+}
+
 export interface QueryChange {
   id: string;
   sourceId: string;
@@ -428,6 +435,7 @@ export interface SourceConfig {
   query: string;
   maxResults: number;
   provider: string;
+  proxy: string;
 }
 
 export interface SourceFailure {
@@ -454,6 +462,7 @@ export interface SourceStatus {
   query: string;
   maxResults: number;
   provider: string;
+  proxy: string;
   recordCount: number;
   queryVersion: string;
   queryChange: QueryChange | null;
@@ -578,7 +587,10 @@ export const Library = {
   deletePaper(id: string): Promise<void> {
     return call("Library.DeletePaper", id);
   },
-  /** DismissPaper marks a paper irrelevant and removes its stored attachments; the record stays so imports skip it. */
+  /**
+   * DismissPaper marks a paper irrelevant and removes its stored attachments; the
+   * record stays so that source updates and imports skip it.
+   */
   dismissPaper(id: string): Promise<void> {
     return call("Library.DismissPaper", id);
   },

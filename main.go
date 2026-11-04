@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo"
 
 	"bibliocell/internal/library"
+	"bibliocell/internal/proxy"
 	"bibliocell/internal/settings"
 )
 
@@ -132,7 +133,8 @@ func sourceCredentials(store *settings.Store) func() library.SourceCredentials {
 
 // openSettings migrates legacy data under dataDir and loads settings.json.
 // The returned store is always usable: on a missing or invalid file it holds
-// defaults, and the error says why.
+// defaults, and the error says why. Outbound requests follow its proxy
+// setting from then on, read at each request so a save applies at once.
 func openSettings(dataDir string) (*settings.Store, error) {
 	migrateLegacyData(dataDir)
 	migrateDatabaseSetting(filepath.Join(dataDir, "settings.json"))
@@ -140,11 +142,13 @@ func openSettings(dataDir string) (*settings.Store, error) {
 	if err != nil {
 		log.Printf("MCP token file unavailable: %v", err)
 	}
-	return settings.Open(
+	store, err := settings.Open(
 		filepath.Join(dataDir, "settings.json"),
 		dataDir,
 		mcpToken,
 	)
+	proxy.Use(func() proxy.ProxySettings { return store.Get().Proxy })
+	return store, err
 }
 
 // Names of the data files written before the BiblioCell rename.

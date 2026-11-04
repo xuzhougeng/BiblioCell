@@ -645,13 +645,14 @@ func (c *cli) sources(ctx context.Context, args []string) error {
 		}
 		config := library.SourceConfig{
 			ID: current.ID, Enabled: current.Enabled, Query: current.Query,
-			MaxResults: current.MaxResults, Provider: current.Provider,
+			MaxResults: current.MaxResults, Provider: current.Provider, Proxy: current.Proxy,
 		}
 		flags := flag.NewFlagSet("sources set", flag.ContinueOnError)
 		flags.BoolVar(&config.Enabled, "enabled", config.Enabled, "run this source when syncing")
 		flags.StringVar(&config.Query, "query", config.Query, "search expression")
 		flags.IntVar(&config.MaxResults, "max", config.MaxResults, "results per sync, 1-100")
 		flags.StringVar(&config.Provider, "provider", config.Provider, "geo, sra, or ena for sequence-repositories")
+		flags.StringVar(&config.Proxy, "proxy", config.Proxy, "inherit to follow the global proxy setting, or direct")
 		if err := flags.Parse(rest[1:]); err != nil {
 			return err
 		}
@@ -685,6 +686,8 @@ func (c *cli) configure(args []string) error {
 		flags.StringVar(&config.MCPToken, "mcp-token", config.MCPToken, "MCP bearer token, used on next start")
 		flags.StringVar(&config.NCBIAPIKey, "ncbi-api-key", config.NCBIAPIKey, "NCBI API key for PubMed, GEO and SRA")
 		flags.StringVar(&config.ContactEmail, "contact-email", config.ContactEmail, "contact email for Crossref's polite pool")
+		flags.StringVar(&config.Proxy.Mode, "proxy-mode", config.Proxy.Mode, "outbound proxy: system (default, follows the system's settings), direct, or custom")
+		flags.StringVar(&config.Proxy.URL, "proxy-url", config.Proxy.URL, "proxy for -proxy-mode custom: http://, https:// or socks5://[user:pass@]host:port")
 		// The -ai-* flags edit the chat model's profile, creating "default" when there is none.
 		index := -1
 		for i, profile := range config.Models {
@@ -705,6 +708,7 @@ func (c *cli) configure(args []string) error {
 		flags.IntVar(&ai.Config.MaxTokens, "ai-max-tokens", ai.Config.MaxTokens, "output tokens per completion, 0 for the default")
 		flags.IntVar(&ai.Config.MaxSteps, "ai-max-steps", ai.Config.MaxSteps, "completions per run, 0 for 20")
 		flags.StringVar(&ai.Config.Effort, "ai-effort", ai.Config.Effort, "thinking effort: low, medium, high, xhigh, max; empty for the service default")
+		flags.StringVar(&ai.Config.Proxy, "ai-proxy", ai.Config.Proxy, "inherit to follow the global proxy setting, or direct")
 		if err := flags.Parse(rest); err != nil {
 			return err
 		}

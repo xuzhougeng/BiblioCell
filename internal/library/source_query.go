@@ -94,7 +94,7 @@ func (s *Store) UpdateSourceQuery(ctx context.Context, update QueryUpdate) (Sour
 		return SourceStatus{}, errors.New("this source only offers a manual official link")
 	}
 	config := SourceConfig{ID: current.ID, Enabled: current.Enabled, Query: update.Query,
-		MaxResults: current.MaxResults, Provider: current.Provider}
+		MaxResults: current.MaxResults, Provider: current.Provider, Proxy: current.Proxy}
 	if update.MaxResults != 0 {
 		config.MaxResults = update.MaxResults
 	}
@@ -179,7 +179,7 @@ func (s *Store) trySourceQuery(ctx context.Context, input QueryTrialInput, harve
 	if !current.Supported {
 		return QueryTrial{}, errors.New("this source only offers a manual official link")
 	}
-	config := SourceConfig{ID: current.ID, Enabled: true, Query: current.Query, MaxResults: current.MaxResults, Provider: current.Provider}
+	config := SourceConfig{ID: current.ID, Enabled: true, Query: current.Query, MaxResults: current.MaxResults, Provider: current.Provider, Proxy: current.Proxy}
 	if strings.TrimSpace(input.Query) != "" {
 		config.Query = input.Query
 	}
