@@ -1,4 +1,3 @@
-import { isMyGo } from "mygo-runtime";
 import { getDocument, GlobalWorkerOptions, type PageViewport, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerURL from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { DownloadManager, EventBus, PDFFindController, PDFLinkService, PDFViewer } from "pdfjs-dist/legacy/web/pdf_viewer.mjs";
@@ -7,6 +6,7 @@ import "./pdf-viewer.css";
 import { t } from "./i18n.ts";
 import { KEY_MESSAGE, LOCATED_MESSAGE, LOCATE_MESSAGE, READY_MESSAGE, parseTargetHash, type PdfTarget } from "./pdf-frame.ts";
 import { findNeedle, indexPage, pageOrder, quoteNeedles, type MatchSpan, type PageIndex } from "./pdf-locate.ts";
+import { pdfSource } from "./pdf-source.ts";
 
 // This document owns its find controller. No native PDF plug-in or window.find
 // is involved, so toolbar clicks and Ctrl/Cmd+F stay within this frame.
@@ -17,9 +17,7 @@ const filename = /\.pdf$/i.test(title) ? title : `${title}.pdf`;
 document.title = filename;
 // In the window the file comes through the paperfile scheme; from the web server it is a plain
 // route. A browser test page (tests/) hands over a same-origin URL instead of a file ID.
-const source = isMyGo()
-  ? `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(file)}`
-  : /^(\/(?!\/)|blob:)/.test(file) ? file : `/paperfile/${encodeURIComponent(file)}`;
+const source = pdfSource(file);
 const root = document.createElement("main");
 root.innerHTML = `<div class="pdf-toolbar" role="toolbar"></div><div class="pdf-find" hidden></div><p class="pdf-status" role="status"></p><aside class="pdf-outline" hidden></aside><div class="pdf-container"><div class="pdfViewer"></div></div><p class="pdf-note" role="status" hidden></p>`;
 document.body.append(root);
@@ -344,7 +342,7 @@ status.textContent = t("正在加载 PDF…");
 // In the window the file arrives whole from the app, so range requests gain nothing; on
 // Windows, where the scheme is an http URL, they would even break the document (see
 // servePaperFile). Over a real web server ranges work and spare reading the whole file.
-const task = getDocument({ url: source, disableRange: isMyGo(), cMapUrl: "/pdf-assets/cmaps/", cMapPacked: true, standardFontDataUrl: "/pdf-assets/standard_fonts/", wasmUrl: "/pdf-assets/wasm/" });
+const task = getDocument({ ...source, cMapUrl: "/pdf-assets/cmaps/", cMapPacked: true, standardFontDataUrl: "/pdf-assets/standard_fonts/", wasmUrl: "/pdf-assets/wasm/" });
 task.onPassword = (update: (password: string) => void) => {
   const password = window.prompt(t("请输入 PDF 密码"));
   if (password === null) { void task.destroy(); status.textContent = t("PDF 已取消加载。"); }
