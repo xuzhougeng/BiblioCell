@@ -40,6 +40,10 @@ type Config struct {
 	// feature uses.
 	Models []ModelProfile `json:"models"`
 	Tasks  TaskModels     `json:"tasks"`
+	// QuitOnWindowClose quits the desktop app when its window closes. Off by
+	// default: closing hides the window and the app keeps running in the
+	// background, with MCP and source updates, until it is quit.
+	QuitOnWindowClose bool `json:"quitOnWindowClose"`
 }
 
 // ModelProfile is one model service under a name the person chose.

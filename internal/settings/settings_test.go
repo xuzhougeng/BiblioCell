@@ -94,7 +94,7 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() defaults error = %v", err)
 	}
-	if got := store.Get(); got.StoragePath != defaultStorage || got.FontSize != DefaultFontSize {
+	if got := store.Get(); got.StoragePath != defaultStorage || got.FontSize != DefaultFontSize || got.QuitOnWindowClose {
 		t.Fatalf("defaults = %+v", got)
 	}
 	if got, want := store.Get().DatabasePath(), filepath.Join(defaultStorage, DatabaseFile); got != want {
@@ -122,6 +122,7 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	}
 
 	want.FontSize = 16
+	want.QuitOnWindowClose = true
 	if err := reopened.Save(want); err != nil {
 		t.Fatalf("Save() replacement error = %v", err)
 	}
