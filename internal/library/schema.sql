@@ -1,4 +1,4 @@
--- BiblioCell · schema v18
+-- BiblioCell · schema v19
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -107,8 +107,10 @@ CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE p
 
 CREATE TABLE IF NOT EXISTS paper_curation (
     paper_id TEXT PRIMARY KEY NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    -- excluded 是相关但不收录；irrelevant（无关）是清理：文献留在库中只为去重，
+    -- 来源更新与导入不会再把它加回来，默认视图与统计都不显示它。
     screening_status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (screening_status IN ('pending','included','excluded','uncertain')),
+        CHECK (screening_status IN ('pending','included','excluded','uncertain','irrelevant')),
     screening_reason TEXT,
     screening_method TEXT NOT NULL DEFAULT 'unreviewed'
         CHECK (screening_method IN ('unreviewed','rule','model','human')),
@@ -602,5 +604,5 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (14, 'AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照'),
        (15, '按原文与提示词缓存翻译结果');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 18;
+PRAGMA user_version = 19;
 COMMIT;

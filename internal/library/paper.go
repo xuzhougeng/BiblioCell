@@ -178,7 +178,7 @@ func scanPaper(rows *sql.Rows) (Paper, error) {
 // PaperFilter narrows a paper listing for MCP and the CLI.
 type PaperFilter struct {
 	Query       string `json:"query,omitempty" jsonschema:"Optional text matched against title, DOI, authors, species, organs, modalities, platforms, and tags"`
-	Screening   string `json:"screening,omitempty" jsonschema:"Only papers with this decision: pending, included, excluded, or uncertain"`
+	Screening   string `json:"screening,omitempty" jsonschema:"Only papers with this decision: pending, included, excluded, uncertain, or irrelevant. Irrelevant papers are left out unless asked for: they stay in the library only so that imports and source updates skip them"`
 	Source      string `json:"source,omitempty" jsonschema:"Only papers from this source, such as MCP, CLI, or PubMed"`
 	BatchID     string `json:"batchId,omitempty" jsonschema:"Only papers from this import batch"`
 	NeedsReview bool   `json:"needsReview,omitempty" jsonschema:"Only papers a person has not decided on or that carry an open proposal"`
@@ -187,6 +187,9 @@ type PaperFilter struct {
 }
 
 func (f PaperFilter) matches(p Paper) bool {
+	if f.Screening == "" && p.Screening == "irrelevant" {
+		return false
+	}
 	if (f.Screening != "" && p.Screening != f.Screening) || (f.Source != "" && p.Source != f.Source) ||
 		(f.BatchID != "" && p.BatchID != f.BatchID) {
 		return false
@@ -626,7 +629,7 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 	if p.Year != nil && (*p.Year < 1800 || *p.Year > 2200) {
 		return errors.New("paper year must be between 1800 and 2200")
 	}
-	if !oneOf(p.Screening, "pending", "included", "excluded", "uncertain") {
+	if !oneOf(p.Screening, "pending", "included", "excluded", "uncertain", "irrelevant") {
 		return fmt.Errorf("invalid screening status %q", p.Screening)
 	}
 	// The one gate every write passes: a decision exists only with its review.

@@ -49,13 +49,14 @@ export function draftTask(draft: BatchDraft): JudgeTask | null {
   return draft.presets.find(p => p.id === draft.taskId) ?? null;
 }
 
-const decided = (p: Paper): boolean => p.screening !== "pending";
+// Irrelevant papers are never candidates: they stay in the library only so imports skip them.
+const decided = (p: Paper): boolean => p.screening !== "pending" && p.screening !== "irrelevant";
 
 function candidates(app: App): Paper[] {
   const draft = app.batchDraft!;
   const current = new Set(draft.current);
   const query = draft.search.trim().toLowerCase();
-  const inScope = (p: Paper): boolean => draft.scope === "all" || (draft.scope === "pending" ? p.screening === "pending" : draft.scope === "decided" ? decided(p) : current.has(p.id));
+  const inScope = (p: Paper): boolean => draft.scope === "all" ? p.screening !== "irrelevant" : draft.scope === "pending" ? p.screening === "pending" : draft.scope === "decided" ? decided(p) : current.has(p.id);
   return app.state.papers.filter(p => inScope(p) && (!query || `${p.title} ${p.authors} ${p.doi} ${p.year ?? ""}`.toLowerCase().includes(query)));
 }
 

@@ -49,6 +49,16 @@ test("tasksFor queues unreviewed evidence on a decided paper and agent links on 
   assert.equal(data({ ...dataset, paperLinks: [{ ...dataset.paperLinks[0]!, verified: true }] }).length, 0);
 });
 
+test("irrelevant papers stay out of the list and the task queue unless asked for", () => {
+  const { papers, datasets } = demoState();
+  const first = papers[0]!;
+  const gone = { ...first, screening: "irrelevant" };
+  const rest = papers.slice(1);
+  assert.ok(!filterPapers([gone, ...rest], emptyFilters()).some((p) => p.id === gone.id), "the default list leaves it out");
+  assert.deepEqual(filterPapers([gone, ...rest], { ...emptyFilters(), screening: "irrelevant" }).map((p) => p.id), [gone.id]);
+  assert.ok(tasksFor([{ ...gone, screening: "irrelevant", fulltext: "missing" }], datasets).length === 0, "no task asks to finish an irrelevant paper");
+});
+
 test("filterPapers narrows by source", () => {
   const { papers } = demoState();
   const source = papers[0]!.source;

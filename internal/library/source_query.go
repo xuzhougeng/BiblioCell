@@ -136,6 +136,7 @@ type QueryTrial struct {
 	Included         int           `json:"included"`
 	Excluded         int           `json:"excluded"`
 	Uncertain        int           `json:"uncertain"`
+	Irrelevant       int           `json:"irrelevant"`
 	Undecided        int           `json:"undecided"`
 	AlreadyHarvested int           `json:"alreadyHarvested"`
 	Records          []TrialRecord `json:"records"`
@@ -266,6 +267,8 @@ func (s *Store) trySourceQuery(ctx context.Context, input QueryTrialInput, harve
 			trial.Excluded++
 		case "uncertain":
 			trial.Uncertain++
+		case "irrelevant":
+			trial.Irrelevant++
 		default:
 			trial.Undecided++
 		}

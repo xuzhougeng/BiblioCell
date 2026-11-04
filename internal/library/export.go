@@ -776,6 +776,9 @@ func Report(papers []Paper, datasets []Dataset, title string, now time.Time) str
 	fmt.Fprintf(&b, "| Excluded | %d |\n", count["excluded"])
 	fmt.Fprintf(&b, "| Uncertain | %d |\n", count["uncertain"])
 	fmt.Fprintf(&b, "| Pending | %d |\n", count["pending"])
+	if count["irrelevant"] > 0 {
+		fmt.Fprintf(&b, "| Irrelevant (kept only to skip on import) | %d |\n", count["irrelevant"])
+	}
 	fmt.Fprintf(&b, "| **Needs a decision** (pending + uncertain) | **%d** |\n", count["pending"]+count["uncertain"])
 	fmt.Fprintf(&b, "| Open agent proposals | %d |\n", proposals)
 	fmt.Fprintf(&b, "| Added by source updates, unchecked | %d |\n", awaiting)

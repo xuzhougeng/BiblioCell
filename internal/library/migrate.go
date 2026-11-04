@@ -126,6 +126,88 @@ CREATE INDEX IF NOT EXISTS idx_merged_papers_paper ON merged_papers(paper_id);
 CREATE INDEX IF NOT EXISTS idx_merged_papers_doi ON merged_papers(doi) WHERE doi <> '';
 CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE pmid <> '';`,
 	},
+	{
+		Version:     19,
+		Description: "收录状态新增“无关”：标无关的文献留在库中只为去重，附件清理后来源更新与导入不再加回",
+		Run:         rebuildPaperCuration,
+	},
+}
+
+// paperCurationDDL is paper_curation as schema.sql defines it, for the rebuild
+// below. SQLite cannot change a CHECK constraint in place.
+const paperCurationDDL = `CREATE TABLE IF NOT EXISTS paper_curation (
+    paper_id TEXT PRIMARY KEY NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    -- excluded 是相关但不收录；irrelevant（无关）是清理：文献留在库中只为去重，
+    -- 来源更新与导入不会再把它加回来，默认视图与统计都不显示它。
+    screening_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (screening_status IN ('pending','included','excluded','uncertain','irrelevant')),
+    screening_reason TEXT,
+    screening_method TEXT NOT NULL DEFAULT 'unreviewed'
+        CHECK (screening_method IN ('unreviewed','rule','model','human')),
+    screening_reviewed_at TEXT,
+    -- screening_status 只记录人的决定；agent 的判断只能写入 proposed_*，等人确认。
+    proposed_screening TEXT NOT NULL DEFAULT ''
+        CHECK (proposed_screening IN ('','included','excluded','uncertain')),
+    proposed_reason TEXT NOT NULL DEFAULT '',
+    -- 来源更新新增的文献进入待核查，人做出收录判断或标记核查完成后移出。
+    awaiting_review INTEGER NOT NULL DEFAULT 0 CHECK (awaiting_review IN (0,1)),
+    reading_status TEXT NOT NULL DEFAULT 'unread'
+        CHECK (reading_status IN ('unread','skimmed','read')),
+    priority TEXT NOT NULL DEFAULT 'normal'
+        CHECK (priority IN ('low','normal','high')),
+    starred INTEGER NOT NULL DEFAULT 0 CHECK (starred IN (0,1)),
+    tags_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(tags_json) AND json_type(tags_json) = 'array'),
+    -- NULL 表示使用来源值；[] / 空字符串可显式覆盖成空。采集程序不得写这些列。
+    organs_override_json TEXT CHECK (organs_override_json IS NULL OR
+        (json_valid(organs_override_json) AND json_type(organs_override_json) = 'array')),
+    modalities_override_json TEXT CHECK (modalities_override_json IS NULL OR
+        (json_valid(modalities_override_json) AND json_type(modalities_override_json) = 'array')),
+    conditions_override_text TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    CHECK (screening_status <> 'excluded' OR length(trim(coalesce(screening_reason,''))) > 0)
+)`
+
+// paperCurationColumns lists the columns copied across the rebuild, by name:
+// the order of an old table must not matter.
+const paperCurationColumns = `paper_id, screening_status, screening_reason, screening_method, screening_reviewed_at,
+	proposed_screening, proposed_reason, awaiting_review, reading_status, priority, starred, tags_json,
+	organs_override_json, modalities_override_json, conditions_override_text, notes, updated_at`
+
+// rebuildPaperCuration recreates paper_curation so screening_status admits
+// 'irrelevant'. The views and trigger over it are dropped first, because
+// renaming a table checks that every view still parses; schema.sql recreates
+// them after the migration. A table that already admits the value (built by a
+// newer schema.sql on the way here) is left alone, as is a pre-release database
+// that has no table yet.
+func rebuildPaperCuration(tx *sql.Tx) error {
+	var ddl string
+	err := tx.QueryRow("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'paper_curation'").Scan(&ddl)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // A pre-release database without the table: schema.sql creates it afterwards.
+	}
+	if err != nil {
+		return fmt.Errorf("read paper_curation: %w", err)
+	}
+	if strings.Contains(ddl, "'irrelevant'") {
+		return nil
+	}
+	steps := []string{
+		"DROP VIEW IF EXISTS v_work_queue",
+		"DROP VIEW IF EXISTS v_paper_overview",
+		"DROP TRIGGER IF EXISTS tr_paper_curation_init",
+		"ALTER TABLE paper_curation RENAME TO paper_curation_old",
+		paperCurationDDL,
+		"INSERT INTO paper_curation(" + paperCurationColumns + ") SELECT " + paperCurationColumns + " FROM paper_curation_old",
+		"DROP TABLE paper_curation_old",
+	}
+	for _, step := range steps {
+		if _, err := tx.Exec(step); err != nil {
+			return fmt.Errorf("rebuild paper_curation: %w", err)
+		}
+	}
+	return nil
 }
 
 // SchemaVersion is the schema this build writes: the baseline plus every

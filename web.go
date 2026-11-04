@@ -69,6 +69,7 @@ var webMethodAccess = map[string]webAccess{
 	"UpdateStatus":             webRead, // always "off" on the web
 
 	"DeletePaper":             webAdmin,
+	"DismissPaper":            webAdmin,
 	"DeleteDataset":           webAdmin,
 	"SourceCheckPending":      webAdmin,
 	"SavePaperEdits":          webAdmin,

@@ -216,7 +216,7 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 		var filter library.PaperFilter
 		flags := flag.NewFlagSet("papers list", flag.ContinueOnError)
 		flags.StringVar(&filter.Query, "q", "", "text matched against title, DOI, authors, species, organs, tags")
-		flags.StringVar(&filter.Screening, "screening", "", "pending, included, excluded, or uncertain")
+		flags.StringVar(&filter.Screening, "screening", "", "pending, included, excluded, uncertain, or irrelevant")
 		flags.StringVar(&filter.Source, "source", "", "only papers from this source")
 		flags.StringVar(&filter.BatchID, "batch", "", "only papers from this import batch")
 		flags.BoolVar(&filter.NeedsReview, "needs-review", false, "only papers a person has not settled")
@@ -450,7 +450,7 @@ func (c *cli) export(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("export", flag.ContinueOnError)
 	out := flags.String("o", "", "file to write; stdout when omitted")
 	flags.StringVar(&paperFilter.Query, "q", "", "text matched against papers (paper formats) or datasets (dataset formats)")
-	flags.StringVar(&paperFilter.Screening, "screening", "", "only papers with this decision: pending, included, excluded, or uncertain")
+	flags.StringVar(&paperFilter.Screening, "screening", "", "only papers with this decision: pending, included, excluded, uncertain, or irrelevant (left out unless asked for)")
 	flags.StringVar(&datasetFilter.Status, "status", "", "only datasets with this status: pending, identified, or verified")
 	flags.StringVar(&req.GroupBy, "group-by", "species", "datasets-summary dimension: species, organ, or modality")
 	flags.StringVar(&req.Title, "title", "", "report title")
