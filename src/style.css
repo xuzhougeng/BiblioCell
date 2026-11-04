@@ -63,6 +63,18 @@
 #runtime-message { min-width: 0 }
 .heading-actions[hidden], .heading-actions > [hidden] { display: none }
 .real-mode [data-action="import-json"], .real-mode [data-action="add-resource"], .real-mode [data-action="reset-demo"] { display: none !important }
+/* 网页版只读访问：隐藏会修改记录或设置的控件，以及只有管理员才能看到的页面；收藏星号保留显示但不可点。 */
+.read-only [data-page="sources"], .read-only [data-page="agent"], .read-only [data-action="agent-open"], .read-only [data-action="new-paper"],
+.read-only [data-action="edit-paper"], .read-only [data-action="edit-paper-field"], .read-only [data-action="delete-paper"], .read-only [data-action="save-notes"], .read-only [data-action="save-tags"],
+.read-only [data-action="link-dataset"], .read-only [data-action="edit-dataset"], .read-only [data-action="new-dataset"], .read-only [data-action="new-dataset-for-paper"],
+.read-only [data-action="import-file"], .read-only [data-action="remove-file"], .read-only [data-action="fetch-fulltext"], .read-only [data-action="extract-paper-metadata"], .read-only [data-action="lookup-doi"], .read-only [data-action="fetch-doi"],
+.read-only [data-action="accept-proposal"], .read-only [data-action="dismiss-proposal"], .read-only [data-action="finish-review"], .read-only [data-action="review-evidence"], .read-only [data-action="verify-link"], .read-only [data-action="verify-repository"],
+.read-only [data-action="start-screening"], .read-only [data-action="resume-screening"], .read-only [data-action="batch-open"], .read-only [data-action="bulk-screen"], .read-only [data-action="bulk-delete"],
+.read-only [data-action="calibration-rerun"], .read-only [data-action="calibration-screen"], .read-only [data-action="evidence-jump"] { display: none !important }
+.read-only .star-button { pointer-events: none }
+/* 网页版没有系统废纸篓和文件对话框。 */
+body:not(.desktop) .desktop-only { display: none !important }
+.web-auth { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: calc(13px * var(--font-scale, 1)); white-space: nowrap }
 .sidebar-settings { margin-bottom: 12px }
 /* 侧栏折叠按钮:置于顶栏左端,ghost 样式;悬停 tooltip"折叠侧栏/展开侧栏" */
 .sidebar-collapse {

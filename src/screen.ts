@@ -1,4 +1,5 @@
 import { metadataButton } from "./metadata.ts";
+import { canWrite, hasBackend } from "./env.ts";
 // Screening mode: one paper at a time, so a person can read it and decide
 // whether to keep it, then move on with the arrow keys. The list is a snapshot
 // of the filtered papers at entry, so deciding never shuffles the order or
@@ -77,15 +78,21 @@ export function translationPop(tr: Translation): string {
 
 /** pdfPane shows the stored PDF, or an upload entry when the paper has none. */
 function pdfPane(app: App, p: Paper): string {
-  if (!app.env.desktop || !app.env.real) return "";
+  if (!hasBackend(app.env)) return "";
   const file = app.paperResources(p.id).find((r) => r.type === "fulltext" && r.localPath && /\.pdf$/i.test(r.localPath));
-  if (!file) return `<aside class="screen-pdf screen-pdf-empty" aria-label="${t("全文")}"><div class="screen-pdf-head"><span>${I("file", 15)} ${t("全文")}</span></div><div class="screen-upload"><div class="screen-upload-card"><div class="empty-icon">${I("upload", 32)}</div><h3>${t("暂无 PDF 全文")}</h3><p>${t("上传这篇文献的 PDF，即可在右侧阅读全文。")}</p><button class="btn btn-primary" data-action="import-file" data-id="${esc(p.id)}" data-type="fulltext" data-screen-pdf="true">${I("upload", 16)} ${t("上传 PDF")}</button><p class="small muted">${t("文件会复制到文献库，并关联到当前文献。")}</p></div></div></aside>`;
+  if (!file) {
+    // Only the desktop can pick a file; on the web an admin fetches open-access full text from the drawer.
+    const upload = app.env.desktop
+      ? `<p>${t("上传这篇文献的 PDF，即可在右侧阅读全文。")}</p><button class="btn btn-primary" data-action="import-file" data-id="${esc(p.id)}" data-type="fulltext" data-screen-pdf="true">${I("upload", 16)} ${t("上传 PDF")}</button><p class="small muted">${t("文件会复制到文献库，并关联到当前文献。")}</p>`
+      : `<p>${t("这篇文献还没有保存全文。")}</p><p class="small muted">${t("请在桌面应用中导入 PDF，或让管理员通过“获取开放全文”保存。")}</p>`;
+    return `<aside class="screen-pdf screen-pdf-empty" aria-label="${t("全文")}"><div class="screen-pdf-head"><span>${I("file", 15)} ${t("全文")}</span></div><div class="screen-upload"><div class="screen-upload-card"><div class="empty-icon">${I("upload", 32)}</div><h3>${t("暂无 PDF 全文")}</h3>${upload}</div></div></aside>`;
+  }
   if (!app.screenPdf) return "";
-  return `<aside class="screen-pdf"><div class="screen-pdf-head"><span>${I("file", 15)} ${esc(file.title)}</span><span class="section-actions"><button class="text-link" data-action="open-file" data-id="${esc(file.id)}">${t("在系统中打开")}</button><button class="text-link" data-action="screen-pdf-toggle">${t("隐藏")}</button></span></div><iframe class="screen-pdf-frame" src="${esc(paperFileURL(file.id))}" title="${esc(file.title)}"></iframe></aside>`;
+  return `<aside class="screen-pdf"><div class="screen-pdf-head"><span>${I("file", 15)} ${esc(file.title)}</span><span class="section-actions"><button class="text-link" data-action="open-file" data-id="${esc(file.id)}">${app.env.desktop ? t("在系统中打开") : t("新标签页打开")}</button><button class="text-link" data-action="screen-pdf-toggle">${t("隐藏")}</button></span></div><iframe class="screen-pdf-frame" src="${esc(paperFileURL(file.id))}" title="${esc(file.title)}"></iframe></aside>`;
 }
 
 /** hasPdf says whether the paper has a stored PDF, for the toolbar toggle. */
-const hasPdf = (app: App, p: Paper): boolean => app.env.desktop && app.env.real && app.paperResources(p.id).some((r) => r.type === "fulltext" && r.localPath && /\.pdf$/i.test(r.localPath));
+const hasPdf = (app: App, p: Paper): boolean => hasBackend(app.env) && app.paperResources(p.id).some((r) => r.type === "fulltext" && r.localPath && /\.pdf$/i.test(r.localPath));
 
 const read = (key: string): string => {
   try { return localStorage.getItem(key) ?? ""; } catch { return ""; }
@@ -188,7 +195,7 @@ function fulltextEvidence(app: App, p: Paper): string {
  * page to look at first; the viewer searches its own text layer in any case. Outside
  * screening it opens the paper in screening first, so the drawer's evidence can jump too. */
 export async function jumpToPdfPage(app: App, paperId: string, page: number, excerpt: string): Promise<void> {
-  if (!app.paperById(paperId) || !app.env.desktop || !app.env.real) return;
+  if (!app.paperById(paperId) || !hasBackend(app.env)) return;
   if (!app.screen || screenPapers(app)[app.screen.index]?.id !== paperId) {
     app.closeDrawer();
     app.screen = { ids: [paperId], index: 0, ai: null };
@@ -333,9 +340,9 @@ export const screenActions = (app: App): Record<string, (el: HTMLElement, id: st
   "evidence-jump": (el, id) => { void jumpToPdfPage(app, id, Number(el.dataset.page ?? 0), el.dataset.excerpt ?? ""); },
 });
 
-/** screenModelReady: the desktop app on a real library, with a model bound to screening. */
-export const screenModelReady = (app: App): boolean => app.env.desktop && app.env.real && configured(modelFor(app.env.settings, "screen"));
-export const translateModelReady = (app: App): boolean => app.env.desktop && app.env.real && configured(modelFor(app.env.settings, "translate"));
+/** screenModelReady: a real library that may be written, with a model bound to screening. */
+export const screenModelReady = (app: App): boolean => canWrite(app.env) && configured(modelFor(app.env.settings, "screen"));
+export const translateModelReady = (app: App): boolean => canWrite(app.env) && configured(modelFor(app.env.settings, "translate"));
 
 
 /** applyDecision records the status and reports whether it was applied (an exclusion may first need a reason). */

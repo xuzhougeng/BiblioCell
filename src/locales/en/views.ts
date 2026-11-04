@@ -1,5 +1,9 @@
 // English strings for views.
 export const views: Record<string, string> = {
+  // screening on the web
+  "这篇文献还没有保存全文。": "This paper has no stored full text yet.",
+  "请在桌面应用中导入 PDF，或让管理员通过“获取开放全文”保存。": "Import the PDF in the desktop app, or let an admin save it with “Fetch open-access full text”.",
+  "新标签页打开": "Open in a new tab",
   "批量 AI 判断": "Batch AI judgement",
   "设置 AI 任务": "Set up the AI task",
   "任务": "Task",

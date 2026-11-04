@@ -9,6 +9,7 @@ import { $, $$, I, empty, errorMessage } from "./ui.ts";
 import { formatElapsed, toolCardHTML, type ToolRun } from "./agent-tools.ts";
 import { LOCATED_MESSAGE, frameBase, locateInFrame, paperFileURL, targetHash, type LocatedMessage } from "./pdf-frame.ts";
 import { t } from "./i18n.ts";
+import { hasBackend, isAdmin } from "./env.ts";
 
 export interface AgentState {
   /** The saved conversation this transcript belongs to; empty until the first completed run saves it. */
@@ -117,7 +118,8 @@ function tickElapsed(): void {
 
 export function renderAgent(app: App): string {
   const { env } = app;
-  if (!env.desktop) return empty(t("AI 助手需要桌面应用"), t("浏览器预览没有后端，也没有可操作的数据库。请在 BiblioCell 桌面应用中使用。"));
+  if (!env.backend) return empty(t("AI 助手需要桌面应用"), t("浏览器预览没有后端，也没有可操作的数据库。请在 BiblioCell 桌面应用中使用。"));
+  if (env.readOnly) return empty(t("AI 助手仅限管理员"), t("助手通过 MCP 工具读写正式数据库，并使用服务器上配置的模型；请先登录管理员。"));
   const profile = modelFor(env.settings, "chat");
   const ai = profile?.config ?? { protocol: "anthropic", baseUrl: "", apiKey: "", model: "", maxTokens: 0, maxSteps: 0, effort: "" };
   const protocol = ai.protocol || "anthropic";
@@ -174,7 +176,7 @@ function agentPdfTopHTML(app: App, s: AgentPdfState): string {
   const status = pdfStatusText(s);
   const quote = s.quote ? `<q class="agent-pdf-quote" title="${esc(s.quote)}">${esc(s.quote)}</q>` : "";
   return `<div class="agent-pdf-top"><div class="agent-pdf-head"><span class="agent-pdf-title" title="${esc(title)}">${I("file", 15)}<strong>${esc(title)}</strong></span>`
-    + `<span class="section-actions"><button type="button" class="text-link" data-action="open-paper" data-id="${esc(s.paperId)}">${t("文献详情")}</button><button type="button" class="text-link" data-action="open-file" data-id="${esc(s.fileId)}">${t("在系统中打开")}</button><button type="button" class="btn-icon" data-action="agent-pdf-close" aria-label="${t("关闭 PDF")}" title="${t("关闭 PDF")}">${I("x", 16)}</button></span></div>`
+    + `<span class="section-actions"><button type="button" class="text-link" data-action="open-paper" data-id="${esc(s.paperId)}">${t("文献详情")}</button><button type="button" class="text-link" data-action="open-file" data-id="${esc(s.fileId)}">${app.env.desktop ? t("在系统中打开") : t("新标签页打开")}</button><button type="button" class="btn-icon" data-action="agent-pdf-close" aria-label="${t("关闭 PDF")}" title="${t("关闭 PDF")}">${I("x", 16)}</button></span></div>`
     + `<div class="agent-pdf-cite">${position}<span class="agent-pdf-status ${esc(s.status)}" role="status">${esc(status)}</span>${quote}</div></div>`;
 }
 
@@ -214,8 +216,8 @@ export function openCitation(app: App, paperId: string, page: number, quote: str
     app.toast(t("库里没有 ID 为 {id} 的文献。", { id: paperId }), true);
     return;
   }
-  if (!app.env.desktop || !app.env.real) {
-    app.openPaper(paperId);
+  if (!hasBackend(app.env)) {
+    app.openPaper(paperId); // The static preview has no files to show.
     return;
   }
   const file = fulltextPdf(app, paperId);
@@ -376,7 +378,7 @@ function rerender(app: App, draft?: string, focus?: boolean): void {
 
 export function sendAgentMessage(app: App, form: HTMLFormElement): void {
   const state = app.agent;
-  if (!app.env.desktop) return;
+  if (!isAdmin(app.env)) return;
   const input = $<HTMLTextAreaElement>("#agent-input", form);
   const prompt = input?.value.trim() ?? "";
   if (!prompt) return;
@@ -447,7 +449,7 @@ async function saveConversation(app: App): Promise<void> {
 
 /** agentHistoryModal lists saved conversations to reopen or delete. */
 export function agentHistoryModal(app: App): void {
-  if (!app.env.desktop) return;
+  if (!isAdmin(app.env)) return;
   Library.listAgentConversations().then((list) => {
     const items = list.map((c) => {
       const current = c.id === app.agent.id;

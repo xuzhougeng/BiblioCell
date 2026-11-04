@@ -40,6 +40,11 @@ export const fileActions = (app: App): Record<string, (el: HTMLElement, id: stri
     }
   },
   "open-file": (_el, id) => {
+    if (!app.env.desktop) {
+      // The browser shows the file itself; the web server streams it by id.
+      window.open(`/paperfile/${encodeURIComponent(id)}`, "_blank", "noopener");
+      return;
+    }
     Library.openPaperFile(id).catch((error: unknown) => {
       app.toast(t("无法打开文件：{error}", { error: errorMessage(error, t("请重试。")) }), true);
     });

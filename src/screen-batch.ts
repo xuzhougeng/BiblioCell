@@ -1,4 +1,5 @@
 import type { App } from "./app.ts";
+import { canWrite } from "./env.ts";
 import type { JudgeTask, Paper } from "./mygo.ts";
 import { Library } from "./mygo.ts";
 import { configured, modelFor, modelName, models } from "./models.ts";
@@ -146,7 +147,7 @@ function showConfig(app: App): void {
   if (!draft.selected.size) return;
   const profiles = models(app.env.settings).filter(configured);
   if (!profiles.some(p => p.id === draft.modelId)) draft.modelId = profiles[0]?.id ?? "";
-  const ready = app.env.real && app.env.desktop && profiles.length > 0;
+  const ready = canWrite(app.env) && profiles.length > 0;
   const task = draftTask(draft);
   const taskOptions = draft.kind === "rerun" ? "" : `<label class="form-field"><span>${t("任务")}</span><select class="input" id="batch-task" name="taskId">
     <option value="screening" ${draft.taskId === "screening" ? "selected" : ""}>${t("收录筛选：是否符合筛选要求")}</option>
@@ -158,7 +159,7 @@ function showConfig(app: App): void {
     ${taskOptions}
     <div class="settings-grid"><label class="form-field"><span>${t("筛选模型")}</span><select class="input" name="modelId" required ${profiles.length ? "" : "disabled"}>${profiles.map(p => `<option value="${esc(p.id)}" ${draft.modelId === p.id ? "selected" : ""}>${esc(p.name)} · ${esc(modelName(p.config))}</option>`).join("")}</select></label>
     <label class="form-field"><span>${t("并发文献数")}</span><select class="input" name="concurrency">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option ${n === draft.concurrency ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>
-    ${!ready ? `<p class="notice-box">${!app.env.real || !app.env.desktop ? t("请在桌面端的真实数据库模式中运行 AI 筛选。") : t("请先在设置中添加可用的 AI 模型。")}</p>` : ""}
+    ${!ready ? `<p class="notice-box">${!canWrite(app.env) ? t("请在桌面端的真实数据库模式中运行 AI 筛选。") : t("请先在设置中添加可用的 AI 模型。")}</p>` : ""}
     <button class="text-link" type="button" data-action="batch-settings">${t("管理模型")}${I("arrow-right", 14)}</button>
     ${taskFields(draft)}<p id="batch-error" class="form-error" role="alert"></p></form>`,
     `<button class="btn btn-secondary" data-action="batch-back">${t("返回选择")}</button><button class="btn btn-primary" type="submit" form="batch-screen-form" ${ready ? "" : "disabled"}>${I("sparkle", 16)}${submit}</button>`, true);
@@ -188,7 +189,7 @@ export function startBatch(app: App, _form: HTMLFormElement): void {
   else if (task && !task.question) error = t("请填写判断问题。");
   else if (task && task.target.kind === "tag" && !task.target.value) error = t("请填写采纳后要打的标签。");
   else if (!ids.length) error = t("没有可筛选的文献");
-  else if (!app.env.real || !app.env.desktop || !configured(models(app.env.settings).find(p => p.id === draft.modelId))) error = t("请先在设置中添加可用的 AI 模型。");
+  else if (!canWrite(app.env) || !configured(models(app.env.settings).find(p => p.id === draft.modelId))) error = t("请先在设置中添加可用的 AI 模型。");
   else if (!Number.isInteger(draft.concurrency) || draft.concurrency < 1 || draft.concurrency > 8) error = t("并发文献数应为 1 到 8。");
   if (error) { const el = $("#batch-error"); if (el) el.textContent = error; return; }
   if (task) write(TASK_KEY, draft.taskId); else { write(TASK_KEY, "screening"); rememberRequirement(draft.requirement.trim()); }

@@ -8,7 +8,7 @@ import { Library, type UpdateState } from "../src/mygo.ts";
 import { UPDATE_SKIP_KEY, pillView, showUpdate } from "../src/update.ts";
 
 const env = (desktop: boolean): Env => ({
-  desktop, real: false,
+  desktop, backend: desktop, readOnly: false, web: null, real: false,
   settings: { storagePath: "", fontSize: 15, batchScreenConcurrency: 3, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],

@@ -22,7 +22,7 @@ test("autofill defaults to missing fields and new dataset links", () => {
 
 test("autofill requires a real desktop library, a configured model and stored full text", () => {
   const paper = demoState().papers[0]!;
-  const app = { env: { real: true, desktop: true, settings: {models:[],tasks:{}} }, paperResources: () => [] } as unknown as App;
+  const app = { env: { real: true, desktop: true, backend: true, readOnly: false, settings: {models:[],tasks:{}} }, paperResources: () => [] } as unknown as App;
   assert.match(metadataButton(app, paper), /disabled/);
   app.env.settings.models = [{ id:"model",name:"Model",config:{protocol:"openai",model:"model",baseUrl:"http://localhost:1234"} }] as App["env"]["settings"]["models"];
   assert.match(metadataButton(app, paper), /disabled/);

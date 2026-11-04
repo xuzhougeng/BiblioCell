@@ -16,7 +16,7 @@ const { tv } = await import("../src/i18n.ts");
 const { research } = await import("../src/locales/en/research.ts");
 
 const previewEnv = (): Env => ({
-  desktop: false, real: false,
+  desktop: false, backend: false, readOnly: false, web: null, real: false,
   settings: { storagePath: "", fontSize: 15, batchScreenConcurrency: 3, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],

@@ -3,6 +3,7 @@
 // on. Every suggestion is recorded on the Go side with the model profile that
 // gave it; the decision compared against is always the one on record now.
 import type { App } from "./app.ts";
+import { hasBackend } from "./env.ts";
 import { Library, type CalibrationFilter, type CalibrationPair, type CalibrationReport, type ScreeningSuggestion } from "./mygo.ts";
 import { SCREEN, dateText, esc } from "./model.ts";
 import { openBatch } from "./screen-batch.ts";
@@ -37,7 +38,7 @@ export function openCalibration(app: App, filter?: Partial<CalibrationFilter>): 
 /** loadCalibration fetches the report for the current filter; a filter changed meanwhile wins. */
 export async function loadCalibration(app: App): Promise<void> {
   const state = app.calibration;
-  if (!app.env.real || !app.env.desktop) return;
+  if (!hasBackend(app.env)) return;
   const filter = { ...state.filter };
   const current = () => JSON.stringify(filter) === JSON.stringify(state.filter);
   state.loading = true;
@@ -120,7 +121,7 @@ function mismatchList(report: CalibrationReport): string {
 
 /** renderCalibration draws the comparison panel below the papers tabs. */
 export function renderCalibration(app: App): string {
-  if (!app.env.real || !app.env.desktop) {
+  if (!hasBackend(app.env)) {
     return `<section class="panel" id="calibration-panel">${empty(t("AI 对照需要真实数据库"), t("在桌面端的真实数据库模式中，每条 AI 筛选建议都会连同模型配置记录下来，与你的收录判断对照。"))}</section>`;
   }
   const { report, loading, error } = app.calibration;

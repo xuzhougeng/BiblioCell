@@ -52,7 +52,7 @@ const other = state.papers[1];
 state.resources = [{ id: pdfURL, paperId: paper.id, datasetId: null, type: "fulltext", title: "atlas.pdf", localPath: "papers/atlas.pdf", status: "stored", url: "", isDemo: false, addedAt: "2026-01-01" }];
 history.replaceState(null, "", "#agent");
 const app = new App({ initial: state, store: { load: async () => state, save: async () => {} }, env: {
-  desktop: true, real: true,
+  desktop: true, backend: true, readOnly: false, web: null, real: true,
   settings: { storagePath: "", fontSize: 14, batchScreenConcurrency: 1, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [{ id: "m", name: "测试模型", config: { protocol: "openai", baseUrl: "http://localhost:11434/v1", apiKey: "", model: "qwen3", maxTokens: 0, maxSteps: 0, effort: "" } }], tasks: { chat: "m", screen: "m", translate: "m" } },
   mcp: { enabled: true, endpoint: "http://127.0.0.1:37841/mcp", token: "", tools: ["search_fulltext", "read_fulltext"], resources: [] },
   status: null, sources: [], automation: { enabled: false, intervalHours: 24, lastRunAt: "", nextRunAt: "", running: false, results: [] },

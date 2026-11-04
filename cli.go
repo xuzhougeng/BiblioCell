@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -64,6 +66,11 @@ Commands:
                [-ai-protocol anthropic|openai] [-ai-base-url URL] [-ai-api-key KEY] [-ai-model NAME] [-ai-max-steps N] [-ai-effort LEVEL]
   mcp                                 MCP endpoint and bearer token
   serve [-addr HOST:PORT]             run the MCP server without a window, until interrupted
+  web [-addr HOST:PORT] [-dist DIR] [-admin-password-file FILE]
+                                      serve the library as a website: read-only for everyone,
+                                      editable after signing in with the admin password
+                                      ($BIBLIOCELL_ADMIN_PASSWORD or the file); runs the
+                                      scheduled source updates while it is up
   sql STATEMENT                       run raw SQL (SELECT prints rows, others print affected)
   db version                          database schema version, applied and pending migrations
   db migrate                          upgrade the database to this build's schema (backs up first)
@@ -77,7 +84,7 @@ Output is JSON. Settings changes take effect on the next app start.
 
 var cliCommands = map[string]bool{
 	"status": true, "papers": true, "datasets": true, "sources": true,
-	"settings": true, "mcp": true, "sql": true, "help": true, "evidence": true, "serve": true, "agent": true, "db": true, "export": true,
+	"settings": true, "mcp": true, "sql": true, "help": true, "evidence": true, "serve": true, "agent": true, "db": true, "export": true, "web": true,
 }
 
 // isCLICommand tells a command line invocation from a desktop launch, whose
@@ -163,6 +170,8 @@ func (c *cli) run(command string, args []string) error {
 		return c.export(ctx, args)
 	case "serve":
 		return c.serve(args)
+	case "web":
+		return c.web(args)
 	case "agent":
 		return c.agent(ctx, args)
 	case "sources":
@@ -461,6 +470,65 @@ func (c *cli) serve(args []string) error {
 	shutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
 	return server.Close(shutdown)
+}
+
+// web serves the library over HTTP until the process is interrupted. The
+// address defaults to loopback: pass -addr 0.0.0.0:8080 to serve the LAN.
+func (c *cli) web(args []string) error {
+	flags := flag.NewFlagSet("web", flag.ContinueOnError)
+	flags.SetOutput(c.stderr)
+	address := flags.String("addr", "127.0.0.1:8080", "address to listen on")
+	dist := flags.String("dist", "", "frontend build folder (default: the embedded build, else ./dist)")
+	passwordFile := flags.String("admin-password-file", "", "file holding the admin password (default: $BIBLIOCELL_ADMIN_PASSWORD)")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	password, err := readAdminPassword(os.Getenv("BIBLIOCELL_ADMIN_PASSWORD"), *passwordFile, os.ReadFile)
+	if err != nil {
+		return err
+	}
+	frontend, err := webFrontend(*dist, embeddedFrontend())
+	if err != nil {
+		return err
+	}
+	service := &Library{store: c.store, settings: c.settings, events: newEventHub()}
+	server, err := newWebServer(service, frontend, password, mygo.App.Version())
+	if err != nil {
+		return err
+	}
+	listener, err := net.Listen("tcp", *address)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", *address, err)
+	}
+	httpServer := &http.Server{Handler: server.handler(), ReadHeaderTimeout: 10 * time.Second}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- httpServer.Serve(listener) }()
+	// The website is the library's long-running host, so the schedule runs here.
+	stopUpdates := c.store.StartSourceUpdates(sourceCredentials(c.settings), func() {
+		automation, err := c.store.SourceAutomation(context.Background())
+		if err != nil {
+			fmt.Fprintf(c.stderr, "read source automation: %v\n", err)
+			return
+		}
+		service.announceSources(automation)
+	})
+	defer stopUpdates()
+	if password == "" {
+		fmt.Fprintln(c.stderr, "no admin password: set BIBLIOCELL_ADMIN_PASSWORD or -admin-password-file to allow signing in; the site is read-only")
+	}
+	if err := c.print(map[string]any{"url": "http://" + listener.Addr().String() + "/", "admin": password != ""}, nil); err != nil {
+		return err
+	}
+	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	select {
+	case <-stop.Done():
+	case err := <-serveErr:
+		return err
+	}
+	shutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+	return httpServer.Shutdown(shutdown)
 }
 
 // agent runs one conversation turn against the configured model, with the

@@ -28,6 +28,9 @@ type Library struct {
 	mcpToken           string
 	translationFlights singleflight.Group
 	updates            *appUpdater
+	// events reaches the browsers of web mode; nil in the desktop app, whose
+	// window hears the mygo events directly.
+	events *eventHub
 }
 
 // SettingsSaveResult tells the frontend which configuration changes need a restart.
@@ -134,17 +137,7 @@ func (l *Library) servePaperFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "library database is not ready", http.StatusServiceUnavailable)
 		return
 	}
-	id := strings.Trim(r.URL.Path, "/")
-	path, err := l.store.PaperFilePath(r.Context(), id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	if strings.EqualFold(filepath.Ext(path), ".pdf") {
-		w.Header().Set("Content-Type", "application/pdf")
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	http.ServeFile(w, r, path)
+	l.serveStoredFile(w, r, strings.Trim(r.URL.Path, "/"))
 }
 
 // OpenPaperFile opens a stored file with its default application.
@@ -780,10 +773,6 @@ func (l *Library) AgentChat(ctx context.Context, messages []agent.Message) (agen
 	defer local.Close()
 	return agent.Run(runCtx, provider, agent.MCPTools{Session: local.Session}, messages, agent.Options{
 		MaxSteps: agent.Normalize(config).MaxSteps,
-		OnEvent: func(event agent.Event) {
-			if err := agentProgress.Broadcast(event); err != nil {
-				log.Printf("announce agent progress: %v", err)
-			}
-		},
+		OnEvent:  l.announceAgent,
 	})
 }

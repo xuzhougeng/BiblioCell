@@ -15,9 +15,11 @@ const file = new URLSearchParams(location.search).get("file") ?? "";
 const title = window.frameElement?.getAttribute("title") || file;
 const filename = /\.pdf$/i.test(title) ? title : `${title}.pdf`;
 document.title = filename;
-// In the desktop app the file is a stored file's ID, served by the app; a browser page
-// (the test harnesses under tests/) hands over a same-origin URL instead.
-const source = isMyGo() ? `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(file)}` : file;
+// In the window the file comes through the paperfile scheme; from the web server it is a plain
+// route. A browser test page (tests/) hands over a same-origin URL instead of a file ID.
+const source = isMyGo()
+  ? `${/Windows/.test(navigator.userAgent) ? "http://paperfile.localhost" : "paperfile://localhost"}/${encodeURIComponent(file)}`
+  : /^(\/(?!\/)|blob:)/.test(file) ? file : `/paperfile/${encodeURIComponent(file)}`;
 const root = document.createElement("main");
 root.innerHTML = `<div class="pdf-toolbar" role="toolbar"></div><div class="pdf-find" hidden></div><p class="pdf-status" role="status"></p><aside class="pdf-outline" hidden></aside><div class="pdf-container"><div class="pdfViewer"></div></div><p class="pdf-note" role="status" hidden></p>`;
 document.body.append(root);

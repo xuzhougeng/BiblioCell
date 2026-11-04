@@ -9,6 +9,7 @@
     "generate": "mygo generate",
     "dev:web": "vite",
     "build:web": "tsc --noEmit && vite build",
+    "build:server": "npm run build:web && go build -tags webdist -o build/bibliocell-web .",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/**/*.test.ts\""
   },
