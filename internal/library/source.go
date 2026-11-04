@@ -21,6 +21,9 @@ type SourceConfig struct {
 	Query      string `json:"query"`
 	MaxResults int    `json:"maxResults"`
 	Provider   string `json:"provider"`
+	// Since limits sources that cannot sort by date to records newer than this.
+	// It is worked out at each sync and never saved.
+	Since time.Time `json:"-"`
 }
 
 // HarvestRun describes the most recent synchronization attempt.
@@ -442,6 +445,11 @@ func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarve
 		return SyncResult{}, ErrSyncBusy
 	}
 
+	config.Since, err = s.harvestWindowStart(ctx, id, config.Query, now)
+	if err != nil {
+		s.failSourceRun(runID, err)
+		return SyncResult{}, err
+	}
 	records, harvestErr := harvester.Harvest(ctx, config)
 	if harvestErr != nil {
 		s.failSourceRun(runID, harvestErr)
@@ -462,6 +470,30 @@ func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarve
 		return SyncResult{}, err
 	}
 	return result, nil
+}
+
+const (
+	// harvestOverlap reaches back before the last success, since records are
+	// often dated or indexed a little earlier than they become searchable.
+	harvestOverlap = 30 * 24 * time.Hour
+	// firstHarvestWindow is how far back a new or changed query looks.
+	firstHarvestWindow = 365 * 24 * time.Hour
+)
+
+// harvestWindowStart is the earliest date a sync asks for from sources that
+// return oldest or most relevant first: a month before the last success with
+// this query, or a year back when the query has never succeeded.
+func (s *Store) harvestWindowStart(ctx context.Context, id, query string, now time.Time) (time.Time, error) {
+	var last string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT coalesce(max(started_at), '') FROM harvest_runs
+		WHERE source_id = ? AND status = 'succeeded' AND query_text = ?`, id, query).Scan(&last); err != nil {
+		return time.Time{}, fmt.Errorf("read last source run: %w", err)
+	}
+	if started, err := time.Parse(time.RFC3339Nano, last); err == nil {
+		return started.Add(-harvestOverlap), nil
+	}
+	return now.Add(-firstHarvestWindow), nil
 }
 
 func (s *Store) failSourceRun(runID string, runErr error) {

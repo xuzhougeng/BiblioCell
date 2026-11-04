@@ -24,9 +24,9 @@ const FALLBACK_SOURCES: SourceStatus[] = [
 const QUERY_HINTS: Record<string, string> = {
   pubmed: t('使用 PubMed 检索语法，例如 ("single cell"[Title/Abstract]) AND Arabidopsis[Title/Abstract]。'),
   "europe-pmc": t('使用 Europe PMC 检索语法，例如 TITLE_ABS:"single cell" AND TITLE_ABS:plant。'),
-  crossref: t("输入书目关键词；Crossref 按相关性返回 DOI 和出版信息。"),
+  crossref: t("输入书目关键词；Crossref 按相关性返回 DOI 和出版信息，只取上次成功同步前一个月以来新注册的 DOI（首次或改了检索式后取最近一年）。"),
   biorxiv: t("输入空格分隔的普通关键词，所有词都需匹配题目、摘要或分类；扫描最近 30 天，最多检查 10 页。"),
-  "sequence-repositories": t('GEO / SRA 使用 NCBI 检索语法；ENA 使用 Portal API 语法，例如 description="*single*" AND tax_tree(33090)。'),
+  "sequence-repositories": t('GEO / SRA 使用 NCBI 检索语法，按发布时间从新到旧；ENA 使用 Portal API 语法，例如 description="*single*" AND tax_tree(33090)，只取上次成功同步前一个月以来公开的研究（首次或改了检索式后取最近一年）。'),
 };
 
 /** SOURCE_CREDENTIALS are the per-machine settings that raise a source's rate limit. */

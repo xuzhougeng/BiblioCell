@@ -1045,3 +1045,93 @@ func TestPMCCandidatePicksLatestPDF(t *testing.T) {
 }
 
 func stringPointer(value string) *string { return &value }
+
+type recordingHarvester struct{ configs *[]SourceConfig }
+
+func (r recordingHarvester) Harvest(_ context.Context, config SourceConfig) ([]harvestRecord, error) {
+	*r.configs = append(*r.configs, config)
+	return nil, nil
+}
+
+func TestHarvestWindowFollowsLastSuccess(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "library.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	configs := []SourceConfig{}
+	harvester := recordingHarvester{&configs}
+	near := func(got, want time.Time) bool { return got.Sub(want).Abs() < time.Minute }
+
+	start := time.Now()
+	if _, err := store.syncSource(ctx, "pubmed", harvester); err != nil {
+		t.Fatal(err)
+	}
+	if !near(configs[0].Since, start.Add(-firstHarvestWindow)) {
+		t.Errorf("first sync since = %v, want a year back", configs[0].Since)
+	}
+	if _, err := store.syncSource(ctx, "pubmed", harvester); err != nil {
+		t.Fatal(err)
+	}
+	if !near(configs[1].Since, start.Add(-harvestOverlap)) {
+		t.Errorf("second sync since = %v, want a month before the first run", configs[1].Since)
+	}
+
+	status, err := store.SourceStatus(ctx, "pubmed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveSourceConfig(ctx, SourceConfig{ID: "pubmed", Enabled: true, Query: "maize[Title]", MaxResults: status.MaxResults}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.syncSource(ctx, "pubmed", harvester); err != nil {
+		t.Fatal(err)
+	}
+	if !near(configs[2].Since, time.Now().Add(-firstHarvestWindow)) {
+		t.Errorf("changed query since = %v, want a year back", configs[2].Since)
+	}
+}
+
+func TestUnsortedSourcesAskForRecentRecords(t *testing.T) {
+	harvester := newRemoteHarvester(noCredentials)
+	var request *url.URL
+	body := ""
+	harvester.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		request = r.URL
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	ctx := context.Background()
+	since := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+
+	body = `{"resultList":{"result":[]}}`
+	if _, err := harvester.Harvest(ctx, SourceConfig{ID: "europe-pmc", Query: "plant", MaxResults: 1, Since: since}); err != nil {
+		t.Fatal(err)
+	}
+	if got := request.Query().Get("sort"); got != "P_PDATE_D desc" {
+		t.Errorf("Europe PMC sort = %q", got)
+	}
+
+	body = `{"message":{"items":[]}}`
+	if _, err := harvester.Harvest(ctx, SourceConfig{ID: "crossref", Query: "plant", MaxResults: 1, Since: since}); err != nil {
+		t.Fatal(err)
+	}
+	if got := request.Query().Get("filter"); got != "from-created-date:2026-10-01" {
+		t.Errorf("Crossref filter = %q", got)
+	}
+	if got := request.Query().Get("sort"); got != "" {
+		t.Errorf("Crossref should keep relevance order, sort = %q", got)
+	}
+
+	body = `[{"study_accession":"PRJ1","study_title":"old","first_public":"2026-10-02"},{"study_accession":"PRJ2","study_title":"new","first_public":"2026-10-20"}]`
+	records, err := harvester.Harvest(ctx, SourceConfig{ID: "sequence-repositories", Provider: "ena", Query: "tax_tree(33090) OR description=\"*root*\"", MaxResults: 1, Since: since})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := request.Query().Get("query"); got != `(tax_tree(33090) OR description="*root*") AND first_public>=2026-10-01` {
+		t.Errorf("ENA query = %q", got)
+	}
+	if len(records) != 1 || records[0].ExternalID != "PRJ2" {
+		t.Errorf("ENA kept %+v, want the newest study", records)
+	}
+}

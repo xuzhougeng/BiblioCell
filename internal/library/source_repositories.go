@@ -6,8 +6,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const enaSearchURL = "https://www.ebi.ac.uk/ena/portal/api/search"
@@ -186,8 +188,14 @@ func (h *remoteHarvester) harvestENA(ctx context.Context, config SourceConfig) (
 	// read_study can return one row per run. Fetch extra rows, then collapse to
 	// unique study accessions before applying the user's result limit.
 	limit := config.MaxResults * 5
+	// The Portal API returns rows in accession order, oldest first, and cannot
+	// sort; a date bound keeps each sync on recent studies.
+	query := config.Query
+	if !config.Since.IsZero() {
+		query = "(" + query + ") AND first_public>=" + config.Since.UTC().Format(time.DateOnly)
+	}
 	params := url.Values{
-		"result": {"read_study"}, "query": {config.Query},
+		"result": {"read_study"}, "query": {query},
 		"fields": {"study_accession,study_title,scientific_name,first_public"},
 		"format": {"json"}, "limit": {strconv.Itoa(limit)},
 	}
@@ -200,6 +208,8 @@ func (h *remoteHarvester) harvestENA(ctx context.Context, config SourceConfig) (
 	if err := h.getJSON(ctx, enaSearchURL+"?"+params.Encode(), &items); err != nil {
 		return nil, fmt.Errorf("search ENA: %w", err)
 	}
+	// ISO dates sort as text; newest first decides which studies fill the limit.
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Public > items[j].Public })
 	records := make([]harvestRecord, 0, config.MaxResults)
 	seen := map[string]bool{}
 	for _, item := range items {
