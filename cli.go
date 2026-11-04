@@ -41,6 +41,7 @@ Commands:
   papers attach ID [-type fulltext|supplement] FILE...
                                       copy files into the storage folder
   papers files ID                     files attached to a paper
+  papers lookup DOI|PMID              fetch a bibliographic record from Crossref / Europe PMC, saving nothing
   papers fetch ID                     download an open-access PDF through PMC or Unpaywall
   papers undo BATCH                   remove an import batch, keeping what a person worked on
   datasets list [-q TEXT] [-status S] [-limit N] [-offset N]
@@ -292,6 +293,11 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 			files = append(files, file)
 		}
 		return c.print(files, nil)
+	case "lookup":
+		if len(rest) != 1 || strings.TrimSpace(rest[0]) == "" {
+			return errors.New("usage: papers lookup DOI|PMID")
+		}
+		return c.print(library.LookupIdentifier(ctx, rest[0], sourceCredentials(c.settings)))
 	case "fetch":
 		if len(rest) != 1 {
 			return errors.New("usage: papers fetch ID")
@@ -318,7 +324,7 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 		}
 		return c.print(c.store.UndoImport(ctx, rest[0]))
 	}
-	return errors.New("usage: papers list|get|add|import|update|delete|attach|fetch|files|undo")
+	return errors.New("usage: papers list|get|add|import|update|delete|attach|lookup|fetch|files|undo")
 }
 
 func (c *cli) datasets(ctx context.Context, args []string) error {

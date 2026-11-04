@@ -142,6 +142,8 @@ Zhang 等[在方法部分说明了建库平台](cite:P-1699…#page=3 "Libraries
 
 凭证保存在本机的 `settings.json`，不写入数据库，不随存放文件夹迁移，也不会通过 MCP 或 `sql` 读到。命令行用 `settings set -ncbi-api-key KEY -contact-email EMAIL` 设置。
 
+补全期刊、作者、年份等书目信息：桌面端在文献表单里按 DOI 获取；agent 用 MCP 的 `lookup_metadata`（`doi` 或 `pmid` 二选一），命令行用 `papers lookup DOI|PMID`，纯数字按 PMID 处理，其余按 DOI。DOI 先查 Crossref，再用 Europe PMC 补 PMID 和摘要；PMID 先查 Europe PMC，记录里有 DOI 时再用 Crossref 的出版社记录。查询只返回结果，要保存请用 `update_paper` 或 `papers update`；已筛选的文献只会补上还空着的书目字段，已有的值不会被覆盖。
+
 文献详情的“资料”页可以点“获取开放全文”，agent 用 MCP 的 `fetch_fulltext`，命令行用 `papers fetch ID`。按 DOI 或 PMID 依次尝试：
 
 1. **PMC 开放获取子集**：经 Europe PMC 查到 PMCID，再从 NCBI 公开的 S3 存储桶下载。
@@ -247,7 +249,7 @@ http://127.0.0.1:37841/mcp
 | `get_paper` | 按 ID 读取一篇文献及全部可编辑 metadata |
 | `add_paper` | 向正式 SQLite 数据库添加一篇文献，已存在时报错，需要写权限 |
 | `import_papers` | 原子批量导入最多 1000 篇文献，跳过已有文献并返回 `batchId`，支持 `dryRun`，需要写权限 |
-| `update_paper` | 局部编辑未经人工确认的文献 metadata，或提出收录建议，保留未提供字段，需要写权限 |
+| `update_paper` | 局部编辑未经人工确认的文献 metadata，或提出收录建议，保留未提供字段；已筛选的文献只能改文章类型、物种、器官、技术、平台这些分类字段和收录建议，以及还空着的 DOI、PMID、作者、年份、期刊、发表状态、摘要，需要写权限 |
 | `delete_paper` | 按 `id` 永久删除单篇文献（含已审核记录）、笔记、相关证据和保存的附件副本；保留数据集与原始导入文件，需要写权限 |
 | `undo_import` | 撤销一个导入批次，保留人已处理过的记录，需要写权限 |
 | `list_datasets` / `get_dataset` | 查询、分页读取数据集及其仓库编号和文献关联 |
@@ -257,6 +259,7 @@ http://127.0.0.1:37841/mcp
 | `add_evidence` | 按字段记录提取依据：摘录和来源，供人核对，需要写权限 |
 | `list_evidence` | 读取证据及人的判断 |
 | `attach_file` | 把存放文件夹 `inbox/` 中的文件移入文库并挂到文献上，需要写权限 |
+| `lookup_metadata` | 按 `doi` 或 `pmid` 从 Crossref 和 Europe PMC 查书目信息（期刊、作者、年份、摘要等），不写入任何内容；会访问远程来源，需要写权限 |
 | `fetch_fulltext` | 通过 PMC 和 Unpaywall 查找开放获取 PDF 并保存，需要写权限 |
 | `list_files` | 列出文献的附件，路径相对存放文件夹 |
 | `search_fulltext` | 在已保存的全文里按短语或关键词检索，返回命中的页、逐字片段和 `cite:` 链接地址 |

@@ -172,6 +172,11 @@ type fetchFulltextInput struct {
 	PaperID string `json:"paperId" jsonschema:"Paper that should receive the PDF"`
 }
 
+type lookupMetadataInput struct {
+	DOI  string `json:"doi,omitempty" jsonschema:"Bare DOI or DOI URL; give this or pmid, not both"`
+	PMID string `json:"pmid,omitempty" jsonschema:"PubMed ID or PubMed URL; give this or doi, not both"`
+}
+
 type sourceIDInput struct {
 	SourceID string `json:"sourceId" jsonschema:"Source ID from list_sources"`
 }
@@ -294,10 +299,11 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 				"Record what you extract with add_evidence: a short excerpt and its source, per field, for the person checking it",
 				"Only a person verifies evidence, datasets, repository records, and paper links; list_evidence shows their verdicts",
 				"Drop a file into inboxPath, then call attach_file with its name; it moves into the library",
+				"To complete a paper's journal, authors, year, or abstract, lookup_metadata by its DOI or PMID and update_paper with the fields that are blank or wrong; lookup_metadata itself writes nothing",
 				"fetch_fulltext stores an open-access PDF by DOI or PMID; when it fails, leave the paper for a person rather than scraping publisher pages",
 				"screening and reviewedAt are read-only: a person decides in the desktop app; send proposedScreening with proposedReason instead",
 				"proposedScreening=excluded requires a non-empty proposedReason",
-				"Once reviewedAt is set, update_paper accepts only proposedScreening and proposedReason",
+				"Once reviewedAt is set, update_paper accepts only the classification fields (articleTypes, species, organs, modalities, platforms), proposedScreening and proposedReason, and doi, pmid, authors, year, journal, publicationStatus or abstract while that field is still blank (unknown for publicationStatus); classification is separate from screening, and a filled bibliographic value a person has seen is never overwritten",
 				"At most 1000 papers can be imported in one call",
 				"Only real SQLite data is accessible; Demo records are never included",
 				"To improve a source query: list_sources, study included and excluded papers with list_papers, try_source_query the saved query as a baseline and each candidate, then update_source_query only with a candidate that beats the baseline, giving the comparison as reason",
@@ -307,7 +313,7 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 			AvailableTools: []string{
 				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "delete_paper", "undo_import",
 				"list_datasets", "get_dataset", "add_dataset", "update_dataset", "link_dataset",
-				"add_evidence", "list_evidence", "attach_file", "fetch_fulltext", "list_files", "search_fulltext", "read_fulltext",
+				"add_evidence", "list_evidence", "attach_file", "lookup_metadata", "fetch_fulltext", "list_files", "search_fulltext", "read_fulltext",
 				"list_sources", "try_source_query", "update_source_query", "source_query_history",
 			},
 			InboxPath:        store.inboxPath(),
@@ -372,7 +378,7 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "update_paper", Description: "Edit selected metadata of an unreviewed paper or suggest a screening decision; requires Bearer token write access and preserves omitted fields. A paper a person reviewed accepts only proposals",
+		Name: "update_paper", Description: "Edit selected metadata of an unreviewed paper or suggest a screening decision; requires Bearer token write access and preserves omitted fields. A paper a person reviewed accepts only classification fields (articleTypes, species, organs, modalities, platforms), proposals, and bibliographic fields that are still blank",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input updatePaperInput) (*mcp.CallToolResult, Paper, error) {
 		if err := requireWrite(ctx); err != nil {
 			return nil, Paper{}, err
@@ -444,6 +450,19 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 		return nil, evidenceOutput{Evidence: evidence}, err
 	})
 
+	addWriteTool(server, "lookup_metadata", "Look up a paper's bibliographic record (title, authors, year, journal, publication status, article type, abstract, DOI, PMID) by DOI or PMID through Crossref and Europe PMC, without saving anything; send the fields you want to keep with update_paper or add_paper. Requires Bearer token write access because it contacts the sources with the library's credentials",
+		func(ctx context.Context, input lookupMetadataInput) (Paper, error) {
+			doi, pmid := strings.TrimSpace(input.DOI), strings.TrimSpace(input.PMID)
+			switch {
+			case doi != "" && pmid != "":
+				return Paper{}, errors.New("give doi or pmid, not both")
+			case doi != "":
+				return LookupDOI(ctx, doi, credentials)
+			case pmid != "":
+				return LookupPMID(ctx, pmid, credentials)
+			}
+			return Paper{}, errors.New("doi or pmid is required")
+		})
 	addWriteTool(server, "fetch_fulltext", "Find an open-access PDF for a paper through PMC and Unpaywall and store it; returns the existing file if it has full text; requires Bearer token write access",
 		func(ctx context.Context, input fetchFulltextInput) (FulltextResult, error) {
 			return store.FetchFulltext(ctx, input.PaperID, credentials)
