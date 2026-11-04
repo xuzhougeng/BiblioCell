@@ -351,3 +351,44 @@ test("the queue rail lists the run, jumps between papers and tracks decisions wi
   $(".screen-queue-head [data-action=screen-queue-toggle]").click();
   assert.ok(!$(".screen-queue").classList.contains("is-open"));
 });
+
+test("D deletes the paper on screen from the library after one confirmation, and the run moves on", async (t: TestContext) => {
+  const { app, state } = screeningApp();
+  const ids = state.papers.slice(0, 3).map((p) => p.id);
+  app.screen!.ids = [...ids];
+  app.render();
+  const removed: string[] = [];
+  t.mock.method(Library, "deletePaper", async (id: string) => {
+    removed.push(id);
+    state.papers = state.papers.filter((p) => p.id !== id); // What the next reload reads back.
+  });
+  const settle = async () => { for (let i = 0; i < 5; i++) await setImmediate(); };
+  const confirm = () => $<HTMLButtonElement>('#modal-root [data-action="confirm-delete-paper"]');
+
+  // D asks first, with the confirm button focused so Enter deletes; Esc backs out untouched.
+  $("#app-content").focus();
+  keydown("d");
+  assert.equal(document.activeElement, confirm());
+  keydown("Escape");
+  assert.equal(document.querySelector("#modal-root .modal"), null);
+  assert.deepEqual(removed, []);
+
+  keydown("d");
+  confirm().click();
+  await settle();
+  assert.deepEqual(removed, [ids[0]]);
+  assert.equal(app.paperById(ids[0]!), undefined);
+  assert.equal($(".screen-panel").dataset.paperId, ids[1], "the paper after the deleted one is on screen");
+  assert.match(text(".screen-progress"), /第 1 \/ 2 篇/);
+  assert.match(text(".screen-progress"), /已删除 1 篇/);
+
+  // The button does the same; deleting the last paper lands on the one before it.
+  app.goToScreening(1);
+  $('[data-action="screen-delete"]').click();
+  confirm().click();
+  await settle();
+  assert.deepEqual(removed, [ids[0], ids[2]]);
+  assert.equal($(".screen-panel").dataset.paperId, ids[1]);
+  assert.match(text(".screen-progress"), /第 1 \/ 1 篇/);
+  assert.match(text(".screen-progress"), /已删除 2 篇/);
+});

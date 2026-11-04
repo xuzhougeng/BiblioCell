@@ -24,7 +24,7 @@ import {
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, toggleSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
-import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
+import { DECISIONS, applyDecision, askAIDisabled, renderScreening, screenDeleteModal, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
 import { afterAgentRender, agentActions, closeAgentPdf, emptyAgentState, renderAgent, sendAgentMessage, updateAgentContent, watchAgent, type AgentPdfState, type AgentState } from "./agent.ts";
 import { watchFrames } from "./pdf-frame.ts";
@@ -255,10 +255,13 @@ export class App {
       this.state = next;
       this.saved = clone(next);
       this.edits++;
+      // Counted before rendering, which drops the deleted papers from the run.
+      if (this.screen) this.screen.deleted = (this.screen.deleted ?? 0) + ids.filter((id) => this.screen!.ids.includes(id)).length;
       for (const id of ids) this.selectedPapers.delete(id);
       this.closeModal();
       if (this.drawer?.type === "paper" && gone.has(this.drawer.id)) this.closeDrawer();
       this.render();
+      if (this.screen) window.scrollTo({ top: 0 }); // The next paper of the run, from its top.
       if (this.env.real) await this.reload();
       this.toast(ids.length === 1 ? t("文献已删除。") : t("已删除 {n} 篇文献。", { n: ids.length }));
     } catch (error) {
@@ -1325,6 +1328,10 @@ export class App {
     }
     if (key === "s") {
       this.actions["toggle-star"]!(document.body, current.id);
+      return true;
+    }
+    if (key === "d" && !this.env.readOnly) {
+      screenDeleteModal(this, current.id);
       return true;
     }
     if (key === "a" && this.screen!.ai) {
