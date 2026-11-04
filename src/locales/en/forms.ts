@@ -120,13 +120,13 @@ export const forms: Record<string, string> = {
   "已收录，全文与数据可以之后补充。": "Paper added. You can add full text and data later.",
 
   // Exclusion reason
-  "补充不纳入的理由": "Add the reason for not including",
-  "为了保留筛选依据，请记录这篇文献为何只算相关、不予纳入。与主题无关的文献请改按 D 标为无关 / 排除。": "To keep the screening record, note why this paper is only related and not included. A paper with no bearing on the topic goes under D, irrelevant, instead.",
+  "补充理由": "Add a reason",
+  "请记录做出“{label}”这个判断的理由，以便日后回看筛选依据。": "Note why you decided “{label}”, so the screening record can be looked up later.",
   "判断理由": "Reason",
   "例如：仅包含空间转录组，没有实际分析单细胞或单核测序数据": "e.g. spatial transcriptomics only; no single-cell or single-nucleus data analysed",
   "保存判断": "Save decision",
   "请填写判断理由。": "Enter a reason.",
-  "保存不纳入判断：{title}": "Saved the not-included decision: {title}",
+  "保存判断理由：{title}": "Saved the screening reason: {title}",
   "判断与理由已保存。": "Decision and reason saved.",
 
   // Dataset form
