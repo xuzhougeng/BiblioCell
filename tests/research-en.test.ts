@@ -17,7 +17,7 @@ const { research } = await import("../src/locales/en/research.ts");
 
 const previewEnv = (): Env => ({
   desktop: false, backend: false, readOnly: false, web: null, real: false,
-  settings: { storagePath: "", fontSize: 15, batchScreenConcurrency: 3, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" } },
+  settings: { storagePath: "", fontSize: 15, batchScreenConcurrency: 3, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [], tasks: { chat: "", screen: "", translate: "" }, quitOnWindowClose: false },
   mcp: { enabled: false, endpoint: "", token: "", tools: [], resources: [] },
   status: null, sources: [],
   automation: { enabled: false, intervalHours: 24, running: false, lastRunAt: "", nextRunAt: "", added: 0, skipped: 0, failures: [] },

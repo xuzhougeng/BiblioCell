@@ -92,6 +92,7 @@ export interface Config {
   contactEmail: string;
   models: ModelProfile[];
   tasks: TaskModels;
+  quitOnWindowClose: boolean;
 }
 
 export interface ConversationSummary {

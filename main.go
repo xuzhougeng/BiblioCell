@@ -21,6 +21,12 @@ func main() {
 		os.Exit(runCLI(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
+	// One instance owns the database and the MCP port; launching again shows
+	// its window, which may be hidden in the background.
+	if !mygo.App.RequestSingleInstanceLock() {
+		return
+	}
+
 	libraryService := &Library{}
 	mygo.Bind(libraryService)
 
@@ -76,7 +82,7 @@ func main() {
 			log.Printf("paper file scheme unavailable: %v", err)
 		}
 
-		mygo.NewWindow(mygo.WindowOptions{
+		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "BiblioCell",
 			Width:           1440,
 			Height:          900,
@@ -86,6 +92,7 @@ func main() {
 			StateKey:        "main",
 			URL:             "/",
 		})
+		keepInBackground(win, settingsStore)
 	})
 
 	// OnQuit, not after Run: a relaunch starts the next instance before Run
