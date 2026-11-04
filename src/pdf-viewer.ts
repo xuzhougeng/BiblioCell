@@ -341,7 +341,10 @@ async function printPDF(): Promise<void> {
 }
 
 status.textContent = t("正在加载 PDF…");
-const task = getDocument({ url: source, cMapUrl: "/pdf-assets/cmaps/", cMapPacked: true, standardFontDataUrl: "/pdf-assets/standard_fonts/", wasmUrl: "/pdf-assets/wasm/" });
+// In the window the file arrives whole from the app, so range requests gain nothing; on
+// Windows, where the scheme is an http URL, they would even break the document (see
+// servePaperFile). Over a real web server ranges work and spare reading the whole file.
+const task = getDocument({ url: source, disableRange: isMyGo(), cMapUrl: "/pdf-assets/cmaps/", cMapPacked: true, standardFontDataUrl: "/pdf-assets/standard_fonts/", wasmUrl: "/pdf-assets/wasm/" });
 task.onPassword = (update: (password: string) => void) => {
   const password = window.prompt(t("请输入 PDF 密码"));
   if (password === null) { void task.destroy(); status.textContent = t("PDF 已取消加载。"); }
