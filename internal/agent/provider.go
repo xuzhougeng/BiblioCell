@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/egoist/mygo/netproxy"
 )
 
 // Protocols the loop can speak. Each is a wire format, not a vendor: any
@@ -143,7 +145,7 @@ func NewProvider(config Config) (Provider, error) {
 		return nil, err
 	}
 	config = Normalize(config)
-	client := &http.Client{Timeout: requestTimeout}
+	client := &http.Client{Timeout: requestTimeout, Transport: netproxy.Transport()}
 	switch config.Protocol {
 	case ProtocolAnthropic:
 		return &anthropicProvider{config: config, client: client}, nil

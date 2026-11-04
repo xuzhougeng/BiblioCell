@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/egoist/mygo/netproxy"
 )
 
 const (
@@ -42,7 +44,7 @@ type remoteHarvester struct {
 // newRemoteHarvester reads credentials at each request, so an edit applies to
 // the next sync without a restart.
 func newRemoteHarvester(credentials func() SourceCredentials) *remoteHarvester {
-	return &remoteHarvester{client: &http.Client{Timeout: 60 * time.Second}, credentials: credentials}
+	return &remoteHarvester{client: &http.Client{Timeout: 60 * time.Second, Transport: netproxy.Transport()}, credentials: credentials}
 }
 
 func (h *remoteHarvester) Harvest(ctx context.Context, config SourceConfig) ([]harvestRecord, error) {
