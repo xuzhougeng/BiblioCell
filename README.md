@@ -142,6 +142,10 @@ Zhang 等[在方法部分说明了建库平台](cite:P-1699…#page=3 "Libraries
 
 凭证保存在本机的 `settings.json`，不写入数据库，不随存放文件夹迁移，也不会通过 MCP 或 `sql` 读到。命令行用 `settings set -ncbi-api-key KEY -contact-email EMAIL` 设置。
 
+### 网络代理
+
+AI 模型和文献源的联网请求默认跟随系统代理：读取 macOS / Windows / Linux 系统设置里的代理（含 PAC）；设置了 `HTTP_PROXY`、`HTTPS_PROXY` 等环境变量时以环境变量为准。设置页“网络代理”可以改为不使用代理（直连），或自定义代理地址（`http://`、`https://`、`socks5://`，可带 `用户名:密码@`）。每个 AI 模型和文献源还有一个“代理”选项：默认跟随全局设置，也可以单独设为直连，例如本机或内网的模型服务。本机地址（localhost、127.0.0.1）始终直连。保存后下一次请求即生效，无需重启。命令行用 `settings set -proxy-mode system|direct|custom -proxy-url URL`、`settings set -ai-proxy inherit|direct` 和 `sources set ID -proxy inherit|direct` 设置。
+
 补全期刊、作者、年份等书目信息：桌面端在文献表单里按 DOI 获取；agent 用 MCP 的 `lookup_metadata`（`doi` 或 `pmid` 二选一），命令行用 `papers lookup DOI|PMID`，纯数字按 PMID 处理，其余按 DOI。DOI 先查 Crossref，再用 Europe PMC 补 PMID 和摘要；PMID 先查 Europe PMC，记录里有 DOI 时再用 Crossref 的出版社记录。查询只返回结果，要保存请用 `update_paper` 或 `papers update`；已筛选的文献只会补上还空着的书目字段，已有的值不会被覆盖。
 
 预印本正式发表后可以合并掉：

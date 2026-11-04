@@ -1,6 +1,6 @@
 // Settings page: demo switch, storage folder, MCP token and font size.
 import type { App } from "./app.ts";
-import { Library, type AgentConfig, type Config, type ModelProfile, type TaskModels } from "./mygo.ts";
+import { Library, type AgentConfig, type Config, type ModelProfile, type ProxySettings, type TaskModels } from "./mygo.ts";
 import { AI_DEFAULTS, PROTOCOL_LABELS, TASKS, endpointOf, modelName, models, newProfileId, profileStatus } from "./models.ts";
 import { LOCALES, locale, setLocale, t } from "./i18n.ts";
 import { esc } from "./model.ts";
@@ -40,8 +40,10 @@ export function renderSettings(app: App): string {
     + `<div class="settings-mcp-meta"><div><span>${t("Streamable HTTP 地址")}</span><code>${esc(mcp.enabled ? mcp.endpoint : t("启动桌面应用后监听 127.0.0.1:37841"))}</code></div><p><strong>${t("工具")}</strong>${esc(mcp.tools.join(" · "))}</p><p><strong>${t("Schema 资源")}</strong>${esc(mcp.resources.join(" · "))}</p></div>`
     + `<div class="settings-field"><label for="settings-mcp-token">Bearer Token</label><div class="settings-token-row"><input class="settings-path-input" id="settings-mcp-token" name="mcpToken" type="password" value="${esc(preferences.mcpToken)}" minlength="32" maxlength="256" autocomplete="off" spellcheck="false" required ${disabled}><button class="btn btn-secondary" type="button" data-action="toggle-mcp-token" ${disabled}>${t("显示")}</button><button class="btn btn-secondary" type="button" data-action="copy-mcp-token" ${disabled}>${t("复制")}</button><button class="btn btn-secondary" type="button" data-action="regenerate-mcp-token" ${disabled}>${t("重新生成")}</button></div><p class="form-hint">${t("32–256 个可见 ASCII 字符，不能包含空格。重新生成后，旧 Token 将在重启时失效。")}</p></div>`
     + `<div class="settings-inline-note">${I("info", 16)}<span>${t("无认证连接只读；写入使用 Authorization: Bearer &lt;TOKEN&gt;。Token 修改在重启后生效，且不会通过 MCP 返回。服务仅监听本机回环地址，不要转发到局域网或公网。")}</span></div></section>`;
+  // Viewers never see the proxy address, which can hold a password.
+  const proxySection = env.readOnly ? "" : networkSection(preferences.proxy, disabled);
   return '<div class="settings-layout"><form class="panel settings-panel" id="settings-form">'
-    + modeSection + storageSection + windowSection + mcpSection
+    + modeSection + storageSection + windowSection + mcpSection + proxySection
     + (env.readOnly ? webViewerNotice(app) : `<div id="settings-ai-section">${aiSection(preferences, disabled)}</div>`)
     + `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("book", 21)}</span><div><h2>${t("阅读样式")}</h2><p>${t("只调整文字大小，不改变面板宽度与整体布局。")}</p></div></div>`
     + `<div class="settings-field"><div class="settings-label-row"><label for="settings-font-size">${t("界面字号")}</label><output id="settings-font-size-value" for="settings-font-size">${esc(preferences.fontSize)} px</output></div><div class="settings-font-control"><span>${t("小")}</span><input id="settings-font-size" name="fontSize" type="range" min="12" max="20" step="1" value="${esc(preferences.fontSize)}" ${disabled}><span>${t("大")}</span><button class="text-link" type="button" data-action="reset-font-size" ${disabled}>${t("恢复 15 px")}</button></div></div>`
@@ -58,6 +60,43 @@ const localeSection = (): string =>
   + '<div class="settings-field"><label for="settings-locale">界面语言 / Interface language</label>' // i18n-ignore
   + `<select class="input" id="settings-locale">${LOCALES.map(([code, name]) => option(code, name, locale)).join("")}</select></div></section>`;
 
+/** networkSection picks how outbound requests reach the network: system proxy, direct, or a proxy URL. */
+function networkSection(proxy: ProxySettings | undefined, disabled: string): string {
+  const mode = proxy?.mode || "system";
+  return `<section class="settings-section"><div class="settings-section-heading"><span class="settings-section-icon">${I("link", 21)}</span><div><h2>${t("网络代理")}</h2><p>${t("AI 模型和文献源联网时使用的代理。")}</p></div></div>`
+    + `<div class="settings-field"><label for="settings-proxy-mode">${t("代理方式")}</label><select class="input" id="settings-proxy-mode" name="proxyMode" ${disabled}>${option("system", t("跟随系统代理（默认）"), mode)}${option("direct", t("不使用代理（直连）"), mode)}${option("custom", t("自定义代理"), mode)}</select></div>`
+    + `<div class="settings-field" id="settings-proxy-url-field"${mode === "custom" ? "" : " hidden"}><label for="settings-proxy-url">${t("代理地址")}</label><input class="settings-path-input" id="settings-proxy-url" name="proxyUrl" type="text" value="${esc(proxy?.url ?? "")}" placeholder="http://127.0.0.1:7890" maxlength="1000" autocomplete="off" spellcheck="false" ${disabled}><p class="form-hint">${t("支持 http://、https:// 和 socks5://；需要认证时写成 socks5://用户名:密码@主机:端口。")}</p></div>`
+    + `<div class="settings-inline-note">${I("info", 16)}<span>${t("跟随系统时会读取系统设置里的代理（含 PAC）；如果设置了 HTTP_PROXY 等环境变量，以环境变量为准。本机地址（localhost、127.0.0.1）始终直连。每个模型和文献源可以单独设为直连。点“保存设置”后，下一次请求即生效，无需重启。")}</span></div></section>`;
+}
+
+/** showProxyURL reveals the address field only for a custom proxy. */
+export function showProxyURL(select: HTMLSelectElement): void {
+  const field = $("#settings-proxy-url-field");
+  if (field) field.hidden = select.value !== "custom";
+}
+
+/** proxyURLError checks a custom proxy address as the backend does, or returns "" when it is usable. */
+export function proxyURLError(raw: string): string {
+  const value = raw.trim();
+  if (!value) return t("请填写代理地址，例如 http://127.0.0.1:7890。");
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return t("代理地址格式无效，应形如 http://127.0.0.1:7890 或 socks5://user:pass@host:1080。");
+  }
+  if (!["http:", "https:", "socks5:"].includes(parsed.protocol)) return t("代理协议只支持 http://、https:// 和 socks5://。");
+  if (!parsed.hostname || /\s/.test(value)) return t("代理地址格式无效，应形如 http://127.0.0.1:7890 或 socks5://user:pass@host:1080。");
+  if ((parsed.pathname && parsed.pathname !== "/") || parsed.search || parsed.hash) return t("代理地址只填协议、主机和端口，不要带路径或参数。");
+  return "";
+}
+
+const PROXY_OVERRIDE_OPTIONS = (selected: string): string => option("inherit", t("跟随全局代理设置"), selected || "inherit") + option("direct", t("直连（不使用代理）"), selected || "inherit");
+
+/** proxyOverrideField is the per-model and per-source choice between the global proxy and a direct connection. */
+export const proxyOverrideField = (selected: string, hint: string, wide = false): string =>
+  `<label class="form-field${wide ? " full-width" : ""}"><span>${t("代理")}</span><select class="input" name="proxy">${PROXY_OVERRIDE_OPTIONS(selected)}</select><small class="form-hint">${esc(hint)}</small></label>`;
+
 const PROTOCOL_OPTIONS = (selected: string): string => option("anthropic", "Anthropic Messages", selected) + option("openai", t("OpenAI Chat Completions（兼容）"), selected);
 
 /** modelCard shows one configured model service with what it is and how to change it. */
@@ -65,7 +104,7 @@ function modelCard(profile: ModelProfile, disabled: string): string {
   const [label, color] = profileStatus(profile);
   const config = profile.config;
   return `<div class="model-card"><div class="model-card-head"><strong>${esc(profile.name)}</strong>${badge(label, color)}<span class="section-actions"><button class="text-link" type="button" data-action="model-edit" data-id="${esc(profile.id)}" ${disabled}>${t("编辑")}</button><button class="text-link" type="button" data-action="model-delete" data-id="${esc(profile.id)}" ${disabled}>${t("删除")}</button></span></div>`
-    + `<div class="model-card-meta"><span>${esc(modelName(config) || t("模型名待填"))}</span><span class="meta-separator">·</span><span>${esc(PROTOCOL_LABELS[config.protocol || "anthropic"] ?? config.protocol)}</span><span class="meta-separator">·</span><code>${esc(endpointOf(config))}</code>${config.effort ? `<span class="meta-separator">·</span><span>${t("思考 {effort}", { effort: esc(config.effort) })}</span>` : ""}</div></div>`;
+    + `<div class="model-card-meta"><span>${esc(modelName(config) || t("模型名待填"))}</span><span class="meta-separator">·</span><span>${esc(PROTOCOL_LABELS[config.protocol || "anthropic"] ?? config.protocol)}</span><span class="meta-separator">·</span><code>${esc(endpointOf(config))}</code>${config.effort ? `<span class="meta-separator">·</span><span>${t("思考 {effort}", { effort: esc(config.effort) })}</span>` : ""}${config.proxy === "direct" ? `<span class="meta-separator">·</span><span>${t("直连")}</span>` : ""}</div></div>`;
 }
 
 /** aiSection lists the model services and binds each AI feature to one of them. */
@@ -90,7 +129,7 @@ function aiSection(settings: Config, disabled: string): string {
 /** modelModal edits one profile, or a blank one when id is empty. */
 export function modelModal(app: App, id = ""): void {
   const existing = models(app.env.settings).find((m) => m.id === id);
-  const config: AgentConfig = existing?.config ?? { protocol: "anthropic", baseUrl: "", apiKey: "", model: "", maxTokens: 0, maxSteps: 0, effort: "" };
+  const config: AgentConfig = existing?.config ?? { protocol: "anthropic", baseUrl: "", apiKey: "", model: "", maxTokens: 0, maxSteps: 0, effort: "", proxy: "" };
   const protocol = config.protocol || "anthropic";
   const defaults = AI_DEFAULTS[protocol] ?? AI_DEFAULTS.anthropic!;
   const body = `<form id="model-profile-form"><input type="hidden" name="id" value="${esc(existing?.id ?? "")}">`
@@ -101,7 +140,8 @@ export function modelModal(app: App, id = ""): void {
     + `<label class="form-field"><span>API Key</span><span class="settings-path-row"><input class="input" id="model-api-key" name="apiKey" type="password" value="${esc(config.apiKey)}" placeholder="${t("本地模型服务可留空")}" autocomplete="off" spellcheck="false" maxlength="1000"><button class="btn btn-secondary" type="button" data-action="toggle-model-key">${t("显示")}</button></span></label>`
     + `<div class="settings-grid"><label class="form-field"><span>${t("思考强度")}</span><select class="input" name="effort">${option("", t("服务默认"), config.effort)}${option("low", t("低 · 快速简答"), config.effort)}${option("medium", t("中"), config.effort)}${option("high", t("高"), config.effort)}${option("xhigh", t("很高 · 适合多步整理"), config.effort)}${option("max", t("最高"), config.effort)}</select></label>`
     + `<label class="form-field"><span>${t("单次运行步数上限")}</span><input class="input" name="maxSteps" type="number" min="1" max="200" value="${config.maxSteps || ""}" placeholder="20"></label></div>`
-    + `<label class="form-field"><span>${t("单次回复 token 上限")}</span><input class="input" name="maxTokens" type="number" min="0" max="1000000" value="${config.maxTokens || ""}" placeholder="${t("默认")}"></label>`
+    + `<div class="settings-grid"><label class="form-field"><span>${t("单次回复 token 上限")}</span><input class="input" name="maxTokens" type="number" min="0" max="1000000" value="${config.maxTokens || ""}" placeholder="${t("默认")}"></label>`
+    + `${proxyOverrideField(config.proxy, t("本机或内网的模型服务可选直连。"))}</div>`
     + `<p class="form-hint">${t("Anthropic 发送 output_config.effort；OpenAI 兼容协议发送 reasoning_effort，很高与最高都按 high 发送。老模型不支持时请选“服务默认”。")}</p>`
     + `<p id="form-error" class="form-error" role="alert"></p></form>`;
   app.showModal(existing ? t("编辑模型") : t("添加模型"), body, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-primary" type="submit" form="model-profile-form">${t("保存模型")}</button>`);
@@ -114,6 +154,7 @@ export function saveModelProfile(app: App, form: HTMLFormElement): void {
   const config: AgentConfig = {
     protocol: text(data, "protocol"), baseUrl: text(data, "baseUrl"), apiKey: text(data, "apiKey"), model: text(data, "model"),
     maxSteps: Number(data.get("maxSteps")) || 0, maxTokens: Number(data.get("maxTokens")) || 0, effort: text(data, "effort"),
+    proxy: text(data, "proxy") || "inherit",
   };
   const name = text(data, "name");
   if (!name) return setFormError(t("请填写模型名称。"));
@@ -175,6 +216,15 @@ export function saveSettings(app: App, form: HTMLFormElement): void {
   const next: Config = { ...app.env.settings, storagePath: text(data, "storagePath") || app.env.settings.storagePath, fontSize: Number(data.get("fontSize")), batchScreenConcurrency: Number(data.get("batchScreenConcurrency")), mcpToken: text(data, "mcpToken") || app.env.settings.mcpToken, translationPrompt: text(data, "translationPrompt"), tasks };
   // The web page has no window switch: keep what the desktop saved.
   if (app.env.web === null) next.quitOnWindowClose = data.get("quitOnWindowClose") === "on";
+  if (data.has("proxyMode")) {
+    next.proxy = { mode: text(data, "proxyMode"), url: text(data, "proxyUrl") };
+    const problem = next.proxy.mode === "custom" ? proxyURLError(next.proxy.url) : "";
+    if (problem) {
+      setStatus(problem);
+      $<HTMLInputElement>("#settings-proxy-url")?.focus();
+      return;
+    }
+  }
   if (!Number.isInteger(next.batchScreenConcurrency) || next.batchScreenConcurrency < 1 || next.batchScreenConcurrency > 8) {
     setStatus(t("并发文献数应为 1 到 8。"));
     return;

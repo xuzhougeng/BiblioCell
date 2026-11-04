@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"bibliocell/internal/proxy"
 )
 
 // SourceConfig is the user-editable configuration for one remote connector.
@@ -21,6 +23,9 @@ type SourceConfig struct {
 	Query      string `json:"query"`
 	MaxResults int    `json:"maxResults"`
 	Provider   string `json:"provider"`
+	// Proxy is inherit (empty in older rows) to follow the global proxy
+	// setting, or direct to reach this source directly.
+	Proxy string `json:"proxy"`
 	// Since limits sources that cannot sort by date to records newer than this.
 	// It is worked out at each sync and never saved.
 	Since time.Time `json:"-"`
@@ -62,6 +67,7 @@ type SourceStatus struct {
 	Query       string `json:"query"`
 	MaxResults  int    `json:"maxResults"`
 	Provider    string `json:"provider"`
+	Proxy       string `json:"proxy"`
 	RecordCount int    `json:"recordCount"`
 	// QueryVersion counts query changes; QueryChange is the latest one, if any.
 	QueryVersion  string         `json:"queryVersion"`
@@ -158,6 +164,10 @@ func validateSourceConfig(config SourceConfig) (SourceConfig, error) {
 	config.ID = definition.id
 	config.Query = strings.TrimSpace(config.Query)
 	config.Provider = strings.TrimSpace(config.Provider)
+	if err := proxy.ValidateOverride(config.Proxy); err != nil {
+		return SourceConfig{}, err
+	}
+	config.Proxy = proxy.NormalizeOverride(config.Proxy)
 	if definition.supported && config.Query == "" {
 		return SourceConfig{}, errors.New("source query is required")
 	}
@@ -276,6 +286,10 @@ func sourceConfigFromRow(id string, enabled int, query string, encoded string) S
 	if definition.id != "sequence-repositories" {
 		config.Provider = ""
 	}
+	if proxy.ValidateOverride(config.Proxy) != nil {
+		config.Proxy = ""
+	}
+	config.Proxy = proxy.NormalizeOverride(config.Proxy)
 	return config
 }
 
@@ -319,7 +333,7 @@ func (s *Store) SourceStatus(ctx context.Context, id string) (SourceStatus, erro
 		Scan(&enabled, &status.Query, &encoded, &status.LastSuccessAt, &status.QueryVersion, &status.RecordCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		config := definition.defaults
-		status.Enabled, status.Query, status.MaxResults, status.Provider = config.Enabled, config.Query, config.MaxResults, config.Provider
+		status.Enabled, status.Query, status.MaxResults, status.Provider, status.Proxy = config.Enabled, config.Query, config.MaxResults, config.Provider, proxy.NormalizeOverride(config.Proxy)
 		status.QueryVersion = "1"
 		return status, nil
 	}
@@ -327,7 +341,7 @@ func (s *Store) SourceStatus(ctx context.Context, id string) (SourceStatus, erro
 		return SourceStatus{}, fmt.Errorf("read source %s: %w", id, err)
 	}
 	config := sourceConfigFromRow(id, enabled, status.Query, encoded)
-	status.Enabled, status.MaxResults, status.Provider = config.Enabled, config.MaxResults, config.Provider
+	status.Enabled, status.MaxResults, status.Provider, status.Proxy = config.Enabled, config.MaxResults, config.Provider, config.Proxy
 	changes, err := s.queryHistory(ctx, id, 1)
 	if err != nil {
 		return SourceStatus{}, err
@@ -417,7 +431,7 @@ func (s *Store) syncSource(ctx context.Context, id string, harvester sourceHarve
 	if err != nil {
 		return SyncResult{}, err
 	}
-	config := SourceConfig{ID: id, Enabled: status.Enabled, Query: status.Query, MaxResults: status.MaxResults, Provider: status.Provider}
+	config := SourceConfig{ID: id, Enabled: status.Enabled, Query: status.Query, MaxResults: status.MaxResults, Provider: status.Provider, Proxy: status.Proxy}
 	config, err = validateSourceConfig(config)
 	if err != nil {
 		return SyncResult{}, err

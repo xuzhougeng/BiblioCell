@@ -121,7 +121,7 @@ export function renderAgent(app: App): string {
   if (!env.backend) return empty(t("AI 助手需要桌面应用"), t("浏览器预览没有后端，也没有可操作的数据库。请在 BiblioCell 桌面应用中使用。"));
   if (env.readOnly) return empty(t("AI 助手仅限管理员"), t("助手通过 MCP 工具读写正式数据库，并使用服务器上配置的模型；请先登录管理员。"));
   const profile = modelFor(env.settings, "chat");
-  const ai = profile?.config ?? { protocol: "anthropic", baseUrl: "", apiKey: "", model: "", maxTokens: 0, maxSteps: 0, effort: "" };
+  const ai = profile?.config ?? { protocol: "anthropic", baseUrl: "", apiKey: "", model: "", maxTokens: 0, maxSteps: 0, effort: "", proxy: "" };
   const protocol = ai.protocol || "anthropic";
   const model = profile ? modelName(ai) : "";
   const configured = Boolean(model);

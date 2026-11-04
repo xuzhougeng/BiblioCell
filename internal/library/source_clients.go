@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/egoist/mygo/netproxy"
+	"bibliocell/internal/proxy"
 )
 
 const (
@@ -42,12 +42,14 @@ type remoteHarvester struct {
 }
 
 // newRemoteHarvester reads credentials at each request, so an edit applies to
-// the next sync without a restart.
+// the next sync without a restart. Its client follows the global proxy
+// setting; Harvest applies each source's own proxy option to its requests.
 func newRemoteHarvester(credentials func() SourceCredentials) *remoteHarvester {
-	return &remoteHarvester{client: &http.Client{Timeout: 60 * time.Second, Transport: netproxy.Transport()}, credentials: credentials}
+	return &remoteHarvester{client: proxy.Client(60*time.Second, proxy.Inherit), credentials: credentials}
 }
 
 func (h *remoteHarvester) Harvest(ctx context.Context, config SourceConfig) ([]harvestRecord, error) {
+	ctx = proxy.WithOverride(ctx, config.Proxy)
 	switch config.ID {
 	case "pubmed":
 		return h.harvestPubMed(ctx, config)

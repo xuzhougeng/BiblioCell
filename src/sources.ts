@@ -6,10 +6,11 @@ import { arr, dateText, esc, nextRunText, safeURL, shortTime } from "./model.ts"
 import { enqueue } from "./store.ts";
 import { $, I, badge, empty, errorMessage, option, setFormError, text } from "./ui.ts";
 import { canWrite } from "./env.ts";
+import { proxyOverrideField } from "./settings.ts";
 import { screenModelReady } from "./screen.ts";
 
 const fallbackSource = (partial: Partial<SourceStatus> & Pick<SourceStatus, "id" | "name" | "kind" | "description" | "homeUrl">): SourceStatus => ({
-  supported: true, enabled: true, query: "", maxResults: 20, provider: "", recordCount: 0, queryVersion: "1", queryChange: null, lastSuccessAt: "", lastRun: null, recentRecords: [], ...partial,
+  supported: true, enabled: true, query: "", maxResults: 20, provider: "", proxy: "inherit", recordCount: 0, queryVersion: "1", queryChange: null, lastSuccessAt: "", lastRun: null, recentRecords: [], ...partial,
 });
 
 /** FALLBACK_SOURCES is shown in browser preview, where no Go backend lists connectors. */
@@ -166,7 +167,7 @@ export function sourceConfigModal(app: App, id: string): void {
   const credentialField = credential
     ? `<label class="form-field full-width"><span>${esc(credential.label)}</span><input class="input" name="${credential.name}" type="${credential.type}" value="${esc(app.env.settings[credential.name])}" maxlength="256" autocomplete="off" spellcheck="false"><small class="form-hint">${esc(credential.hint)}${t("只保存在本机，不写入数据库。")}</small></label>`
     : "";
-  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">${t("启用此来源")}</label><p>${t("启用后可手动同步；开启自动更新时也会按频率访问。")}</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>${t("检索式 / 关键词")} <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>${t("单次最多保存")}</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label>${credentialField}<div class="form-field full-width" id="source-query-history"></div></div><p id="form-error" class="form-error" role="alert"></p></form>`;
+  const body = `<form id="source-config-form" data-initial-query="${esc(source.query)}"><input type="hidden" name="id" value="${esc(id)}"><div class="settings-mode-row source-enable-row"><div><label for="source-enabled">${t("启用此来源")}</label><p>${t("启用后可手动同步；开启自动更新时也会按频率访问。")}</p></div><input class="settings-switch" id="source-enabled" name="enabled" type="checkbox" role="switch" ${source.enabled ? "checked" : ""}></div><div class="form-grid">${provider}<label class="form-field full-width"><span>${t("检索式 / 关键词")} <b class="required">*</b></span><textarea class="textarea" name="query" rows="5" maxlength="4000" required>${esc(source.query)}</textarea><small class="form-hint">${esc(QUERY_HINTS[id] ?? "")}</small></label><label class="form-field"><span>${t("单次最多保存")}</span><input class="input" name="maxResults" type="number" min="1" max="100" step="1" value="${esc(source.maxResults || 20)}" required></label>${proxyOverrideField(source.proxy, t("跟随设置页的网络代理；选直连则访问这个来源时不走代理。"))}${credentialField}<div class="form-field full-width" id="source-query-history"></div></div><p id="form-error" class="form-error" role="alert"></p></form>`;
   app.showModal(t("配置 {name}", { name: tv(source.name) }), body, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-primary" type="submit" form="source-config-form">${I("check", 16)} ${t("保存配置")}</button>`, true);
   if (!source.queryChange) return;
   Library.sourceQueryHistory(id).then((changes) => {
@@ -198,7 +199,7 @@ export function applyProviderDefault(select: HTMLSelectElement): void {
 export function saveSourceConfig(app: App, form: HTMLFormElement): void {
   if (!canWrite(app.env)) return;
   const data = new FormData(form);
-  const config: SourceConfig = { id: text(data, "id"), enabled: data.get("enabled") === "on", query: text(data, "query"), maxResults: Number(data.get("maxResults")), provider: text(data, "provider") };
+  const config: SourceConfig = { id: text(data, "id"), enabled: data.get("enabled") === "on", query: text(data, "query"), maxResults: Number(data.get("maxResults")), provider: text(data, "provider"), proxy: text(data, "proxy") || "inherit" };
   if (!config.query) {
     setFormError(t("请填写检索式或关键词。"));
     return;
@@ -237,7 +238,7 @@ export function toggleSource(app: App, input: HTMLInputElement): void {
     return;
   }
   app.togglingSources.add(id);
-  const config: SourceConfig = { id, enabled, query: source.query, maxResults: source.maxResults || 20, provider: source.provider };
+  const config: SourceConfig = { id, enabled, query: source.query, maxResults: source.maxResults || 20, provider: source.provider, proxy: source.proxy || "inherit" };
   Library.saveSourceConfig(config).then((status) => {
     app.env.sources = app.env.sources.map((item) => (item.id === status.id ? status : item));
     app.toast(enabled ? t("{name} 已启用。", { name: tv(status.name) }) : t("{name} 已停用。", { name: tv(status.name) }));

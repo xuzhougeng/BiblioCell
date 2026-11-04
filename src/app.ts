@@ -25,7 +25,7 @@ import {
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceCheck, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, toggleSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
 import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
-import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
+import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, showProxyURL, updateAIPlaceholders } from "./settings.ts";
 import { afterAgentRender, agentActions, closeAgentPdf, emptyAgentState, renderAgent, sendAgentMessage, updateAgentContent, watchAgent, type AgentPdfState, type AgentState } from "./agent.ts";
 import { watchFrames } from "./pdf-frame.ts";
 import { Library } from "./mygo.ts";
@@ -1283,6 +1283,10 @@ export class App {
     }
     if (target.id === "model-protocol" && target instanceof HTMLSelectElement) {
       updateAIPlaceholders(target);
+      return;
+    }
+    if (target.id === "settings-proxy-mode" && target instanceof HTMLSelectElement) {
+      showProxyURL(target);
       return;
     }
     if (target instanceof HTMLInputElement && target.dataset.sourceToggle) {

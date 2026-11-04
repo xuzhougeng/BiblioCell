@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"bibliocell/internal/agent"
+	"bibliocell/internal/proxy"
 )
 
 var testToken = strings.Repeat("t", 64)
@@ -252,4 +253,66 @@ func TestStoreFallsBackFromInvalidFile(t *testing.T) {
 	if got := store.Get(); got.FontSize != DefaultFontSize {
 		t.Errorf("fallback settings = %+v", got)
 	}
+}
+
+func TestStoreProxySettings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	// A file written before the proxy setting existed follows the system's proxy,
+	// and its models inherit.
+	legacy := `{"storagePath":` + strconvQuote(dir) + `,"fontSize":15,"mcpToken":"` + testToken + `","models":[{"id":"m","name":"M","config":{"protocol":"anthropic","model":"x"}}]}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path, dir, testToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := store.Get()
+	if config.Proxy.Mode != "" || proxy.Normalize(config.Proxy).Mode != "system" {
+		t.Fatalf("legacy proxy mode = %q, want system", config.Proxy.Mode)
+	}
+	if got := config.Models[0].Config.Proxy; got != "" && got != "inherit" {
+		t.Fatalf("legacy model proxy = %q, want inherit", got)
+	}
+
+	config.Proxy.Mode = "custom"
+	config.Proxy.URL = " socks5://user:secret@127.0.0.1:1080 "
+	config.Models[0].Config.Proxy = "direct"
+	if err := store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path, dir, testToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := reopened.Get()
+	if saved.Proxy.Mode != "custom" || saved.Proxy.URL != "socks5://user:secret@127.0.0.1:1080" || saved.Models[0].Config.Proxy != "direct" {
+		t.Fatalf("proxy did not persist: %+v / %q", saved.Proxy, saved.Models[0].Config.Proxy)
+	}
+
+	bad := saved
+	bad.Proxy.URL = "127.0.0.1:7890"
+	if err := reopened.Save(bad); err == nil {
+		t.Fatal("custom proxy without a scheme saved")
+	}
+	bad = saved
+	bad.Proxy.Mode = "pac"
+	if err := reopened.Save(bad); err == nil {
+		t.Fatal("unknown proxy mode saved")
+	}
+	bad = saved
+	bad.Models = append([]ModelProfile(nil), saved.Models...)
+	bad.Models[0].Config.Proxy = "custom"
+	if err := reopened.Save(bad); err == nil {
+		t.Fatal("unknown model proxy option saved")
+	}
+	if reopened.Get().Proxy != saved.Proxy {
+		t.Fatal("a rejected save changed the proxy setting")
+	}
+}
+
+func strconvQuote(s string) string {
+	data, _ := json.Marshal(s)
+	return string(data)
 }
