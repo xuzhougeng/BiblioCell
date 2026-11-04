@@ -1324,6 +1324,49 @@ select.input { appearance: auto }
   .agent-row.block { padding-left: 0 }
   .agent-chat-meta, .agent-chat-header .text-link { display: none }
 }
+/* Citations in replies: the sentence or its summary, underlined like a marker, with the page beside it */
+.agent-cite { display: inline; font: inherit; line-height: inherit; color: inherit; background: linear-gradient(transparent 62%, #ffe79a 62%); border: 0; border-radius: 2px; padding: 0 2px; cursor: pointer; text-align: left; transition: background-color 0.15s }
+.agent-cite:hover, .agent-cite:focus-visible { background-color: #fff3c4 }
+.agent-cite.is-active { background-color: #ffe18a; box-shadow: 0 0 0 2px #ffe18a }
+.agent-cite-page { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 9px; background: #f3e9c3; color: #7a6200; font-size: 0.74em; line-height: 1.6; vertical-align: 1px; white-space: nowrap }
+.agent-cite.is-active .agent-cite-page { background: #7a6200; color: #fff8e1 }
+/* The reading pane: a column beside the conversation, never a layer over it. A divider drags it wider. */
+.agent-split { display: flex; flex: 1; min-height: 0 }
+.agent-split > .agent-chat { flex: 1 1 0; min-width: 0 }
+.agent-split-handle { flex: 0 0 12px; position: relative; cursor: col-resize; touch-action: none }
+.agent-split-handle::after { content: ""; position: absolute; top: 10%; bottom: 10%; left: 5px; width: 2px; border-radius: 1px; background: var(--line); transition: background 0.15s, top 0.15s, bottom 0.15s }
+.agent-split-handle:hover::after, .agent-split.is-resizing .agent-split-handle::after { background: var(--primary); top: 0; bottom: 0 }
+.agent-split.is-resizing { user-select: none; cursor: col-resize }
+.agent-split.is-resizing .agent-pdf-frame { pointer-events: none }
+.agent-pdf { flex: 0 0 var(--agent-pdf-width, 46%); width: var(--agent-pdf-width, 46%); max-width: calc(100% - 420px); min-width: 320px; display: flex; flex-direction: column; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; animation: agent-pdf-in 0.22s ease-out }
+@keyframes agent-pdf-in { from { opacity: 0; transform: translateX(14px) } to { opacity: 1; transform: none } }
+.agent-pdf-top { border-bottom: 1px solid var(--line); background: var(--surface) }
+.agent-pdf-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; font-size: calc(12.5px * var(--font-scale, 1)); color: #6a6455 }
+.agent-pdf-title { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1 }
+.agent-pdf-title svg { flex: 0 0 auto }
+.agent-pdf-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); font-weight: 600; font-size: calc(13.5px * var(--font-scale, 1)) }
+.agent-pdf-head .section-actions { flex: 0 0 auto; flex-wrap: nowrap; align-items: center; gap: 4px 12px }
+.agent-pdf-head .text-link { font-size: inherit; white-space: nowrap }
+.agent-pdf-cite { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; font-size: calc(12px * var(--font-scale, 1)); color: var(--muted); min-width: 0 }
+.agent-pdf-cite:empty { display: none }
+.agent-pdf-cite-nav { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; white-space: nowrap; color: #6a6455 }
+.agent-pdf-cite-nav .btn-icon { min-width: 24px; height: 24px; padding: 2px }
+.agent-pdf-status { flex: 0 0 auto; white-space: nowrap; padding: 1px 8px; border-radius: 9px; background: var(--surface-deep); color: #6a6455 }
+.agent-pdf-status.found { background: #e3efe6; color: var(--primary); font-weight: 600 }
+.agent-pdf-status.locating { color: var(--accent) }
+.agent-pdf-status:empty { display: none }
+.agent-pdf-quote { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; color: #6a6455; quotes: "“" "”" }
+.agent-pdf-frame { flex: 1; width: 100%; border: 0; background: #e9e5d8 }
+@media (max-width: 1000px) {
+  /* Too narrow for two columns: the PDF takes the lower half instead. */
+  .agent-split.has-pdf { flex-direction: column; gap: 10px }
+  .agent-split-handle { display: none }
+  .agent-pdf { flex: 0 0 52%; width: auto; max-width: none; min-width: 0; animation-name: agent-pdf-up }
+  @keyframes agent-pdf-up { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+}
+@media (max-width: 760px) {
+  .agent-pdf-head .text-link, .agent-pdf-quote { display: none }
+}
 /* Assistant replies: Markdown, thinking summaries, queue */
 .agent-turn.assistant p { white-space: normal }
 .agent-turn.assistant h3, .agent-turn.assistant h4, .agent-turn.assistant h5, .agent-turn.assistant h6 { margin: 12px 0 6px; font-size: calc(15px * var(--font-scale, 1)) }

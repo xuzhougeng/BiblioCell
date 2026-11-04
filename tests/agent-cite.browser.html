@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>引用定位验证</title>
+<link rel="stylesheet" href="/src/style.css">
+<body>
+<p id="note" style="padding:8px 18px;margin:0;font-size:13px;color:#666">隔离测试：一段写死的助手回复，引用指向一份现场生成的 PDF。点引用应在右侧打开 PDF、跳页并高亮原句；不连接数据库或模型。</p>
+<div class="app-main"><main class="workspace-main"><div id="app-content"></div></main></div>
+<div id="modal-root"></div><div id="drawer-root"></div><div id="toast-root"></div>
+<script type="module">
+// Surface failures with their stack, so a regression is not a bare "uncaught" line.
+window.addEventListener("unhandledrejection", (e) => console.error("harness rejection:", e.reason?.stack ?? e.reason));
+// A stand-in runtime: the page runs in a browser, so calls answer with nothing and events never fire.
+globalThis.mygo = {
+  call: (method) => Promise.resolve(/List|History|Presets/.test(method) ? [] : {}),
+  on: () => () => {}, once: () => () => {}, channel: () => ({}), locale: "zh-CN", dir: "ltr",
+};
+const { App } = await import("../src/app.ts");
+const { demoState } = await import("../src/demo-data.ts");
+
+// A PDF with a text layer: one page per entry, lines set in Helvetica.
+function textPDF(pages) {
+  const escape = (s) => s.replace(/[\\()]/g, (c) => "\\" + c);
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pages.map((_, i) => `${4 + 2 * i} 0 R`).join(" ")}] /Count ${pages.length} >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+  ];
+  pages.forEach((lines, i) => {
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + 2 * i} 0 R >>`);
+    const content = "BT /F1 12 Tf 72 720 Td 16 TL\n" + lines.map((l) => `(${escape(l)}) Tj T*\n`).join("") + "ET\n";
+    objects.push(`<< /Length ${content.length} >>\nstream\n${content}endstream`);
+  });
+  let out = "%PDF-1.4\n";
+  const offsets = [];
+  objects.forEach((o, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => String(o).padStart(10, "0") + " 00000 n \n").join("");
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Uint8Array.from(out, (c) => c.charCodeAt(0));
+}
+const pdfURL = URL.createObjectURL(new Blob([textPDF([
+  ["Single-cell atlas of the Arabidopsis root", "Abstract: We profiled 12,000 cells from root tips.", "Root tips were dissected by hand."],
+  ["Methods", "Protoplasts were isolated from 7-day-old seedlings.", "Libraries were prepared with 10x Genomics Chro-", "mium and sequenced on NovaSeq.", "Data are deposited under GSE123456.", "Reads were aligned with Cell Ranger."],
+  ["Results", "We identified 18 clusters covering every known cell type."],
+])], { type: "application/pdf" }));
+
+const state = demoState();
+const paper = state.papers[0];
+const other = state.papers[1];
+state.resources = [{ id: pdfURL, paperId: paper.id, datasetId: null, type: "fulltext", title: "atlas.pdf", localPath: "papers/atlas.pdf", status: "stored", url: "", isDemo: false, addedAt: "2026-01-01" }];
+history.replaceState(null, "", "#agent");
+const app = new App({ initial: state, store: { load: async () => state, save: async () => {} }, env: {
+  desktop: true, backend: true, readOnly: false, web: null, real: true,
+  settings: { storagePath: "", fontSize: 14, batchScreenConcurrency: 1, translationPrompt: "", mcpToken: "", ncbiApiKey: "", contactEmail: "", models: [{ id: "m", name: "测试模型", config: { protocol: "openai", baseUrl: "http://localhost:11434/v1", apiKey: "", model: "qwen3", maxTokens: 0, maxSteps: 0, effort: "" } }], tasks: { chat: "m", screen: "m", translate: "m" } },
+  mcp: { enabled: true, endpoint: "http://127.0.0.1:37841/mcp", token: "", tools: ["search_fulltext", "read_fulltext"], resources: [] },
+  status: null, sources: [], automation: { enabled: false, intervalHours: 24, lastRunAt: "", nextRunAt: "", running: false, results: [] },
+} });
+app.agent.messages = [
+  { role: "user", content: "哪篇文献说明了建库平台和数据编号？" },
+  { role: "assistant", content: `《${paper.title}》在方法部分[说明了建库用的是 10x Chromium](cite:${paper.id}#page=2 "Libraries were prepared with 10x Genomics Chromium and sequenced on NovaSeq.")，数据存放在 [GSE123456](cite:${paper.id}#page=2 "Data are deposited under GSE123456.")；第 1 页还写到[根尖是手工解剖的](cite:${paper.id}#page=1 "Root tips were dissected by hand.")。\n\n另外两条用于验证兜底：[页码给错的引用](cite:${paper.id}#page=3 "Protoplasts were isolated from 7-day-old seedlings.")会在别的页找到；[找不到的引用](cite:${paper.id}#page=3 "This sentence is nowhere in the file at all.")只会跳到第 3 页。《${other.title}》[没有 PDF](cite:${other.id}#page=1 "Anything.")。` },
+];
+app.start();
+</script>
+</body>
+</html>

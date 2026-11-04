@@ -66,4 +66,21 @@ export const agent: Record<string, string> = {
   "它可能已被删除。": "It may have been deleted.",
   "已删除这段对话。": "Conversation deleted.",
   "删除失败：{error}": "Delete failed: {error}",
+  // Citations: the PDF beside the conversation
+  "正在第 {n} 页定位原文…": "Finding the passage on page {n}…",
+  "正在定位原文…": "Finding the passage…",
+  "第 {n} 页 · 已高亮原文": "Page {n} · passage highlighted",
+  "已跳到第 {n} 页，未找到这段原文": "On page {n}; the passage was not found",
+  "未找到这段原文": "The passage was not found",
+  "文献详情": "Paper details",
+  "关闭 PDF": "Close PDF",
+  "上一处引用": "Previous citation",
+  "下一处引用": "Next citation",
+  "引用 {n} / {total}": "Citation {n} / {total}",
+  "调整 PDF 宽度": "Resize the PDF pane",
+  "库里没有 ID 为 {id} 的文献。": "No paper with ID {id} is in the library.",
+  "《{title}》还没有 PDF 全文，可在详情的“数据与资料”中导入。": "“{title}” has no PDF full text yet; import one under Data & files in its details.",
+  // markdown.ts
+  "打开 PDF 第 {n} 页并高亮原文": "Open the PDF at page {n} and highlight the passage",
+  "打开这篇文献的 PDF": "Open this paper's PDF",
 };

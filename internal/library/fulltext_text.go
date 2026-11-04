@@ -31,24 +31,19 @@ func (s *Store) PaperFulltextSource(ctx context.Context, paperID string) (PaperF
 
 // PaperFulltextPages returns the stored full text page by page, so a quoted
 // passage can be traced back to the PDF page it sits on. A plain-text file is
-// one page. Without a full-text file every value is empty.
+// one page. Without a full-text file every value is empty. The text comes
+// from the fulltext_text cache, extracted on first use.
 func (s *Store) PaperFulltextPages(ctx context.Context, paperID string) (PaperFile, []string, error) {
-	files, err := s.ListPaperFiles(ctx)
+	files, err := s.fulltextFiles(ctx)
 	if err != nil {
 		return PaperFile{}, nil, err
 	}
-	for _, file := range files {
-		if file.PaperID != paperID || file.Type != "fulltext" {
-			continue
-		}
-		path, err := s.PaperFilePath(ctx, file.ID)
-		if err != nil {
-			return PaperFile{}, nil, err
-		}
-		pages, err := fulltextFilePages(path)
-		return file, pages, err
+	file, ok := files[paperID]
+	if !ok {
+		return PaperFile{}, nil, nil
 	}
-	return PaperFile{}, nil, nil
+	pages, err := s.fileTextPages(ctx, file.ID)
+	return file, pages, err
 }
 
 // joinPages is the one way pages become the text a model reads, so a passage

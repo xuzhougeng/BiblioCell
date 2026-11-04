@@ -26,7 +26,8 @@ import { applyProviderDefault, refreshSources, renderSources, saveAutomation, sa
 import { reviewActions } from "./review.ts";
 import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
-import { agentActions, emptyAgentState, renderAgent, sendAgentMessage, watchAgent, type AgentState } from "./agent.ts";
+import { afterAgentRender, agentActions, closeAgentPdf, emptyAgentState, renderAgent, sendAgentMessage, updateAgentContent, watchAgent, type AgentPdfState, type AgentState } from "./agent.ts";
+import { watchFrames } from "./pdf-frame.ts";
 import { Library } from "./mygo.ts";
 import { enqueue, SaveRejected, type LibraryStore } from "./store.ts";
 import { plantChoices } from "./research-options.ts";
@@ -113,6 +114,8 @@ export class App {
   private translationAnchor: DOMRect | null = null;
   private selectionTimer: ReturnType<typeof setTimeout> | undefined;
   agent: AgentState = emptyAgentState();
+  /** The assistant page: the PDF open beside the conversation for a citation, if any. */
+  agentPdf: AgentPdfState | null = null;
   drawerTab = "overview";
   syncing = new Set<string>();
   pendingImport: { next: LibraryState; stats: ImportStats } | null = null;
@@ -207,6 +210,7 @@ export class App {
     if (isAdmin(this.env)) {
       watchSources(this);
       watchAgent(this);
+      watchFrames();
     }
     this.render();
     if (this.warning) this.toast(this.warning, true);
@@ -347,7 +351,9 @@ export class App {
     if (this.page !== "papers") this.screen = null; // Screening belongs to the papers list it started from.
     if (!this.screen) this.clearTranslation();
     pruneSelection(this);
-    updateScreeningContent(content, renderers[this.page]());
+    const html = renderers[this.page]();
+    if (this.page === "agent") updateAgentContent(content, html); // Keeps the cited PDF loaded across repaints.
+    else updateScreeningContent(content, html);
     if (this.screen) {
       const current = screenPapers(this)[this.screen.index];
       if (current) {
@@ -357,10 +363,7 @@ export class App {
       $(".screen-queue-item[aria-current]")?.scrollIntoView({ block: "nearest" });
     }
     document.body.classList.toggle("page-agent", this.page === "agent"); // The assistant page is the chat window itself.
-    if (this.page === "agent") {
-      const transcript = $("#agent-transcript");
-      if (transcript) transcript.scrollTop = transcript.scrollHeight; // Open on the newest message, like a chat window.
-    }
+    if (this.page === "agent") afterAgentRender(this);
     // "Import records / Add paper" belong to the library pages; settings, sources and the assistant have their own actions.
     const actions = $(".heading-actions");
     if (actions) actions.hidden = HEADING_ACTIONS_HIDDEN.has(this.page);
@@ -1225,6 +1228,7 @@ export class App {
       else if ($("#modal-root .modal")) this.closeModal();
       else if (this.drawer) this.closeDrawer();
       else if (this.screen) this.exitScreening();
+      else if (this.page === "agent" && this.agentPdf) closeAgentPdf(this);
       else document.body.classList.remove("nav-open");
       return;
     }

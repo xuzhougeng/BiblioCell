@@ -2,9 +2,38 @@
 // through esc() before any tag is added, so model output can never inject
 // HTML. Covers what chat replies use: headings, paragraphs, bold, italic,
 // inline code, fenced code, links, lists, quotes, tables, and rules.
+// A link to cite:<paperId>#page=<n> is a citation: it becomes a button that
+// opens the paper's PDF on that page, highlighting the quoted sentence.
+import { t } from "./i18n.ts";
 import { esc } from "./model.ts";
 
 const SAFE_URL = /^(https?:|mailto:|#)/i;
+const CITE_URL = /^cite:([A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?)(?:#page=(\d+))?$/i;
+/** A bare cite:ID#page=N in running text, outside any link syntax. */
+const BARE_CITE = /(^|[^\w"=/-])cite:([A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?)(?:#page=(\d+))?/g;
+
+/** Citation is what a cite link carries: the paper, the page and the sentence to highlight. */
+export interface Citation {
+  paperId: string;
+  page: number;
+  /** The verbatim sentence; empty when the link gave none, so only the page can be shown. */
+  quote: string;
+}
+
+/** parseCite reads a cite link target; null for anything else. */
+export function parseCite(href: string): { paperId: string; page: number } | null {
+  const m = href.match(CITE_URL);
+  return m ? { paperId: m[1]!, page: Number(m[2] ?? 0) } : null;
+}
+
+/** citeHTML renders a citation as a button. label and quote are already HTML-escaped. */
+function citeHTML(paperId: string, page: number, label: string, quote: string): string {
+  // Emphasis marks and code placeholders are rendered after this step; they must not end up in the quote.
+  quote = quote.replace(/\u0000\d+\u0000|[*_]/g, "");
+  const where = page > 0 ? t("第 {n} 页", { n: page }) : "";
+  const title = page > 0 ? t("打开 PDF 第 {n} 页并高亮原文", { n: page }) : t("打开这篇文献的 PDF");
+  return `<button type="button" class="agent-cite" data-action="agent-cite" data-paper="${esc(paperId)}" data-page="${page > 0 ? page : 0}" data-quote="${quote}" title="${esc(title)}">${label}${where ? `<span class="agent-cite-page">${esc(where)}</span>` : ""}</button>`;
+}
 
 function inline(text: string): string {
   // Protect code spans first so their contents stay verbatim.
@@ -14,11 +43,17 @@ function inline(text: string): string {
     return `\u0000${codes.length - 1}\u0000`;
   });
   out = esc(out);
-  out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (m, label: string, href: string) => {
+  // The text is escaped by now, so a link title's quotes read &quot;. The title runs to the
+  // last quote before the closing parenthesis, so a sentence with quotes inside still parses.
+  out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)(?:\s+&quot;([^\n]*?)&quot;)?\)/g, (m, label: string, href: string, title: string | undefined) => {
     const url = href.replace(/&amp;/g, "&");
+    const cite = parseCite(url);
+    if (cite) return citeHTML(cite.paperId, cite.page, label, title?.trim() || label);
     if (!SAFE_URL.test(url)) return m;
-    return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"${title ? ` title="${title}"` : ""}>${label}</a>`;
   });
+  out = out.replace(BARE_CITE, (_m, before: string, paperId: string, page: string | undefined) =>
+    before + citeHTML(paperId, Number(page ?? 0), esc(paperId), ""));
   out = out.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
   out = out.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   out = out.replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, "$1<em>$2</em>");

@@ -92,6 +92,20 @@ CREATE INDEX IF NOT EXISTS idx_screening_suggestions_run ON screening_suggestion
 			})
 		},
 	},
+	{
+		Version:     17,
+		Description: "缓存全文文件逐页提取的文本，供全文检索与原文定位",
+		SQL: `CREATE TABLE IF NOT EXISTS fulltext_text (
+    resource_id TEXT PRIMARY KEY NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    -- 文件大小与修改时间一起作为缓存键：文件被替换后重新提取。
+    file_size INTEGER NOT NULL CHECK (file_size >= 0),
+    file_mtime TEXT NOT NULL,
+    -- 每页一项的 JSON 数组；提取失败时为空数组并记录 error，避免每次检索都重读坏文件。
+    pages TEXT NOT NULL DEFAULT '[]',
+    error TEXT NOT NULL DEFAULT '',
+    extracted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);`,
+	},
 }
 
 // SchemaVersion is the schema this build writes: the baseline plus every
