@@ -109,6 +109,8 @@ export class App {
   /** Screening mode shows the stored PDF beside the paper unless hidden. */
   screenPdf = localStorage.getItem("bibliocell-screen-pdf") !== "off";
   overviewHidePreprint = localStorage.getItem("bibliocell-overview-hide-preprint") === "on";
+  /** Screening statuses the overview statistics count; empty counts every status. */
+  overviewScreening: string[] = (localStorage.getItem("bibliocell-overview-screening") ?? "").split(",").filter((s) => s in SCREEN);
   /** Screening mode: the queue rail is open by default on wide windows; narrow ones show it as an overlay on request. */
   screenQueueOpen = wideWindow();
   private translationAnchor: DOMRect | null = null;
@@ -972,7 +974,9 @@ export class App {
       const value = el.dataset.value ?? "";
       if (!field || !value) return;
       // With preprints left out of the charts, the library shows the same papers the bar counted.
-      this.filters = { ...emptyFilters(), [field]: value, preprint: this.overviewHidePreprint ? "no" : "", sort: this.filters.sort };
+      // The library filters one screening status at a time, so a single chosen status carries over.
+      const screening = this.overviewScreening.length === 1 ? this.overviewScreening[0]! : "";
+      this.filters = { ...emptyFilters(), [field]: value, screening, preprint: this.overviewHidePreprint ? "no" : "", sort: this.filters.sort };
       this.paperPage = 1;
       this.navigate("papers");
     },
@@ -1100,6 +1104,15 @@ export class App {
     }
     if (target.id === "automation-enabled" || target.id === "automation-interval") {
       saveAutomation(this);
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.dataset.overviewScreening) {
+      const status = target.dataset.overviewScreening;
+      const chosen = new Set(this.overviewScreening);
+      if (target.checked) chosen.add(status); else chosen.delete(status);
+      this.overviewScreening = Object.keys(SCREEN).filter((s) => chosen.has(s));
+      localStorage.setItem("bibliocell-overview-screening", this.overviewScreening.join(","));
+      this.render();
       return;
     }
     if (target.id === "overview-hide-preprint" && target instanceof HTMLInputElement) {
