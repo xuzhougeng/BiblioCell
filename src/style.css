@@ -1062,6 +1062,12 @@ button.year-col:hover { color: var(--primary-deep) }
 .source-heading h3 { font-size: calc(17px * var(--font-scale, 1)); margin: 0 }
 .source-heading p { font-size: calc(12px * var(--font-scale, 1)); margin: 3px 0 0 }
 .source-heading > .badge { margin-left: auto }
+.source-heading > .source-toggle { margin-left: 4px }
+.source-card { transition: background 160ms ease, border-color 160ms ease }
+.source-card.is-off { background: var(--surface-deep); border-color: #e2dccb; border-style: dashed }
+.source-card.is-off > :not(.source-heading), .source-card.is-off .source-heading > :not(.source-toggle) { filter: grayscale(1); opacity: 0.55; transition: opacity 160ms ease }
+.source-card.is-off:hover > :not(.source-heading), .source-card.is-off:hover .source-heading > :not(.source-toggle) { opacity: 0.8 }
+.settings-switch:disabled { cursor: not-allowed; opacity: 0.6 }
 .source-card .source-description { font-size: calc(14px * var(--font-scale, 1)); min-height: 48px; line-height: 1.9; margin: 17px 0 }
 .source-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e6dec6; padding-top: 13px; gap: 8px; font-size: calc(12px * var(--font-scale, 1)) }
 .source-footer .text-link { font-size: calc(13px * var(--font-scale, 1)) }

@@ -22,7 +22,7 @@ import {
   PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, clone, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
-import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, useSourceQuery, watchSources } from "./sources.ts";
+import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, toggleSource, useSourceQuery, watchSources } from "./sources.ts";
 import { reviewActions } from "./review.ts";
 import { DECISIONS, applyDecision, askAIDisabled, renderScreening, saveScreenAI, screenAIModal, screenActions, screenModelReady, screenPapers, translateModelReady, translationPop, currentAbstractTranslation, updateScreenAbstract, type AbstractTranslation, updateScreenAI, updateScreeningContent, type ScreenState, type Translation } from "./screen.ts";
 import { previewFontSize, renderSettings, saveModelProfile, saveSettings, settingsActions, updateAIPlaceholders } from "./settings.ts";
@@ -120,6 +120,7 @@ export class App {
   agentPdf: AgentPdfState | null = null;
   drawerTab = "overview";
   syncing = new Set<string>();
+  togglingSources = new Set<string>();
   pendingImport: { next: LibraryState; stats: ImportStats } | null = null;
 
   private readonly store: LibraryStore;
@@ -1100,6 +1101,10 @@ export class App {
     }
     if (target.id === "model-protocol" && target instanceof HTMLSelectElement) {
       updateAIPlaceholders(target);
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.dataset.sourceToggle) {
+      toggleSource(this, target);
       return;
     }
     if (target.id === "automation-enabled" || target.id === "automation-interval") {
