@@ -215,11 +215,15 @@ export function renderOverview(app: App): string {
   const coverage = `<section class="panel coverage-panel"><div class="panel-header"><div><h2>${t("整理覆盖")}</h2><p class="muted">${t("收录与完善，各自向前一步")}</p></div></div><div class="panel-body progress-list">${progressRow(t("收录范围已判断"), total - pending, total)}${progressRow(t("已关联数据集"), withData, total, "blue")}${progressRow(t("已记录全文入口"), withFulltext, total, "gold")}</div></section>`;
   // The statistics can leave preprints out; screening progress and coverage always count every paper.
   const preprints = papers.filter((p) => p.publicationStatus === "preprint").length;
-  const counted = app.overviewHidePreprint ? papers.filter((p) => p.publicationStatus !== "preprint") : papers;
+  const screening = app.overviewScreening;
+  const counted = papers.filter((p) => (!app.overviewHidePreprint || p.publicationStatus !== "preprint") && (!screening.length || screening.includes(p.screening)));
+  const screeningChoices = `<div class="overview-screening" role="group" aria-label="${t("按收录状态统计")}"><span class="muted">${t("收录状态")}</span>`
+    + Object.entries(SCREEN).map(([status, label]) => `<label class="checkbox-choice"><input type="checkbox" data-overview-screening="${status}"${screening.includes(status) ? " checked" : ""}><span>${esc(label)} (${papers.filter((p) => p.screening === status).length})</span></label>`).join("")
+    + `</div>`;
   return `<div class="stat-grid">${statCards}</div><div class="overview-progress-grid">${screeningDashboard(app)}${coverage}</div>`
     + `<div class="overview-grid"><section class="panel recent-panel"><div class="panel-header"><div><h2>${t("最近收录")}</h2><p class="muted">${t("新线索先留下，整理慢慢来")}</p></div><button class="text-link" data-page="papers">${t("查看全部")} ${I("arrow-right", 16)}</button></div>${paperTable(recent, app, true)}<div class="panel-footnote">${I("info", 14)} ${t("当前条目为原型示例，可通过新增或导入建立自己的目录。")}</div></section>`
     + `<section class="panel tasks-panel"><div class="panel-header"><div><h2>${t("接下来整理")}</h2><p class="muted">${t("按需要补齐信息")}</p></div><span class="count-pill">${ts.length}</span></div><div class="task-groups">${taskGroups(ts)}</div><button class="panel-bottom-link" data-page="tasks">${t("查看全部待补事项")} ${I("arrow-right", 16)}</button></section></div>`
-    + `<div class="overview-section-head"><div><h2>${t("文献统计")}</h2><p class="muted">${t("点击条目筛选文献库")}</p></div><label class="checkbox-choice"><input type="checkbox" id="overview-hide-preprint"${app.overviewHidePreprint ? " checked" : ""}><span>${t("不展示预印本")}${preprints ? ` (${preprints})` : ""}</span></label></div>`
+    + `<div class="overview-section-head"><div><h2>${t("文献统计")}</h2><p class="muted">${t("点击条目筛选文献库")}${screening.length ? ` · ${t("当前统计 {n} 篇", { n: counted.length })}` : ""}</p></div><div class="overview-stat-options">${screeningChoices}<label class="checkbox-choice"><input type="checkbox" id="overview-hide-preprint"${app.overviewHidePreprint ? " checked" : ""}><span>${t("不展示预印本")}${preprints ? ` (${preprints})` : ""}</span></label></div></div>`
     + `<div class="overview-bottom-grid">${yearPanel(counted)}`
     + distributionPanel(counted, "species", t("研究物种"), t("当前目录中的文献分布"), (v) => speciesLabelOf(papers, v))
     + distributionPanel(counted, "modality", t("研究技术"), t("按测序或成像技术统计"), tv)
