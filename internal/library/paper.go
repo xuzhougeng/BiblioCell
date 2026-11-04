@@ -96,7 +96,7 @@ var ErrPaperNotFound = errors.New("paper not found")
 var ErrDuplicatePaper = errors.New("paper already exists")
 
 // ErrHumanReviewed indicates an agent edit of a paper a person already decided on.
-var ErrHumanReviewed = errors.New("paper was reviewed by a person; only proposedScreening and proposedReason can change")
+var ErrHumanReviewed = errors.New("paper was reviewed by a person; only articleTypes, species, organs, modalities, platforms, proposedScreening, proposedReason, and blank doi, pmid, authors, year, journal, publicationStatus or abstract can change")
 
 var (
 	doiPattern        = regexp.MustCompile(`^10\.\d{4,9}/\S+$`)
@@ -474,15 +474,21 @@ func readPaper(ctx context.Context, reader queryer, id string) (Paper, error) {
 }
 
 // UpdatePaper applies a partial metadata patch from an agent without replacing
-// omitted fields. Once a person has decided on a paper, only proposals can change.
+// omitted fields. Once a person has decided on a paper, only proposals,
+// classification fields, and blank bibliographic fields can change.
 func (s *Store) UpdatePaper(ctx context.Context, id string, patch PaperPatch) (Paper, error) {
 	paper, err := s.GetPaper(ctx, id)
 	if err != nil {
 		return Paper{}, err
 	}
 	if paper.ReviewedAt != "" {
+		// The screening decision says whether a paper is included; what the paper
+		// is about (article type, species, organs, modalities, platforms) gets
+		// classified separately, so those stay editable.
 		metadata := patch
 		metadata.ProposedScreening, metadata.ProposedReason = nil, nil
+		metadata.ArticleTypes, metadata.Species, metadata.Organs, metadata.Modalities, metadata.Platforms = nil, nil, nil, nil, nil
+		dropBibliographicFills(&metadata, paper)
 		if metadata != (PaperPatch{}) {
 			return Paper{}, ErrHumanReviewed
 		}
@@ -513,6 +519,38 @@ func (s *Store) UpdatePaper(ctx context.Context, id string, patch PaperPatch) (P
 		return Paper{}, fmt.Errorf("commit paper update: %w", err)
 	}
 	return paper, nil
+}
+
+// dropBibliographicFills clears from patch the bibliographic fields a reviewed
+// paper may still take: ones the paper has blank, so a lookup by DOI or PMID
+// can complete it, and ones the patch repeats unchanged. Whatever is left would
+// overwrite a value a person has seen.
+func dropBibliographicFills(patch *PaperPatch, paper Paper) {
+	fills := func(field **string, current string, normalize func(string) string) {
+		if *field == nil {
+			return
+		}
+		value := normalize(**field)
+		current = normalize(current)
+		if value == current || (current == "" && value != "") {
+			*field = nil
+		}
+	}
+	trim := strings.TrimSpace
+	fills(&patch.DOI, paper.DOI, normalizeDOI)
+	fills(&patch.PMID, paper.PMID, normalizePMID)
+	fills(&patch.Authors, paper.Authors, trim)
+	fills(&patch.Journal, paper.Journal, trim)
+	fills(&patch.Abstract, paper.Abstract, trim)
+	if patch.PublicationStatus != nil {
+		value := trim(*patch.PublicationStatus)
+		if value == paper.PublicationStatus || (oneOf(paper.PublicationStatus, "", "unknown") && value != "") {
+			patch.PublicationStatus = nil
+		}
+	}
+	if patch.Year != nil && !patch.ClearYear && (paper.Year == nil || *paper.Year == *patch.Year) {
+		patch.Year = nil
+	}
 }
 
 func applyPaperPatch(paper *Paper, patch PaperPatch) {

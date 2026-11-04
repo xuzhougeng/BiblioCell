@@ -53,6 +53,12 @@ func TestMCPAgentCanOnlyPropose(t *testing.T) {
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
 		return err != nil || result.IsError
 	}
+	if !rejected("lookup_metadata", map[string]any{}) || !rejected("lookup_metadata", map[string]any{"doi": "10.1000/x", "pmid": "1"}) {
+		t.Fatal("lookup_metadata accepted neither or both identifiers")
+	}
+	if !rejected("lookup_metadata", map[string]any{"pmid": "not a pmid"}) {
+		t.Fatal("lookup_metadata accepted a malformed PMID")
+	}
 	if !rejected("add_paper", map[string]any{"title": "Self approved", "screening": "included"}) {
 		t.Fatal("add_paper accepted a screening decision")
 	}
@@ -82,13 +88,41 @@ func TestMCPAgentCanOnlyPropose(t *testing.T) {
 	if conflicts, err := store.SavePaperEdits(ctx, []PaperEdit{{Before: &paper, After: reviewed}}); err != nil || len(conflicts) != 0 {
 		t.Fatalf("human decision: %v %v", conflicts, err)
 	}
-	if !rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"journal": "Changed after review"}}) {
+	if !rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"title": "Changed after review"}}) {
 		t.Fatal("update_paper edited a reviewed paper")
 	}
 	if rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"proposedScreening": "uncertain"}}) {
 		t.Fatal("update_paper refused a proposal on a reviewed paper")
 	}
-	if got, err := store.GetPaper(ctx, paper.ID); err != nil || got.Screening != "included" || got.Journal != "" || got.ProposedScreening != "uncertain" {
+	if rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{
+		"articleTypes": []string{"review"}, "species": []map[string]any{{"name": "Oryza sativa", "label": "水稻"}},
+		"organs": []string{"root"}, "modalities": []string{"scRNA-seq"}, "platforms": []string{"BD Rhapsody"},
+	}}) {
+		t.Fatal("update_paper refused a classification change on a reviewed paper")
+	}
+	if !rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"articleTypes": []string{"original"}, "notes": "Changed after review"}}) {
+		t.Fatal("update_paper let articleTypes carry a locked field on a reviewed paper")
+	}
+	// Blank bibliographic fields can be completed from a lookup; filled ones stay.
+	if rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{
+		"journal": "Nature Plants", "authors": "Ada Li", "year": 2024, "pmid": "PMID: 31234567", "publicationStatus": "published",
+	}}) {
+		t.Fatal("update_paper refused to fill blank bibliographic fields on a reviewed paper")
+	}
+	if rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"journal": "Nature Plants", "year": 2024}}) {
+		t.Fatal("update_paper refused an unchanged bibliographic value on a reviewed paper")
+	}
+	for field, value := range map[string]any{"journal": "Plant Cell", "year": 2023, "authors": "Someone Else", "pmid": "1", "publicationStatus": "preprint"} {
+		if !rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{field: value}}) {
+			t.Fatalf("update_paper overwrote filled %s on a reviewed paper", field)
+		}
+	}
+	if !rejected("update_paper", map[string]any{"id": paper.ID, "patch": map[string]any{"clearYear": true}}) {
+		t.Fatal("update_paper cleared the year of a reviewed paper")
+	}
+	if got, err := store.GetPaper(ctx, paper.ID); err != nil || got.Screening != "included" || got.ReviewedAt == "" || got.Journal != "Nature Plants" || got.Authors != "Ada Li" || got.Year == nil || *got.Year != 2024 || got.PMID != "31234567" || got.PublicationStatus != "published" || got.ProposedScreening != "uncertain" || len(got.ArticleTypes) != 1 || got.ArticleTypes[0] != "综述" ||
+		len(got.Species) != 1 || got.Species[0].Name != "Oryza sativa" || len(got.Organs) != 1 || got.Organs[0] != "root" ||
+		len(got.Modalities) != 1 || got.Modalities[0] != "scRNA-seq" || len(got.Platforms) != 1 || got.Platforms[0] != "BD Rhapsody" {
 		t.Fatalf("reviewed paper = %+v, %v", got, err)
 	}
 }
@@ -327,7 +361,7 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 	}
 	defer session.Close()
 
-	for _, name := range []string{"describe_library", "library_status", "list_papers"} {
+	for _, name := range []string{"describe_library", "library_status", "list_papers", "find_duplicates"} {
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name})
 		if err != nil || result.IsError {
 			t.Errorf("unauthenticated read %s failed: err=%v result=%+v", name, err, result)
@@ -345,6 +379,9 @@ func TestMCPReadOnlyWithoutToken(t *testing.T) {
 		{Name: "add_paper", Arguments: map[string]any{"title": "Unauthorized"}},
 		{Name: "import_papers", Arguments: map[string]any{"dryRun": true, "papers": []map[string]any{{"title": "Unauthorized"}}}},
 		{Name: "update_paper", Arguments: map[string]any{"id": original.ID, "patch": map[string]any{"title": "Changed"}}},
+		{Name: "lookup_metadata", Arguments: map[string]any{"pmid": "12345"}},
+		{Name: "find_published_versions", Arguments: map[string]any{}},
+		{Name: "merge_papers", Arguments: map[string]any{"keepId": original.ID, "mergeId": "P-other", "reason": "same work"}},
 	}
 	for _, call := range writeCalls {
 		result, err := session.CallTool(ctx, &call)

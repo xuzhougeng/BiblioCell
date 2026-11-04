@@ -106,6 +106,26 @@ CREATE INDEX IF NOT EXISTS idx_screening_suggestions_run ON screening_suggestion
     extracted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );`,
 	},
+	{
+		Version:     18,
+		Description: "合并重复文献：记录合并掉的文献标识，来源更新与导入不再把它加回来",
+		SQL: `CREATE TABLE IF NOT EXISTS merged_papers (
+    merged_id TEXT PRIMARY KEY NOT NULL,
+    -- 保留的文献；它被删除时这些记录随之删除。
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    doi TEXT NOT NULL DEFAULT '',
+    pmid TEXT NOT NULL DEFAULT '',
+    publication_state TEXT NOT NULL DEFAULT 'unknown',
+    reason TEXT NOT NULL DEFAULT '',
+    -- 由谁合并：desktop、MCP 或 CLI。
+    merged_via TEXT NOT NULL DEFAULT '',
+    merged_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_merged_papers_paper ON merged_papers(paper_id);
+CREATE INDEX IF NOT EXISTS idx_merged_papers_doi ON merged_papers(doi) WHERE doi <> '';
+CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE pmid <> '';`,
+	},
 }
 
 // SchemaVersion is the schema this build writes: the baseline plus every

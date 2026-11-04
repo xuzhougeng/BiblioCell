@@ -1,4 +1,4 @@
--- BiblioCell · schema v17
+-- BiblioCell · schema v18
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -85,6 +85,25 @@ CREATE TABLE IF NOT EXISTS paper_relations (
     CHECK (source_paper_id <> target_paper_id)
 );
 CREATE INDEX IF NOT EXISTS idx_paper_relations_target ON paper_relations(target_paper_id);
+
+-- 合并掉的文献（例如已正式发表的预印本）留下的题目与标识符：来源更新和导入
+-- 按 DOI、PMID 或原 ID 认出它，归到保留的文献上，不会再把它加回来。
+CREATE TABLE IF NOT EXISTS merged_papers (
+    merged_id TEXT PRIMARY KEY NOT NULL,
+    -- 保留的文献；它被删除时这些记录随之删除。
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    doi TEXT NOT NULL DEFAULT '',
+    pmid TEXT NOT NULL DEFAULT '',
+    publication_state TEXT NOT NULL DEFAULT 'unknown',
+    reason TEXT NOT NULL DEFAULT '',
+    -- 由谁合并：desktop、MCP 或 CLI。
+    merged_via TEXT NOT NULL DEFAULT '',
+    merged_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_merged_papers_paper ON merged_papers(paper_id);
+CREATE INDEX IF NOT EXISTS idx_merged_papers_doi ON merged_papers(doi) WHERE doi <> '';
+CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE pmid <> '';
 
 CREATE TABLE IF NOT EXISTS paper_curation (
     paper_id TEXT PRIMARY KEY NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
@@ -583,5 +602,5 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (14, 'AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照'),
        (15, '按原文与提示词缓存翻译结果');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 17;
+PRAGMA user_version = 18;
 COMMIT;

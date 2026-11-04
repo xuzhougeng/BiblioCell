@@ -172,6 +172,24 @@ type fetchFulltextInput struct {
 	PaperID string `json:"paperId" jsonschema:"Paper that should receive the PDF"`
 }
 
+type lookupMetadataInput struct {
+	DOI  string `json:"doi,omitempty" jsonschema:"Bare DOI or DOI URL; give this or pmid, not both"`
+	PMID string `json:"pmid,omitempty" jsonschema:"PubMed ID or PubMed URL; give this or doi, not both"`
+}
+
+type pageInput struct {
+	Limit  int `json:"limit,omitempty" jsonschema:"Page size"`
+	Offset int `json:"offset,omitempty" jsonschema:"Items to skip"`
+}
+
+type listMergedInput struct {
+	PaperID string `json:"paperId" jsonschema:"Paper that duplicates were merged into"`
+}
+
+type listMergedOutput struct {
+	Merged []MergedPaper `json:"merged"`
+}
+
 type sourceIDInput struct {
 	SourceID string `json:"sourceId" jsonschema:"Source ID from list_sources"`
 }
@@ -294,10 +312,13 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 				"Record what you extract with add_evidence: a short excerpt and its source, per field, for the person checking it",
 				"Only a person verifies evidence, datasets, repository records, and paper links; list_evidence shows their verdicts",
 				"Drop a file into inboxPath, then call attach_file with its name; it moves into the library",
+				"To remove a preprint whose journal version exists: find_duplicates catches matching titles and find_published_versions asks Crossref (is-preprint-of) for titles that changed; when the journal version is missing, lookup_metadata its DOI and add_paper it; then merge_papers with keepId the journal version, mergeId the preprint, and the evidence as reason. Check authors and year before merging papers that only share a title",
+				"merge_papers keeps a person's screening decision, combines notes and tags, and moves files, datasets and evidence; a merged paper's DOI, PMID and ID then resolve to the kept paper, so imports skip it and source updates do not bring it back",
+				"To complete a paper's journal, authors, year, or abstract, lookup_metadata by its DOI or PMID and update_paper with the fields that are blank or wrong; lookup_metadata itself writes nothing",
 				"fetch_fulltext stores an open-access PDF by DOI or PMID; when it fails, leave the paper for a person rather than scraping publisher pages",
 				"screening and reviewedAt are read-only: a person decides in the desktop app; send proposedScreening with proposedReason instead",
 				"proposedScreening=excluded requires a non-empty proposedReason",
-				"Once reviewedAt is set, update_paper accepts only proposedScreening and proposedReason",
+				"Once reviewedAt is set, update_paper accepts only the classification fields (articleTypes, species, organs, modalities, platforms), proposedScreening and proposedReason, and doi, pmid, authors, year, journal, publicationStatus or abstract while that field is still blank (unknown for publicationStatus); classification is separate from screening, and a filled bibliographic value a person has seen is never overwritten",
 				"At most 1000 papers can be imported in one call",
 				"Only real SQLite data is accessible; Demo records are never included",
 				"To improve a source query: list_sources, study included and excluded papers with list_papers, try_source_query the saved query as a baseline and each candidate, then update_source_query only with a candidate that beats the baseline, giving the comparison as reason",
@@ -306,8 +327,9 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 			},
 			AvailableTools: []string{
 				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "delete_paper", "undo_import",
+				"find_duplicates", "find_published_versions", "merge_papers", "list_merged_papers",
 				"list_datasets", "get_dataset", "add_dataset", "update_dataset", "link_dataset",
-				"add_evidence", "list_evidence", "attach_file", "fetch_fulltext", "list_files", "search_fulltext", "read_fulltext",
+				"add_evidence", "list_evidence", "attach_file", "lookup_metadata", "fetch_fulltext", "list_files", "search_fulltext", "read_fulltext",
 				"list_sources", "try_source_query", "update_source_query", "source_query_history",
 			},
 			InboxPath:        store.inboxPath(),
@@ -372,7 +394,7 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "update_paper", Description: "Edit selected metadata of an unreviewed paper or suggest a screening decision; requires Bearer token write access and preserves omitted fields. A paper a person reviewed accepts only proposals",
+		Name: "update_paper", Description: "Edit selected metadata of an unreviewed paper or suggest a screening decision; requires Bearer token write access and preserves omitted fields. A paper a person reviewed accepts only classification fields (articleTypes, species, organs, modalities, platforms), proposals, and bibliographic fields that are still blank",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input updatePaperInput) (*mcp.CallToolResult, Paper, error) {
 		if err := requireWrite(ctx); err != nil {
 			return nil, Paper{}, err
@@ -444,6 +466,48 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 		return nil, evidenceOutput{Evidence: evidence}, err
 	})
 
+	addWriteTool(server, "lookup_metadata", "Look up a paper's bibliographic record (title, authors, year, journal, publication status, article type, abstract, DOI, PMID) by DOI or PMID through Crossref and Europe PMC, without saving anything; send the fields you want to keep with update_paper or add_paper. Requires Bearer token write access because it contacts the sources with the library's credentials",
+		func(ctx context.Context, input lookupMetadataInput) (Paper, error) {
+			doi, pmid := strings.TrimSpace(input.DOI), strings.TrimSpace(input.PMID)
+			switch {
+			case doi != "" && pmid != "":
+				return Paper{}, errors.New("give doi or pmid, not both")
+			case doi != "":
+				return LookupDOI(ctx, doi, credentials)
+			case pmid != "":
+				return LookupPMID(ctx, pmid, credentials)
+			}
+			return Paper{}, errors.New("doi or pmid is required")
+		})
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "find_duplicates", Description: "Find groups of papers whose titles match ignoring case, punctuation and markup, such as a preprint and its journal version, each with a suggestedKeepId (published first, then reviewed, then earliest); reads the library only, at most 100 groups per page. Unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input pageInput) (*mcp.CallToolResult, DuplicatesResult, error) {
+		limit := input.Limit
+		if limit <= 0 {
+			limit = 50
+		}
+		result, err := store.FindDuplicates(ctx, min(limit, 100), input.Offset)
+		return nil, result, err
+	})
+	addWriteTool(server, "find_published_versions", "Ask Crossref, for one page of the library's preprints, whether each was published as a journal article (relation is-preprint-of), returning the journal DOI and publishedPaperId when that article is already in the library; finds versions whose title changed. Writes nothing; at most 100 preprints per call, 20 by default. Requires Bearer token write access because it contacts Crossref with the library's credentials",
+		func(ctx context.Context, input pageInput) (PublishedVersionsResult, error) {
+			limit := input.Limit
+			if limit <= 0 {
+				limit = 20
+			}
+			return store.FindPublishedVersions(ctx, min(limit, 100), input.Offset, credentials)
+		})
+	addWriteTool(server, "merge_papers", "Fold a duplicate paper (mergeId, usually the preprint) into the one that stays (keepId, usually the published version) and remove the duplicate. Files, dataset links, evidence, AI suggestions and source records move to keepId; keepId's bibliographic record stays, its blank abstract and classification fields are filled from the duplicate, notes and tags are combined, and a person's screening decision on either paper is kept. Refused when both papers have different screening decisions by a person. The duplicate's ID, DOI and PMID are recorded so source updates and imports never add it back. Requires Bearer token write access and a reason",
+		func(ctx context.Context, input MergeInput) (MergeResult, error) {
+			input.Via = "MCP"
+			return store.MergePapers(ctx, input)
+		})
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_merged_papers", Description: "List the papers merged into a paper, with their old ID, title, DOI, PMID, reason, and when and how they were merged; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input listMergedInput) (*mcp.CallToolResult, listMergedOutput, error) {
+		merged, err := store.ListMergedPapers(ctx, input.PaperID)
+		return nil, listMergedOutput{Merged: merged}, err
+	})
 	addWriteTool(server, "fetch_fulltext", "Find an open-access PDF for a paper through PMC and Unpaywall and store it; returns the existing file if it has full text; requires Bearer token write access",
 		func(ctx context.Context, input fetchFulltextInput) (FulltextResult, error) {
 			return store.FetchFulltext(ctx, input.PaperID, credentials)

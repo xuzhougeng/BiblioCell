@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -32,31 +33,95 @@ func (h *remoteHarvester) lookupDOI(ctx context.Context, doi string) (Paper, err
 	if err != nil {
 		notes = append(notes, "Europe PMC："+err.Error())
 	}
+	paper = mergeLookup(paper, extra)
 	if paper.Title == "" {
-		paper = extra
-	} else {
-		fillBlank(&paper.PMID, extra.PMID)
-		fillBlank(&paper.Abstract, extra.Abstract)
-		fillBlank(&paper.Authors, extra.Authors)
-		fillBlank(&paper.Journal, extra.Journal)
-		if paper.Year == nil {
-			paper.Year = extra.Year
-		}
-		if len(paper.ArticleTypes) == 0 {
-			paper.ArticleTypes = extra.ArticleTypes
-		}
-	}
-	if paper.Title == "" {
-		if ctx.Err() != nil {
-			return Paper{}, ctx.Err()
-		}
-		if len(notes) > 0 {
-			return Paper{}, fmt.Errorf("%w（%s）", ErrDOINotFound, strings.Join(notes, "；"))
-		}
-		return Paper{}, ErrDOINotFound
+		return Paper{}, lookupMiss(ctx, ErrDOINotFound, notes)
 	}
 	paper.DOI = doi
 	return paper, nil
+}
+
+// ErrPMIDNotFound means no source returned metadata for a PMID.
+var ErrPMIDNotFound = errors.New("没有找到这个 PMID 的书目信息")
+
+// LookupPMID fetches bibliographic metadata for a PubMed ID without saving
+// anything: Europe PMC mirrors PubMed, and when the record carries a DOI,
+// Crossref adds the publisher's record the way LookupDOI does.
+func LookupPMID(ctx context.Context, pmid string, credentials func() SourceCredentials) (Paper, error) {
+	return newRemoteHarvester(credentials).lookupPMID(ctx, pmid)
+}
+
+// LookupIdentifier looks up a DOI or a PMID, telling them apart by shape: a
+// PMID is all digits, anything else is read as a DOI.
+func LookupIdentifier(ctx context.Context, value string, credentials func() SourceCredentials) (Paper, error) {
+	if pmidPattern.MatchString(normalizePMID(value)) {
+		return LookupPMID(ctx, value, credentials)
+	}
+	if !doiPattern.MatchString(normalizeDOI(value)) {
+		return Paper{}, fmt.Errorf("%q is neither a DOI (10.xxxx/...) nor a PMID", strings.TrimSpace(value))
+	}
+	return LookupDOI(ctx, value, credentials)
+}
+
+var pmidPattern = regexp.MustCompile(`^[1-9][0-9]{0,9}$`)
+
+func (h *remoteHarvester) lookupPMID(ctx context.Context, pmid string) (Paper, error) {
+	pmid = normalizePMID(pmid)
+	if !pmidPattern.MatchString(pmid) {
+		return Paper{}, fmt.Errorf("invalid PMID %q", pmid)
+	}
+	var notes []string
+	extra, err := h.europePMCPMID(ctx, pmid)
+	if err != nil {
+		notes = append(notes, "Europe PMC："+err.Error())
+	}
+	paper := extra
+	if doi := normalizeDOI(extra.DOI); doiPattern.MatchString(doi) {
+		publisher, err := h.crossrefDOI(ctx, doi)
+		if err != nil {
+			notes = append(notes, "Crossref："+err.Error())
+		}
+		paper = mergeLookup(publisher, extra)
+		paper.DOI = doi
+	} else {
+		paper.DOI = ""
+	}
+	if paper.Title == "" {
+		return Paper{}, lookupMiss(ctx, ErrPMIDNotFound, notes)
+	}
+	paper.PMID = pmid
+	return paper, nil
+}
+
+// mergeLookup keeps the publisher's record and fills its blanks from Europe
+// PMC, which carries the PMID and the abstract Crossref often lacks.
+func mergeLookup(paper, extra Paper) Paper {
+	if paper.Title == "" {
+		return extra
+	}
+	fillBlank(&paper.PMID, extra.PMID)
+	fillBlank(&paper.Abstract, extra.Abstract)
+	fillBlank(&paper.Authors, extra.Authors)
+	fillBlank(&paper.Journal, extra.Journal)
+	if paper.Year == nil {
+		paper.Year = extra.Year
+	}
+	if len(paper.ArticleTypes) == 0 {
+		paper.ArticleTypes = extra.ArticleTypes
+	}
+	return paper
+}
+
+// lookupMiss explains an empty lookup: a cancelled request, the source
+// errors that hid the record, or a plain not found.
+func lookupMiss(ctx context.Context, notFound error, notes []string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if len(notes) > 0 {
+		return fmt.Errorf("%w（%s）", notFound, strings.Join(notes, "；"))
+	}
+	return notFound
 }
 
 func fillBlank(target *string, value string) {
@@ -67,6 +132,15 @@ func fillBlank(target *string, value string) {
 
 // crossrefDOI returns an empty paper, not an error, when Crossref has no record.
 func (h *remoteHarvester) crossrefDOI(ctx context.Context, doi string) (Paper, error) {
+	work, found, err := h.crossrefWork(ctx, doi)
+	if err != nil || !found {
+		return Paper{}, err
+	}
+	return work.paper(), nil
+}
+
+// crossrefWork reads one Crossref record; found is false when there is none.
+func (h *remoteHarvester) crossrefWork(ctx context.Context, doi string) (crossrefWork, bool, error) {
 	endpoint := crossrefURL + "/" + strings.ReplaceAll(url.PathEscape(doi), "%2F", "/")
 	if email := h.credentials().ContactEmail; email != "" {
 		endpoint += "?" + url.Values{"mailto": {email}}.Encode()
@@ -76,11 +150,11 @@ func (h *remoteHarvester) crossrefDOI(ctx context.Context, doi string) (Paper, e
 	}
 	if err := h.getJSON(ctx, endpoint, &response); err != nil {
 		if strings.Contains(err.Error(), "HTTP 404") {
-			return Paper{}, nil
+			return crossrefWork{}, false, nil
 		}
-		return Paper{}, err
+		return crossrefWork{}, false, err
 	}
-	return response.Message.paper(), nil
+	return response.Message, true, nil
 }
 
 func (h *remoteHarvester) europePMCDOI(ctx context.Context, doi string) (Paper, error) {
@@ -97,6 +171,26 @@ func (h *remoteHarvester) europePMCDOI(ctx context.Context, doi string) (Paper, 
 	}
 	for _, item := range response.Results.Items {
 		if normalizeDOI(item.DOI) == doi {
+			return item.paper(), nil
+		}
+	}
+	return Paper{}, nil
+}
+
+func (h *remoteHarvester) europePMCPMID(ctx context.Context, pmid string) (Paper, error) {
+	params := url.Values{
+		"query": {"EXT_ID:" + pmid + " AND SRC:MED"}, "format": {"json"}, "resultType": {"core"}, "pageSize": {"1"},
+	}
+	var response struct {
+		Results struct {
+			Items []europePMCResult `json:"result"`
+		} `json:"resultList"`
+	}
+	if err := h.getJSON(ctx, europePMCURL+"?"+params.Encode(), &response); err != nil {
+		return Paper{}, err
+	}
+	for _, item := range response.Results.Items {
+		if item.PMID == pmid {
 			return item.paper(), nil
 		}
 	}

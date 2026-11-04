@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,6 +42,14 @@ Commands:
   papers attach ID [-type fulltext|supplement] FILE...
                                       copy files into the storage folder
   papers files ID                     files attached to a paper
+  papers lookup DOI|PMID              fetch a bibliographic record from Crossref / Europe PMC, saving nothing
+  papers duplicates [-limit N] [-offset N]
+                                      groups of papers with matching titles, with a suggested one to keep
+  papers published [-limit N] [-offset N]
+                                      ask Crossref which preprints have a journal version, saving nothing
+  papers merge KEEP DUPLICATE -reason TEXT
+                                      fold DUPLICATE (e.g. the preprint) into KEEP and remove it
+  papers merged ID                    papers merged into ID
   papers fetch ID                     download an open-access PDF through PMC or Unpaywall
   papers undo BATCH                   remove an import batch, keeping what a person worked on
   datasets list [-q TEXT] [-status S] [-limit N] [-offset N]
@@ -292,6 +301,39 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 			files = append(files, file)
 		}
 		return c.print(files, nil)
+	case "duplicates", "published":
+		flags := flag.NewFlagSet("papers "+sub, flag.ContinueOnError)
+		flags.SetOutput(c.stderr)
+		limit := flags.Int("limit", 0, "page size")
+		offset := flags.Int("offset", 0, "items to skip")
+		if err := flags.Parse(rest); err != nil {
+			return err
+		}
+		if sub == "duplicates" {
+			return c.print(c.store.FindDuplicates(ctx, cmp.Or(*limit, 50), *offset))
+		}
+		return c.print(c.store.FindPublishedVersions(ctx, cmp.Or(*limit, 20), *offset, sourceCredentials(c.settings)))
+	case "merge":
+		flags := flag.NewFlagSet("papers merge", flag.ContinueOnError)
+		flags.SetOutput(c.stderr)
+		reason := flags.String("reason", "", "why the papers are the same work")
+		if len(rest) < 2 {
+			return errors.New("usage: papers merge KEEP DUPLICATE -reason TEXT")
+		}
+		if err := flags.Parse(rest[2:]); err != nil {
+			return err
+		}
+		return c.print(c.store.MergePapers(ctx, library.MergeInput{KeepID: rest[0], MergeID: rest[1], Reason: *reason, Via: "CLI"}))
+	case "merged":
+		if len(rest) != 1 {
+			return errors.New("usage: papers merged ID")
+		}
+		return c.print(c.store.ListMergedPapers(ctx, rest[0]))
+	case "lookup":
+		if len(rest) != 1 || strings.TrimSpace(rest[0]) == "" {
+			return errors.New("usage: papers lookup DOI|PMID")
+		}
+		return c.print(library.LookupIdentifier(ctx, rest[0], sourceCredentials(c.settings)))
 	case "fetch":
 		if len(rest) != 1 {
 			return errors.New("usage: papers fetch ID")
@@ -318,7 +360,7 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 		}
 		return c.print(c.store.UndoImport(ctx, rest[0]))
 	}
-	return errors.New("usage: papers list|get|add|import|update|delete|attach|fetch|files|undo")
+	return errors.New("usage: papers list|get|add|import|update|delete|attach|lookup|duplicates|published|merge|merged|fetch|files|undo")
 }
 
 func (c *cli) datasets(ctx context.Context, args []string) error {
