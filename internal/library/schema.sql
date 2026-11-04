@@ -1,4 +1,4 @@
--- BiblioCell · schema v16
+-- BiblioCell · schema v17
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -455,6 +455,19 @@ CREATE TABLE IF NOT EXISTS translation_cache (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- 全文文件逐页提取的文本缓存：全文检索和「在 PDF 中定位原文」都从这里读，
+-- 文件大小或修改时间变化后重新提取；资源删除时级联删除。
+CREATE TABLE IF NOT EXISTS fulltext_text (
+    resource_id TEXT PRIMARY KEY NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    -- 文件大小与修改时间一起作为缓存键：文件被替换后重新提取。
+    file_size INTEGER NOT NULL CHECK (file_size >= 0),
+    file_mtime TEXT NOT NULL,
+    -- 每页一项的 JSON 数组；提取失败时为空数组并记录 error，避免每次检索都重读坏文件。
+    pages TEXT NOT NULL DEFAULT '[]',
+    error TEXT NOT NULL DEFAULT '',
+    extracted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE TABLE IF NOT EXISTS screening_suggestions (
     id TEXT PRIMARY KEY NOT NULL,
     paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
@@ -570,5 +583,5 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (14, 'AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照'),
        (15, '按原文与提示词缓存翻译结果');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 16;
+PRAGMA user_version = 17;
 COMMIT;

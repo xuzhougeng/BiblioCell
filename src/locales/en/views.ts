@@ -51,6 +51,7 @@ export const views: Record<string, string> = {
   "{current} / {total} 个匹配": "{current} / {total} matches",
   "无法显示 PDF，请在系统中打开。": "Unable to display the PDF. Open it in your default application.",
   "正在加载 PDF…": "Loading PDF…",
+  "未在 PDF 文本中找到这段原文，已跳到第 {n} 页。": "The passage was not found in the PDF text; showing page {n}.",
   "请输入 PDF 密码": "Enter the PDF password",
   "PDF 已取消加载。": "PDF loading cancelled.",
   "此 PDF 没有目录。": "This PDF has no outline.",

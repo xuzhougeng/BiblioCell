@@ -10,8 +10,9 @@ import { FIELD_LABELS } from "./drawer.ts";
 import { confidenceText } from "./calibration.ts";
 import { configured, modelFor } from "./models.ts";
 import { READING, SCREEN, arr, dateText, decideScreening, esc, evidenceValueText, joinList, speciesDisplay, speciesNames } from "./model.ts";
-import { $, I, badge, demoBadge, errorMessage, screenBadge } from "./ui.ts";
+import { $, I, badge, demoBadge, screenBadge } from "./ui.ts";
 import { listSeparator, t, tv } from "./i18n.ts";
+import { locateInFrame, paperFileURL } from "./pdf-frame.ts";
 
 export interface ScreenState {
   /** Paper ids in reading order, fixed when the mode starts. */
@@ -73,9 +74,6 @@ export function translationPop(tr: Translation): string {
   if (tr.state === "error") return `${head}<p class="translate-pop-error">${esc(tr.message)}</p><button class="text-link" data-action="screen-translate-selection">${t("重试")}</button>`;
   return `${head}<p class="translate-pop-text">${esc(tr.text)}</p>`;
 }
-
-/** Keep the reader in its own document so PDF search is scoped to the PDF. */
-const paperFileURL = (id: string): string => `/pdf-viewer.html?file=${encodeURIComponent(id)}`;
 
 /** pdfPane shows the stored PDF, or an upload entry when the paper has none. */
 function pdfPane(app: App, p: Paper): string {
@@ -185,9 +183,10 @@ function fulltextEvidence(app: App, p: Paper): string {
   return `<section class="detail-section screen-evidence"><h3>${t("全文依据")} <span class="count-pill">${items.length}</span></h3>${items.map(row).join("")}</section>`;
 }
 
-/** jumpToPdfPage takes the screening PDF to a page, searching the full text for
- * the passage when no page is known. Outside screening it opens the paper in
- * screening first, so the drawer's evidence can jump too. */
+/** jumpToPdfPage takes the screening PDF to a quoted passage: to its page, with the
+ * passage highlighted. When no page was recorded, the stored text gives the viewer a
+ * page to look at first; the viewer searches its own text layer in any case. Outside
+ * screening it opens the paper in screening first, so the drawer's evidence can jump too. */
 export async function jumpToPdfPage(app: App, paperId: string, page: number, excerpt: string): Promise<void> {
   if (!app.paperById(paperId) || !app.env.desktop || !app.env.real) return;
   if (!app.screen || screenPapers(app)[app.screen.index]?.id !== paperId) {
@@ -198,15 +197,12 @@ export async function jumpToPdfPage(app: App, paperId: string, page: number, exc
   if (!app.screenPdf) app.toggleScreenPdf();
   let target = page > 0 ? page : 0;
   if (!target && excerpt) {
-    try { target = await Library.locateFulltextPage(paperId, excerpt); } catch (error) { app.toast(errorMessage(error, t("读取 PDF 文本失败。")), true); return; }
+    try { target = await Library.locateFulltextPage(paperId, excerpt); } catch { /* The viewer still searches its text layer. */ }
   }
-  if (!target) { app.toast(t("未在 PDF 文本中找到这段原文。"), true); return; }
+  if (!target && !excerpt) { app.toast(t("未在 PDF 文本中找到这段原文。"), true); return; }
   const frame = $<HTMLIFrameElement>(".screen-pdf-frame");
   if (!frame) { app.toast(t("这篇文献没有可显示的 PDF。"), true); return; }
-  // The viewer reads #page= when the document loads, so the frame is reloaded at the page.
-  const base = frame.getAttribute("src")?.split("#")[0] ?? "";
-  frame.src = "about:blank";
-  requestAnimationFrame(() => { frame.src = `${base}#page=${target}`; });
+  locateInFrame(frame, { page: target, quote: excerpt });
 }
 
 /** Update only the suggestion: rebuilding the page would reload the PDF iframe. */

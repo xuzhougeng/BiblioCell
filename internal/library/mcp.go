@@ -302,11 +302,12 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 				"Only real SQLite data is accessible; Demo records are never included",
 				"To improve a source query: list_sources, study included and excluded papers with list_papers, try_source_query the saved query as a baseline and each candidate, then update_source_query only with a candidate that beats the baseline, giving the comparison as reason",
 				"try_source_query writes nothing; a query is judged by how many fetched records match included versus excluded papers, how relevant the new records' titles and abstracts are, and whether hitCount is a workable size",
+				"To say where something is written, search_fulltext finds the pages and read_fulltext shows them; quote a page as [text](cite:<paperId>#page=<page> \"verbatim sentence\") and the desktop app opens the PDF there with that sentence highlighted",
 			},
 			AvailableTools: []string{
 				"describe_library", "library_status", "list_papers", "get_paper", "add_paper", "import_papers", "update_paper", "delete_paper", "undo_import",
 				"list_datasets", "get_dataset", "add_dataset", "update_dataset", "link_dataset",
-				"add_evidence", "list_evidence", "attach_file", "fetch_fulltext", "list_files",
+				"add_evidence", "list_evidence", "attach_file", "fetch_fulltext", "list_files", "search_fulltext", "read_fulltext",
 				"list_sources", "try_source_query", "update_source_query", "source_query_history",
 			},
 			InboxPath:        store.inboxPath(),
@@ -469,6 +470,20 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 			}
 		}
 		return nil, output, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "search_fulltext", Description: "Search the stored full texts of real papers for a phrase or words and get every page where it appears, each with a verbatim snippet and a cite link, to find where something is said. The first search after files were added extracts their text and can take a while; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input FulltextSearchInput) (*mcp.CallToolResult, FulltextSearchResult, error) {
+		result, err := store.SearchFulltext(ctx, input)
+		return nil, result, err
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "read_fulltext", Description: "Read the stored full text of one real paper page by page, at most 8 pages per call, to check the context of a hit and copy a sentence exactly for a cite link; unauthenticated read access is allowed",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input FulltextReadInput) (*mcp.CallToolResult, FulltextReadResult, error) {
+		result, err := store.ReadFulltext(ctx, input)
+		return nil, result, err
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
