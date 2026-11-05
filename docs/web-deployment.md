@@ -15,7 +15,7 @@ BIBLIOCELL_ADMIN_PASSWORD=change-me ./BiblioCell web -addr 0.0.0.0:8080
 
 权限在服务端检查，前端隐藏控件只是为了界面干净：
 
-- 页面通过 `POST /api/call` 调用 Library 方法；`web.go` 里的 `webMethodAccess` 把每个方法标为 **只读** / **管理员** / **仅桌面**，新增方法必须归类，`TestWebMethodsAreClassified` 会检查。匿名调用管理员方法返回 403，仅桌面的方法返回 404。
+- 页面通过 `POST /api/call` 调用 Library 方法；`cmd/bibliocell/web.go` 里的 `webMethodAccess` 把每个方法标为 **只读** / **管理员** / **仅桌面**，新增方法必须归类，`TestWebMethodsAreClassified` 会检查。匿名调用管理员方法返回 403，仅桌面的方法返回 404。
 - 匿名读取 `GetSettings`、`Status`、`MCPInfo` 时，API Key、NCBI Key、邮箱、MCP Token 和服务器路径都被去掉；管理员能看到并修改 AI 模型，但存放文件夹和 MCP Token 在网页上改不了（请在服务器上 `settings set`）。
 - 登录后用 HttpOnly、`SameSite=Strict` 的 cookie 保存会话，内存中保存 7 天，重启服务即全部登出；`/api/*` 拒绝浏览器标为跨站的请求；同一地址 15 分钟内密码错 10 次后暂停登录。
 - 管理员的事件（后台更新进度、助手的工具调用）经 `/api/events` 以 SSE 推送；PDF 由 `/paperfile/<资源 ID>` 提供，只认库里登记的文件。
@@ -27,10 +27,10 @@ BIBLIOCELL_ADMIN_PASSWORD=change-me ./BiblioCell web -addr 0.0.0.0:8080
 npm run build:server
 ```
 
-等于 `npm run build:web`（生成 `dist/`）加 `go build -tags webdist -o build/bibliocell-web .`：`-tags webdist` 把 `dist/` 嵌进二进制，一个文件就能部署。不带这个 tag 时，`web` 读 `./dist`，或用 `-dist DIR` 指定。交叉编译 Linux 服务器版本：
+等于 `npm run build:web`（生成 `dist/`）加 `go build -tags webdist -o build/bibliocell-web ./cmd/bibliocell`：`-tags webdist` 让根目录的 `assets_webdist.go` 把 `dist/` 嵌进二进制，一个文件就能部署。不带这个 tag 时，`web` 读 `./dist`，或用 `-dist DIR` 指定。交叉编译 Linux 服务器版本：
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags webdist -o bibliocell-web .
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags webdist -o bibliocell-web ./cmd/bibliocell
 ```
 
 也可以用仓库里的 `Dockerfile`：
@@ -43,7 +43,7 @@ docker build -t bibliocell-web .
 docker run -d -p 8080:8080 -v bibliocell-data:/data -e BIBLIOCELL_ADMIN_PASSWORD=change-me bibliocell-web
 ```
 
-容器内数据目录是 `/data`（`BIBLIOCELL_DATA_DIR`），settings.json、`bibliocell.sqlite` 和 `papers/` 都在里面；把桌面应用的存放文件夹复制进去即可带上已有文献和 PDF。开发时 `npm run build:web` 后 `go run . web -addr 127.0.0.1:8090` 就能在浏览器里打开。
+容器内数据目录是 `/data`（`BIBLIOCELL_DATA_DIR`），settings.json、`bibliocell.sqlite` 和 `papers/` 都在里面；把桌面应用的存放文件夹复制进去即可带上已有文献和 PDF。开发时 `npm run build:web` 后 `go run ./cmd/bibliocell web -addr 127.0.0.1:8090` 就能在浏览器里打开。
 
 ---
 

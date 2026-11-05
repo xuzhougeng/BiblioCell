@@ -18,6 +18,8 @@ export default defineConfig({
   identifier: "com.bibliocell.library",
   version: pkg.version,
   copyright: "© 2026 xuzhougeng",
+  // Go 主包在 cmd/bibliocell；根目录的 bibliocell 包只负责嵌入 dist/ 与托盘图标。
+  main: "./cmd/bibliocell",
   // `mygo dev` runs devCommand and loads devUrl; `mygo build` runs
   // buildCommand and embeds frontendDist into the app.
   devUrl: "http://localhost:5173",

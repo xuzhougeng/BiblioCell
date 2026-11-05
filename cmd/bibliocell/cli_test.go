@@ -325,7 +325,7 @@ func TestCLIDatabaseVersionAndMigrate(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(info.DatabasePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ddl, err := os.ReadFile(filepath.Join("internal", "library", "testdata", "schema_v11.sql"))
+	ddl, err := os.ReadFile(filepath.Join("..", "..", "internal", "library", "testdata", "schema_v11.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
