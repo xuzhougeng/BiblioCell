@@ -142,7 +142,7 @@ export function renderDrawer(app: App): string | null {
     + `<div class="drawer-status-row">${datasetStatusBadge(d)}${demoBadge(d)}</div>`
     + `<div class="detail-grid">${detail(t("仓库"), esc(d.repository || t("待补")))}${detail("Accession", accessionValue)}${detail(t("研究组织"), esc(displayList(d.organs) || t("待补")))}${detail(t("测序类型"), esc(displayList(d.modalities) || t("待补")))}${detail(t("测序平台"), esc(displayList(d.platforms) || t("待补")))}${detail(t("细胞数"), d.cellsReported == null ? t("尚未整理") : esc(d.cellsReported))}${detail(t("原始数据"), esc(AVAILABILITY[d.availability] ?? t("尚未核实")))}</div>`
     + (app.env.real && repositories ? `<section class="detail-section"><h3>${t("数据仓库")}</h3>${repositories}</section>` : "")
-    + `<section class="detail-section"><h3>${t("关联文献")}</h3>${arr(d.paperLinks).length ? links : `<p class="muted">${t("尚未关联文献。")}</p>`}</section>`
+    + `<section class="detail-section"><h3>${t("关联文献")}</h3>${links ? links : `<p class="muted">${t("尚未关联文献。")}</p>`}</section>`
     + evidenceSection(app.evidenceFor("datasetId", d.id))
     + renderDatasetAssets(app, d.id)
     + (app.env.real ? "" : `<section class="detail-section"><div class="section-title"><h3>${t("数据与资料入口")}</h3><button class="text-link" data-action="add-resource" data-id="${esc(d.id)}" data-kind="dataset">${I("plus", 15)} ${t("添加链接")}</button></div>${resourceRows(app.state.resources.filter((r) => r.datasetId === d.id))}</section>`)

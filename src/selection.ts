@@ -76,7 +76,7 @@ export const selectionActions = (app: App): Record<string, (el: HTMLElement, id:
   "bulk-delete": () => {
     const n = app.selectedPapers.size;
     if (!n) return;
-    app.showModal(t("删除文献"), `<p>${t("确定删除已勾选的 {n} 篇文献？", { n })}</p><p>${t("将删除文献、笔记、相关证据和保存的附件副本，并解除数据集关联。数据集及原始导入文件会保留。此操作无法撤销。")}</p>`,
+    app.showModal(t("删除文献"), `<p>${t("确定删除已勾选的 {n} 篇文献？", { n })}</p><p>${t("文献将移入回收站，附件、笔记和关联保留。来源更新与重新导入不会自动加回，可在设置中的回收站恢复。")}</p>`,
       `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-selected">${t("确认删除 {n} 篇", { n })}</button>`);
   },
   "confirm-delete-selected": (el) => { void app.deletePapers([...app.selectedPapers], el); },

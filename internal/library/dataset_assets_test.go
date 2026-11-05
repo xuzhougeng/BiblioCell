@@ -139,8 +139,17 @@ func TestDatasetAssetValidationAndPlanConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err = s.db.QueryRow(`SELECT count(*) FROM dataset_assets WHERE id=?`, saved.ID).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("orphaned asset: %d %v", count, err)
+	if err = s.db.QueryRow(`SELECT count(*) FROM dataset_assets WHERE id=?`, saved.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("archived asset lost: %d %v", count, err)
+	}
+	if _, err := s.DatasetManifest(ctx, id); err == nil {
+		t.Fatal("trashed manifest visible")
+	}
+	if err := s.RestoreTrash(ctx, "dataset", id); err != nil {
+		t.Fatal(err)
+	}
+	if manifest, err := s.DatasetManifest(ctx, id); err != nil || len(manifest.Assets) != 1 || manifest.Assets[0].ID != saved.ID {
+		t.Fatalf("restored manifest: %+v %v", manifest, err)
 	}
 }
 

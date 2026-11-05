@@ -84,6 +84,9 @@ func (s *Store) AddDataset(ctx context.Context, input DatasetInput) (DatasetResu
 	if err != nil {
 		return DatasetResult{}, err
 	}
+	if err := rejectTrashed(ctx, tx, "dataset", id); err != nil {
+		return DatasetResult{}, err
+	}
 	created := id == ""
 	if created {
 		if id, err = newLocalID("DS"); err != nil {
@@ -131,7 +134,7 @@ func existingDatasetID(ctx context.Context, tx *sql.Tx, input DatasetInput) (str
 		err := tx.QueryRowContext(ctx, `
 			SELECT dr.dataset_id FROM dataset_repositories dr
 			JOIN repository_records rr ON rr.id = dr.repository_record_id
-			WHERE rr.repository = ? AND rr.accession = ? LIMIT 1`,
+			WHERE rr.repository = ? AND lower(rr.accession) = lower(?) LIMIT 1`,
 			strings.ToLower(strings.TrimSpace(repository.Repository)), strings.TrimSpace(repository.Accession)).Scan(&id)
 		if err == nil {
 			return id, nil

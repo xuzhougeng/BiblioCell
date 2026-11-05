@@ -9,6 +9,9 @@ import { App, type Env } from "../src/app.ts";
 import { demoState } from "../src/demo-data.ts";
 import { Library, type DatasetManifest } from "../src/mygo.ts";
 import { matchingDatasets, matchesPreparation, referenceComplete } from "../src/dataset-assets.ts";
+import { openTrash, restoreTrash } from "../src/trash.ts";
+import { localStore } from "../src/store.ts";
+import { prepareImport } from "../src/model.ts";
 
 const previewEnv = (): Env => ({
   desktop: false, backend: false, readOnly: false, web: null, real: false,
@@ -28,6 +31,44 @@ function datasetsApp() {
 }
 
 const COLUMNS = ["col-title", "col-links", "col-species", "col-modality", "col-repo", "col-status", "col-arrow"];
+
+test("recycle bin hides records, persists across reloads and restores their associations", async () => {
+  resetDom("#datasets");
+  const initial = demoState();
+  const store = localStore(localStorage, "trash-regression");
+  const app = new App({ initial, store, env: previewEnv() });
+  app.start();
+  const dataset = structuredClone(app.state.datasets[0]!);
+  const paper = structuredClone(app.paperById(dataset.paperLinks[0]!.paperId)!);
+  const originalResources = app.state.resources.filter(r => r.paperId === paper.id || r.datasetId === dataset.id);
+  await app.deleteDatasets([dataset.id], document.createElement("button"));
+  await app.deletePapers([paper.id], document.createElement("button"));
+  assert.equal(app.state.datasets.some(d => d.id === dataset.id), false);
+  assert.equal(app.paperById(paper.id), undefined);
+  assert.equal(app.state.trash?.length, 2);
+  const reloaded = await store.load();
+  assert.equal(reloaded.trash?.length, 2);
+  assert.equal(reloaded.datasets.some(d => d.id === dataset.id), false);
+  const imported = prepareImport({ schemaVersion: 2, papers: [paper], datasets: [dataset], resources: originalResources }, reloaded);
+  assert.equal(imported.stats.papers, 0);
+  assert.equal(imported.stats.datasets, 0);
+  assert.equal(imported.stats.resources, 0);
+  app.navigate("settings");
+  const entry = $('[data-action="open-trash"]');
+  assert.ok(entry.closest("details"), "entry is tucked into settings");
+  assert.equal(entry.closest("details")!.open, false);
+  await openTrash(app);
+  assert.equal($$(".trash-entry").length, 2);
+  await restoreTrash(app, $(`[data-action="restore-trash"][data-kind="dataset"]`));
+  assert.deepEqual(app.state.datasets.find(d => d.id === dataset.id), dataset);
+  assert.equal(app.paperById(paper.id), undefined, "restoring a dataset does not restore a trashed paper");
+  await restoreTrash(app, $(`[data-action="restore-trash"][data-kind="paper"]`));
+  assert.deepEqual(app.paperById(paper.id), paper);
+  for (const resource of originalResources) assert.ok(app.state.resources.some(r => r.id === resource.id));
+  assert.equal(app.state.trash?.length, 0);
+  assert.match($("#modal-root").textContent!, /回收站为空/);
+  assert.equal((await store.load()).trash?.length, 0);
+});
 
 test("every dataset row carries the same named columns as the header", () => {
   const { state } = datasetsApp();

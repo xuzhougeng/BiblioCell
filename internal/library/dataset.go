@@ -107,7 +107,7 @@ func readDatasets(ctx context.Context, reader queryer, id string) ([]Dataset, er
 		       coalesce(cell_count_unit, ''), coalesce(cell_count_scope, ''),
 		       coalesce(reviewed_at, ''), awaiting_review, coalesce(import_batch_id, ''),
 		       first_seen_at, updated_at
-		FROM datasets`+where+` ORDER BY first_seen_at DESC, id`, args...)
+		FROM (SELECT * FROM datasets WHERE id NOT IN (SELECT dataset_id FROM trashed_datasets))`+where+` ORDER BY first_seen_at DESC, id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list datasets: %w", err)
 	}
@@ -310,6 +310,20 @@ func recordDatasetReview(d *Dataset) {
 
 func saveDataset(ctx context.Context, tx *sql.Tx, d *Dataset) error {
 	if err := normalizeDataset(d); err != nil {
+		return err
+	}
+	if err := rejectTrashed(ctx, tx, "dataset", d.ID); err != nil {
+		return err
+	}
+	repos := []RepositoryInput{}
+	for _, r := range d.Repositories {
+		repos = append(repos, RepositoryInput{Repository: r.Repository, Accession: r.Accession})
+	}
+	existing, checkErr := existingDatasetID(ctx, tx, DatasetInput{Title: d.Title, Repositories: repos})
+	if checkErr != nil {
+		return checkErr
+	}
+	if err := rejectTrashed(ctx, tx, "dataset", existing); err != nil {
 		return err
 	}
 	// The one gate every write passes: verification exists only with its review.

@@ -742,6 +742,9 @@ func existingPaperID(ctx context.Context, tx *sql.Tx, paper Paper) (string, erro
 // source knowing only one of them still finds it. It never replaces a value and
 // leaves a paper a person has reviewed exactly as they left it.
 func fillPaperIdentifiers(ctx context.Context, tx *sql.Tx, paperID string, paper Paper) error {
+	if trashed, err := isTrashed(ctx, tx, "paper", paperID); err != nil || trashed {
+		return err
+	}
 	current, err := readPaper(ctx, tx, paperID)
 	if err != nil {
 		return err

@@ -294,7 +294,7 @@ http://127.0.0.1:37841/mcp
 | `add_paper` | 向正式 SQLite 数据库添加一篇文献，已存在时报错，需要写权限 |
 | `import_papers` | 原子批量导入最多 1000 篇文献，跳过已有文献并返回 `batchId`，支持 `dryRun`，需要写权限 |
 | `update_paper` | 局部编辑未经人工确认的文献 metadata，或提出收录建议，保留未提供字段；已筛选的文献只能改文章类型、物种、器官、技术、平台这些分类字段和收录建议，以及还空着的 DOI、PMID、作者、年份、期刊、发表状态、摘要，需要写权限 |
-| `delete_paper` | 按 `id` 永久删除单篇文献（含已审核记录）、笔记、相关证据和保存的附件副本；保留数据集与原始导入文件，需要写权限 |
+| `delete_paper` | 按 `id` 将单篇文献移入回收站，日常列表隐藏；保留附件、笔记、证据和关联，来源更新与导入仍按保留标识去重；可在「设置 → 记录管理 → 回收站」恢复，需要写权限 |
 | `undo_import` | 撤销一个导入批次，保留人已处理过的记录，需要写权限 |
 | `list_datasets` / `get_dataset` | 查询、分页读取数据集及其仓库编号和文献关联 |
 | `add_dataset` | 新建数据集；按 accession 或题目找到已有数据集时只补充新关联，需要写权限 |
@@ -456,7 +456,7 @@ echo '{"journal":"Cell"}' | ./BiblioCell papers update P-xxxx
 ./BiblioCell papers merge P-journal P-preprint -reason "Crossref is-preprint-of 10.1016/j.cell.2019.05.031"
 ./BiblioCell papers merged P-journal
 
-# 永久删除单篇文献，成功返回 {"id":"P-...","deleted":true}
+# 将单篇文献移入回收站（设置中可恢复），成功返回 {"id":"P-...","deleted":true}
 ./BiblioCell papers delete P-...
 ./BiblioCell datasets list -status pending
 ./BiblioCell datasets get DS-xxxx

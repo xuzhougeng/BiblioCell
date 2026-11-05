@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestDeletePaperCleansStoredCopyOnly(t *testing.T) {
+func TestDeletePaperPreservesFilesAndLinksForRestore(t *testing.T) {
 	ctx := context.Background()
 	storage := t.TempDir()
 	store, paper := fileFixture(t, storage)
@@ -33,8 +33,8 @@ func TestDeletePaperCleansStoredCopyOnly(t *testing.T) {
 	if _, err := store.GetPaper(ctx, other.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(storage, filepath.FromSlash(file.LocalPath))); !os.IsNotExist(err) {
-		t.Fatalf("stored copy remains: %v", err)
+	if _, err := os.Stat(filepath.Join(storage, filepath.FromSlash(file.LocalPath))); err != nil {
+		t.Fatalf("stored copy lost: %v", err)
 	}
 	if _, err := os.Stat(source); err != nil {
 		t.Fatalf("original removed: %v", err)
@@ -43,14 +43,26 @@ func TestDeletePaperCleansStoredCopyOnly(t *testing.T) {
 	if err := store.db.QueryRow("SELECT count(*) FROM datasets WHERE id = ?", dataset.Dataset.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("dataset removed: %d, %v", count, err)
 	}
-	if err := store.db.QueryRow("SELECT count(*) FROM paper_datasets WHERE paper_id = ?", paper.ID).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("link remains: %d, %v", count, err)
+	if err := store.db.QueryRow("SELECT count(*) FROM paper_datasets WHERE paper_id = ?", paper.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("link lost: %d, %v", count, err)
 	}
-	if err := store.db.QueryRow("SELECT count(*) FROM resources WHERE id = ?", file.ID).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("resource remains: %d, %v", count, err)
+	if err := store.db.QueryRow("SELECT count(*) FROM resources WHERE id = ?", file.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("resource lost: %d, %v", count, err)
 	}
 	if err := store.DeletePaper(ctx, paper.ID); err == nil {
 		t.Fatal("missing paper deletion should fail")
+	}
+	if files, err := store.ListPaperFiles(ctx); err != nil || len(files) != 0 {
+		t.Fatalf("trashed files visible: %+v %v", files, err)
+	}
+	if err := store.RestoreTrash(ctx, "paper", paper.ID); err != nil {
+		t.Fatal(err)
+	}
+	if restored, err := store.GetPaper(ctx, paper.ID); err != nil || restored.Title != paper.Title {
+		t.Fatalf("restore: %+v %v", restored, err)
+	}
+	if files, err := store.ListPaperFiles(ctx); err != nil || len(files) != 1 {
+		t.Fatalf("restored files: %+v %v", files, err)
 	}
 }
 

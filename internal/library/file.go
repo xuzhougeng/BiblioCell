@@ -37,7 +37,7 @@ var fileExtension = regexp.MustCompile(`^\.[a-z0-9]{1,16}$`)
 const paperFileSelect = `
 		SELECT r.id, pr.paper_id, r.resource_type, r.title, r.local_path, coalesce(r.size_bytes, 0), r.added_at
 		FROM resources r JOIN paper_resources pr ON pr.resource_id = r.id
-		WHERE r.local_state <> 'none'`
+		WHERE r.local_state <> 'none' AND pr.paper_id NOT IN (SELECT paper_id FROM trashed_papers)`
 
 func paperFileFields(f *PaperFile) []any {
 	return []any{&f.ID, &f.PaperID, &f.Type, &f.Title, &f.LocalPath, &f.SizeBytes, &f.AddedAt}

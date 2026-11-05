@@ -494,8 +494,8 @@ func (s *Store) Status() (Status, error) {
 		target *int
 	}{
 		{"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'", &status.TableCount},
-		{"SELECT count(*) FROM papers", &status.PaperCount},
-		{"SELECT count(*) FROM datasets", &status.DatasetCount},
+		{"SELECT count(*) FROM v_paper_overview", &status.PaperCount},
+		{"SELECT count(*) FROM v_dataset_overview", &status.DatasetCount},
 	}
 	for _, query := range queries {
 		if err := s.db.QueryRow(query.query).Scan(query.target); err != nil {

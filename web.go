@@ -77,6 +77,8 @@ var webMethodAccess = map[string]webAccess{
 	"MCPInfo":                  webRead, // disabled on the web, so nothing to hide
 	"UpdateStatus":             webRead, // always "off" on the web
 
+	"ListTrash":               webAdmin,
+	"RestoreTrash":            webAdmin,
 	"DeletePaper":             webAdmin,
 	"DismissPaper":            webAdmin,
 	"DeleteDataset":           webAdmin,

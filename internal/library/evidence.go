@@ -154,6 +154,8 @@ func addEvidence(ctx context.Context, tx *sql.Tx, input EvidenceInput) (string, 
 func (s *Store) ListEvidence(ctx context.Context, paperID, datasetID string) ([]Evidence, error) {
 	rows, err := s.db.QueryContext(ctx, evidenceSelect+`
 		WHERE (? = '' OR target_paper_id = ?) AND (? = '' OR target_dataset_id = ?)
+ AND NOT EXISTS (SELECT 1 FROM trashed_papers WHERE paper_id = target_paper_id)
+ AND NOT EXISTS (SELECT 1 FROM trashed_datasets WHERE dataset_id = target_dataset_id)
 		ORDER BY observed_at, id`, paperID, paperID, datasetID, datasetID)
 	if err != nil {
 		return nil, fmt.Errorf("list evidence: %w", err)

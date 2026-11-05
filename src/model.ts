@@ -1,3 +1,4 @@
+import type { DemoTrashEntry } from "./trash.ts";
 // Pure data logic shared by the UI and the node:test suite. No DOM access here.
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 import { speciesText } from "./species.ts";
@@ -32,6 +33,7 @@ export interface Activity {
 
 export interface LibraryState {
   schemaVersion: 2;
+  trash?: DemoTrashEntry[];
   papers: Paper[];
   datasets: Dataset[];
   resources: Resource[];
@@ -563,6 +565,8 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
   const isoDate = (v: unknown): string => (typeof v === "string" && !isNaN(Date.parse(v)) ? new Date(v).toISOString() : nowISO());
 
   const next = clone(current);
+  const ignoredPapers = new Set<string>();
+  const ignoredDatasets = new Set<string>();
   const idMap = new Map<string, string>();
   const dsMap = new Map<string, string>();
   const importedIds = new Set<string>();
@@ -579,6 +583,8 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
     importedIds.add(oldId);
     const year = row.year == null || row.year === "" ? null : Number(row.year);
     if (year !== null && (!Number.isInteger(year) || year < 1800 || year > 2100)) throw new Error(t("文献年份格式不正确。"));
+    const archived = current.trash?.find(e => e.paper && (e.id === oldId || (doi && normalizeDOI(e.paper.doi) === doi) || (row.pmid && e.paper.pmid === row.pmid) || (!doi && !row.pmid && e.title.trim().toLowerCase() === title.toLowerCase())));
+    if (archived) { ignoredPapers.add(oldId); stats.duplicates++; continue; }
     const doiMatch = doi ? next.papers.find((p) => normalizeDOI(p.doi) === doi) : undefined;
     const idMatch = next.papers.find((p) => p.id === oldId);
     const kept = doiMatch ?? (idMatch && idMatch.title === title && normalizeDOI(idMatch.doi) === doi ? idMatch : undefined);
@@ -614,8 +620,11 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
     if (!title) throw new Error(t("数据集名称缺失。"));
     if (importedDatasetIds.has(oldId)) throw new Error(t("导入文件中包含重复的数据集 ID。"));
     importedDatasetIds.add(oldId);
+    const candidate = normalizeDataset(row);
+    const archived = current.trash?.find(e => e.dataset && (e.id === oldId || candidate.repositories.some(r => e.dataset!.repositories.some(x => x.repository.toLowerCase() === r.repository.toLowerCase() && x.accession.toLowerCase() === r.accession.toLowerCase())) || (!candidate.repositories.length && e.title.trim().toLowerCase() === title.toLowerCase())));
+    if (archived) { ignoredDatasets.add(oldId); stats.duplicates++; continue; }
     if (row.paperLinks != null && !Array.isArray(row.paperLinks)) throw new Error(t("文献关联必须是数组。"));
-    const paperLinks: DatasetPaperLink[] = (Array.isArray(row.paperLinks) ? (row.paperLinks as unknown[]) : []).map((l) => {
+    const paperLinks: DatasetPaperLink[] = (Array.isArray(row.paperLinks) ? (row.paperLinks as unknown[]) : []).filter(l => !isRec(l) || !ignoredPapers.has(String(l.paperId))).map((l) => {
       if (!isRec(l)) throw new Error(t("文献关联格式不正确。"));
       const pid = idMap.get(String(l.paperId)) ?? (next.papers.some((p) => p.id === l.paperId) ? String(l.paperId) : null);
       if (!pid) throw new Error(t("数据集引用了不存在的文献。"));
@@ -653,6 +662,7 @@ export function prepareImport(data: unknown, current: LibraryState): { next: Lib
 
   for (const row of resourceRows) {
     if (!isRec(row)) throw new Error(t("资料条目格式不正确。"));
+    if (ignoredPapers.has(String(row.paperId)) || ignoredDatasets.has(String(row.datasetId))) { stats.duplicates++; continue; }
     const paperId = row.paperId ? idMap.get(String(row.paperId)) ?? (next.papers.some((p) => p.id === row.paperId) ? String(row.paperId) : null) : null;
     const datasetId = row.datasetId ? dsMap.get(String(row.datasetId)) ?? (next.datasets.some((d) => d.id === row.datasetId) ? String(row.datasetId) : null) : null;
     if ((row.paperId && !paperId) || (row.datasetId && !datasetId) || (!paperId && !datasetId)) throw new Error(t("资料引用的文献或数据集不存在。"));

@@ -133,7 +133,7 @@ func (s *Store) AddScreeningSuggestion(ctx context.Context, input ScreeningSugge
 // ListScreeningSuggestions returns a paper's recorded suggestions, newest
 // first, or every suggestion when paperID is empty.
 func (s *Store) ListScreeningSuggestions(ctx context.Context, paperID string) ([]ScreeningSuggestion, error) {
-	rows, err := s.db.QueryContext(ctx, suggestionSelect+` WHERE (? = '' OR paper_id = ?) ORDER BY created_at DESC, id DESC`, paperID, paperID)
+	rows, err := s.db.QueryContext(ctx, suggestionSelect+` WHERE paper_id NOT IN (SELECT paper_id FROM trashed_papers) AND (? = '' OR paper_id = ?) ORDER BY created_at DESC, id DESC`, paperID, paperID)
 	if err != nil {
 		return nil, fmt.Errorf("list screening suggestions: %w", err)
 	}
@@ -164,7 +164,7 @@ func (s *Store) CalibrationReport(ctx context.Context, filter CalibrationFilter)
 		FROM screening_suggestions g
 		JOIN papers p ON p.id = g.paper_id
 		JOIN paper_curation c ON c.paper_id = g.paper_id
-		WHERE g.target_kind = 'screening'
+		WHERE g.target_kind = 'screening' AND g.paper_id NOT IN (SELECT paper_id FROM trashed_papers)
 		ORDER BY g.created_at DESC, g.id DESC`)
 	if err != nil {
 		return CalibrationReport{}, fmt.Errorf("read calibration pairs: %w", err)

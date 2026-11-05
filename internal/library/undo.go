@@ -25,14 +25,14 @@ const batchPapers = `
 	SELECT p.id, c.screening_reviewed_at IS NOT NULL OR c.starred = 1 OR c.reading_status <> 'unread'
 	    OR EXISTS (SELECT 1 FROM paper_datasets l WHERE l.paper_id = p.id AND l.verified = 1)
 	    OR EXISTS (SELECT 1 FROM field_evidence e WHERE e.target_paper_id = p.id AND e.review_status <> 'unreviewed')
-	FROM papers p JOIN paper_curation c ON c.paper_id = p.id WHERE p.import_batch_id = ?`
+	FROM papers p JOIN paper_curation c ON c.paper_id = p.id WHERE p.import_batch_id = ? AND p.id NOT IN (SELECT paper_id FROM trashed_papers)`
 
 const batchDatasets = `
 	SELECT d.id, d.reviewed_at IS NOT NULL
 	    OR EXISTS (SELECT 1 FROM paper_datasets l WHERE l.dataset_id = d.id AND l.verified = 1)
 	    OR EXISTS (SELECT 1 FROM dataset_repositories r WHERE r.dataset_id = d.id AND r.verified = 1)
 	    OR EXISTS (SELECT 1 FROM field_evidence e WHERE e.target_dataset_id = d.id AND e.review_status <> 'unreviewed')
-	FROM datasets d WHERE d.import_batch_id = ?`
+	FROM datasets d WHERE d.import_batch_id = ? AND d.id NOT IN (SELECT dataset_id FROM trashed_datasets)`
 
 // UndoImport removes what one agent batch created, with the copies of its files
 // in the storage folder. Anything a person has reviewed, starred, read, or
