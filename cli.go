@@ -58,6 +58,12 @@ Commands:
   datasets add [-f FILE]              add a dataset from JSON, or add links to a known one
   datasets update ID [-f FILE]        apply a JSON patch
   datasets link ID [-f FILE]          link a paper from JSON, with evidence
+  datasets manifest ID               show file manifest, samples and reference versions
+  datasets prepare ID                create the dataset's storage directories
+  datasets discover ID GSE            discover GEO series/sample supplementary files
+  datasets export-manifest ID         write manifest.json in the dataset directory
+  datasets save-file ID [-f FILE]      register/update a file from JSON (no download)
+  datasets verify-file ID FILE_ID     read a registered local file and check SHA-256
   evidence list [-paper ID] [-dataset ID]
                                       recorded claims and their verdicts
   evidence add [-f FILE]              record a JSON array of claims
@@ -366,6 +372,36 @@ func (c *cli) papers(ctx context.Context, args []string) error {
 func (c *cli) datasets(ctx context.Context, args []string) error {
 	sub, rest := split(args)
 	switch sub {
+	case "manifest", "prepare", "export-manifest":
+		if len(rest) != 1 {
+			return fmt.Errorf("usage: datasets %s ID", sub)
+		}
+		switch sub {
+		case "manifest":
+			return c.print(c.store.DatasetManifest(ctx, rest[0]))
+		case "prepare":
+			return c.print(c.store.PrepareDatasetDirectory(ctx, rest[0]))
+		default:
+			return c.print(c.store.ExportDatasetManifest(ctx, rest[0]))
+		}
+	case "discover", "verify-file":
+		if len(rest) != 2 {
+			return fmt.Errorf("usage: datasets %s ID ACCESSION_OR_FILE_ID", sub)
+		}
+		if sub == "discover" {
+			return c.print(c.store.DiscoverGEOFiles(ctx, rest[0], rest[1]))
+		}
+		return c.print(c.store.VerifyDatasetAsset(ctx, rest[0], rest[1]))
+	case "save-file":
+		if len(rest) == 0 {
+			return errors.New("usage: datasets save-file ID [-f FILE]")
+		}
+		var asset library.DatasetAsset
+		if err := c.readJSON(rest[1:], &asset); err != nil {
+			return err
+		}
+		asset.DatasetID = rest[0]
+		return c.print(c.store.SaveDatasetAsset(ctx, asset))
 	case "", "list":
 		var filter library.DatasetFilter
 		flags := flag.NewFlagSet("datasets list", flag.ContinueOnError)

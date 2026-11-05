@@ -1676,3 +1676,17 @@ select.input { appearance: auto }
 @media (max-width: 900px) {
   .calibration-grid { grid-template-columns: minmax(0, 1fr) }
 }
+/* Dataset file manifests stay readable in the detail drawer at narrow widths. */
+.dataset-preparation-badges, .dataset-asset-actions, .dataset-asset-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.dataset-asset { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.dataset-asset .section-title { align-items: flex-start; }
+.dataset-asset strong, .dataset-asset p, .dataset-plan-row { overflow-wrap: anywhere; }
+.dataset-path { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 0; font-size: 12px; }
+.dataset-asset small, .dataset-plan-row small { display: block; margin: 6px 0; }
+.dataset-plan-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.dataset-plan-row > div { min-width: 0; }
+.dataset-plan-row > button { flex-shrink: 0; }
+.dataset-sample-notes { white-space: pre-line; }
+.dataset-file-list > summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
+#dataset-asset-form fieldset { max-height: 200px; overflow-y: auto; }
+#dataset-preparation-filter { width: auto; max-width: 100%; }

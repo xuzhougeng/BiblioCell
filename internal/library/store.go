@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	_ "modernc.org/sqlite"
@@ -327,9 +328,10 @@ func stringPairs(tx *sql.Tx, query string) ([][2]string, error) {
 
 // Store owns the application's SQLite database.
 type Store struct {
-	db        *sql.DB
-	path      string
-	integrity string // PRAGMA integrity_check result from Open; Open fails unless it is "ok"
+	datasetWorkspaceMu sync.Mutex // serialize plan/file relationships within this process
+	db                 *sql.DB
+	path               string
+	integrity          string // PRAGMA integrity_check result from Open; Open fails unless it is "ok"
 	// Upgraded says what Open changed when the file was behind this build; nil otherwise.
 	Upgraded *Upgrade
 	// harvested hears of the papers each source run adds; see OnPapersHarvested.

@@ -1,10 +1,11 @@
+import { datasetPreparationBadge, matchingDatasets, PREPARATION_FILTERS } from "./dataset-assets.ts";
 // Page renderers for overview, papers, datasets and tasks.
 import { speciesText } from "./species.ts";
 import { PAPER_COLUMNS, type PaperColumn } from "./columns.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, activePapers, arr, datasetLocation, esc, filterDatasets, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf, listValues,
+  FULL, PAGE_SIZES, ROLE, SORT_OPTIONS, SCREEN, activePapers, arr, datasetLocation, esc, filterPapers, joinList, pageList, paperPage, repositoryLabel, repositoryURL, safeURL, sortParts, speciesDisplay, uniqueValues, speciesLabelOf, listValues,
   type ListField,
   reviewConcern, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
@@ -314,7 +315,7 @@ export function datasetTable(items: Dataset[], app: App, none = empty(t("暂无�
       + `<td class="col-species"><div class="species-label">${esc(speciesDisplay(d) || t("物种待补"))}</div><div class="species-name">${esc(displayList(d.organs) || t("组织待补"))}</div></td>`
       + `<td class="col-modality">${modalityBadges(d)}</td>`
       + `<td class="repo-cell col-repo">${repos.length ? `${repos.slice(0, 1).map(repoLine).join("")}${repos.length > 1 ? `<span class="link-more">+${repos.length - 1}</span>` : ""}` : `<span class="muted">${t("待补")}</span>`}</td>`
-      + `<td class="col-status">${datasetStatusBadge(d)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
+      + `<td class="col-status">${datasetStatusBadge(d)}${datasetPreparationBadge(app,d.id)}</td><td class="row-arrow">${I("arrow-up-right", 16)}</td></tr>`;
   }).join("");
   const head = `<tr><th class="col-title">${t("数据集")}</th><th class="col-links">${t("关联文献")}</th><th class="col-species">${t("研究对象")}</th><th class="col-modality">${t("技术")}</th><th class="col-repo">${t("仓库编号")}</th><th class="col-status">${t("数据状态")}</th><th class="col-arrow"></th></tr>`;
   return `<div class="table-wrap"><table class="paper-table dataset-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
@@ -322,7 +323,7 @@ export function datasetTable(items: Dataset[], app: App, none = empty(t("暂无�
 
 export function renderDatasets(app: App): string {
   const datasets = app.state.datasets;
-  const items = filterDatasets(datasets, app.datasetSearch, (id) => app.paperById(id)?.title ?? "", app.datasetReview);
+  const items = matchingDatasets(app);
   const awaiting = datasets.filter((d) => d.awaitingReview).length;
   const reviewDone = app.datasetReview && !awaiting
     ? empty(t("没有需核对的数据集"), t("来源更新新增的数据集都已核查。"), `<button class="btn btn-secondary" data-action="all-datasets">${t("查看全部数据集")}</button>`)
@@ -330,10 +331,10 @@ export function renderDatasets(app: App): string {
   const toggle = `<div class="view-toggle" role="group" aria-label="${t("数据集视图切换")}"><button class="view-option${app.datasetView === "cards" ? " active" : ""}" data-action="datasets-view" data-view="cards" aria-pressed="${app.datasetView === "cards"}">${I("grid", 15)} ${t("卡片")}</button><button class="view-option${app.datasetView === "table" ? " active" : ""}" data-action="datasets-view" data-view="table" aria-pressed="${app.datasetView === "table"}">${I("more", 15)} ${t("列表")}</button></div>`;
   const tabs = `<div class="view-tabs"><button class="view-tab ${!app.datasetReview ? "active" : ""}" data-action="all-datasets">${t("全部数据集")} <span>${datasets.length}</span></button><button class="view-tab review-tab ${app.datasetReview ? "active" : ""}" data-action="review-datasets">${I("alert", 15)} ${t("需核对")} <span>${awaiting}</span></button></div>`;
   const head = `<div class="section-toolbar">${tabs}<div class="page-actions">${toggle}${app.env.readOnly ? "" : `<button class="btn btn-primary" data-action="start-dataset-review" title="${t("逐组查看数据集，保留或直接删除")}"${items.length ? "" : " disabled"}>${I("check-circle", 16)} ${t("逐个核查")}</button>`}<button class="btn btn-secondary" data-action="export-datasets">${I("download", 16)} ${t("导出")}</button><button class="btn btn-secondary" data-action="new-dataset">${I("plus", 16)} ${t("添加数据集")}</button></div></div>`
-    + `<div class="toolbar standalone-toolbar"><label class="table-search">${I("search", 18)}<input id="dataset-search" class="search-input" type="search" placeholder="${t("搜索物种、组织、accession 或关联文献…")}" value="${esc(app.datasetSearch)}" aria-label="${t("搜索数据集")}"></label></div>`;
+    + `<div class="toolbar standalone-toolbar"><label class="table-search">${I("search", 18)}<input id="dataset-search" class="search-input" type="search" placeholder="${t("搜索物种、组织、accession 或关联文献…")}" value="${esc(app.datasetSearch)}" aria-label="${t("搜索数据集")}"></label>${app.env.real ? `<select id="dataset-preparation-filter" class="input" aria-label="${t("整理进度筛选")}">${Object.entries(PREPARATION_FILTERS).map(([v,label])=>`<option value="${v}"${v===app.datasetPreparation?" selected":""}>${label}</option>`).join("")}</select>` : ""}</div>`;
   if (app.datasetView === "cards") {
     const cards = items.map((d) =>
-      `<button class="dataset-card" data-action="open-dataset" data-id="${esc(d.id)}"><div class="dataset-top"><span class="icon-wrap green">${I("database", 20)}</span><span class="dataset-badges">${d.awaitingReview ? badge(t("待核查"), "amber") : ""}${datasetStatusBadge(d)}</span></div><h3>${esc(d.title)}</h3><p class="species-name">${esc(speciesDisplay(d) || t("物种待补"))}</p><div class="tag-list">${badge(displayList(d.organs) || t("组织待补"))}${badge(displayList(d.modalities) || t("技术待补"), "blue")}${demoBadge(d)}</div><div class="dataset-accession"><span>${esc(d.repository ? repositoryLabel(d.repository) : t("仓库待补"))}</span><code>${esc(d.accession || t("编号待补"))}</code></div><div class="dataset-footer"><span>${I("book", 15)} ${t("{n} 篇关联文献", { n: arr(d.paperLinks).length })}</span>${I("arrow-up-right", 17)}</div></button>`,
+      `<button class="dataset-card" data-action="open-dataset" data-id="${esc(d.id)}"><div class="dataset-top"><span class="icon-wrap green">${I("database", 20)}</span><span class="dataset-badges">${d.awaitingReview ? badge(t("待核查"), "amber") : ""}${datasetStatusBadge(d)}</span></div><h3>${esc(d.title)}</h3><p class="species-name">${esc(speciesDisplay(d) || t("物种待补"))}</p><div class="tag-list">${badge(displayList(d.organs) || t("组织待补"))}${badge(displayList(d.modalities) || t("技术待补"), "blue")}${demoBadge(d)}</div>${datasetPreparationBadge(app,d.id)}<div class="dataset-accession"><span>${esc(d.repository ? repositoryLabel(d.repository) : t("仓库待补"))}</span><code>${esc(d.accession || t("编号待补"))}</code></div><div class="dataset-footer"><span>${I("book", 15)} ${t("{n} 篇关联文献", { n: arr(d.paperLinks).length })}</span>${I("arrow-up-right", 17)}</div></button>`,
     ).join("");
     return head + (items.length ? `<div class="dataset-grid">${cards}</div>` : reviewDone ?? empty(t("暂无匹配数据集"), t("从文献详情关联数据，或先创建一条数据集记录。")));
   }

@@ -1,4 +1,4 @@
--- BiblioCell · schema v19
+-- BiblioCell · schema v20
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -604,5 +604,19 @@ VALUES (1, '文献优先：数据集、附件、人工整理与采集追踪'),
        (14, 'AI 筛选建议记录：模型配置、结论与置信度，用于和人工判定对照'),
        (15, '按原文与提示词缓存翻译结果');
 -- 第 8 条由 rekeyPapers 写入：规范化已有数据需要 Go 代码，记录要和数据一起提交。
-PRAGMA user_version = 19;
+CREATE TABLE IF NOT EXISTS dataset_workspaces (
+ dataset_id TEXT PRIMARY KEY NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+ allocated INTEGER NOT NULL DEFAULT 0 CHECK (allocated IN (0,1)),
+ revision INTEGER NOT NULL DEFAULT 0,
+ plan_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(plan_json))
+);
+CREATE TABLE IF NOT EXISTS dataset_assets (
+ id TEXT PRIMARY KEY NOT NULL,
+ dataset_id TEXT NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+ source_url TEXT NOT NULL DEFAULT '',
+ payload TEXT NOT NULL CHECK (json_valid(payload))
+);
+CREATE INDEX IF NOT EXISTS idx_dataset_assets_dataset ON dataset_assets(dataset_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_assets_url ON dataset_assets(dataset_id, source_url) WHERE source_url <> '';
+PRAGMA user_version = 20;
 COMMIT;

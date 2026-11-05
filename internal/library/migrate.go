@@ -131,6 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE p
 		Description: "收录状态新增“无关”：标无关的文献留在库中只为去重，附件清理后来源更新与导入不再加回",
 		Run:         rebuildPaperCuration,
 	},
+	{Version: 20, Description: "数据集资源清单、样本与参考版本、存储位置", SQL: datasetAssetsDDL},
 }
 
 // paperCurationDDL is paper_curation as schema.sql defines it, for the rebuild
