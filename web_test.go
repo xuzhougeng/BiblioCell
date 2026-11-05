@@ -215,6 +215,8 @@ func TestWebViewerReadsButCannotWrite(t *testing.T) {
 	edit.After.Notes = "sneaky"
 	for name, args := range map[string][]any{
 		"Library.SavePaperEdits":    {[]library.PaperEdit{edit}},
+		"Library.ListTrash":         {},
+		"Library.RestoreTrash":      {"paper", paper.ID},
 		"Library.DeletePaper":       {paper.ID},
 		"Library.ListSources":       {},
 		"Library.SyncSource":        {"pubmed"},
@@ -292,6 +294,18 @@ func TestWebAdminSignsInAndWrites(t *testing.T) {
 	w.mustCall(t, cookie, &result, "Library.SaveSettings", saved)
 	if result.RestartRequired || result.Settings.StoragePath != config.StoragePath || result.Settings.MCPToken != config.MCPToken || result.Settings.FontSize != 19 {
 		t.Fatalf("web SaveSettings = %+v", result)
+	}
+
+	// The same API used by the frontend archives and restores a record.
+	w.mustCall(t, cookie, nil, "Library.DeletePaper", paper.ID)
+	var trash []library.TrashEntry
+	w.mustCall(t, cookie, &trash, "Library.ListTrash")
+	if len(trash) != 1 || trash[0].ID != paper.ID {
+		t.Fatalf("trash: %+v", trash)
+	}
+	w.mustCall(t, cookie, nil, "Library.RestoreTrash", "paper", paper.ID)
+	if restored, err := w.library.GetPaper(ctx, paper.ID); err != nil || restored.Notes != "checked on the web" {
+		t.Fatalf("restore: %+v %v", restored, err)
 	}
 
 	// A method error travels as the reply's error, not an HTTP failure.

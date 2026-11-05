@@ -620,6 +620,16 @@ func applyPaperPatch(paper *Paper, patch PaperPatch) {
 
 func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 	normalizePaper(p)
+	if err := rejectTrashed(ctx, tx, "paper", p.ID); err != nil {
+		return err
+	}
+	existing, checkErr := existingPaperID(ctx, tx, *p)
+	if checkErr != nil {
+		return checkErr
+	}
+	if err := rejectTrashed(ctx, tx, "paper", existing); err != nil {
+		return err
+	}
 	if p.ID == "" || p.Title == "" {
 		return errors.New("paper ID and title are required")
 	}

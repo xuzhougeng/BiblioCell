@@ -34,7 +34,7 @@ Commands:
   papers list [-q TEXT] [-screening S] [-source S] [-batch ID] [-needs-review] [-limit N] [-offset N]
                                       search papers (JSON)
   papers get ID                       one paper by ID
-  papers delete ID                    permanently delete a paper and stored copies; keep datasets and originals
+  papers delete ID                    move a paper to the recycle bin; restore from Settings
   papers add [-f FILE]                add one paper from JSON (stdin by default)
   papers import [-f FILE] [-batch ID] [-dry-run]
                                       atomically import a JSON array, skipping known papers

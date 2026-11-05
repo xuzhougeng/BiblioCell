@@ -353,16 +353,16 @@ test("the queue rail lists the run, jumps between papers and tracks decisions wi
   assert.ok(!$(".screen-queue").classList.contains("is-open"));
 });
 
-test("D marks the paper on screen irrelevant without asking, and the run moves on", async (t: TestContext) => {
+test("D moves the paper to the recycle bin without asking, and the run moves on", async (t: TestContext) => {
   const { app, state } = screeningApp();
   const ids = state.papers.slice(0, 3).map((p) => p.id);
   app.screen!.ids = [...ids];
   app.render();
   const dismissed: string[] = [];
-  t.mock.method(Library, "dismissPaper", async (id: string) => {
+  t.mock.method(Library, "deletePaper", async (id: string) => {
     dismissed.push(id);
-    // What the next reload reads back: the record stays, without its stored copy.
-    state.papers.find((p) => p.id === id)!.screening = "irrelevant";
+    // The backend retains the archived record; normal listings no longer return it.
+    state.papers = state.papers.filter(p => p.id !== id);
     state.resources = state.resources.filter((r) => r.paperId !== id);
   });
   const settle = async () => { for (let i = 0; i < 5; i++) await setImmediate(); };
@@ -372,11 +372,11 @@ test("D marks the paper on screen irrelevant without asking, and the run moves o
   await settle();
   assert.equal(document.querySelector("#modal-root .modal"), null, "no confirmation: the decision can be reversed");
   assert.deepEqual(dismissed, [ids[0]]);
-  assert.equal(app.paperById(ids[0]!)?.screening, "irrelevant", "the record stays in the library");
+  assert.equal(app.paperById(ids[0]!), undefined, "the record leaves the active library");
   assert.equal(state.resources.some((r) => r.paperId === ids[0]), false);
   assert.equal($(".screen-panel").dataset.paperId, ids[1], "the paper after the dismissed one is on screen");
   assert.match(text(".screen-progress"), /第 1 \/ 2 篇/);
-  assert.match(text(".screen-progress"), /已标无关 1 篇/);
+  assert.match(text(".screen-progress"), /已删除 1 篇/);
 
   // The button does the same; dismissing the last paper lands on the one before it.
   app.goToScreening(1);
@@ -385,5 +385,5 @@ test("D marks the paper on screen irrelevant without asking, and the run moves o
   assert.deepEqual(dismissed, [ids[0], ids[2]]);
   assert.equal($(".screen-panel").dataset.paperId, ids[1]);
   assert.match(text(".screen-progress"), /第 1 \/ 1 篇/);
-  assert.match(text(".screen-progress"), /已标无关 2 篇/);
+  assert.match(text(".screen-progress"), /已删除 2 篇/);
 });

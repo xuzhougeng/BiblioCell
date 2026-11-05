@@ -1698,3 +1698,10 @@ select.input { appearance: auto }
   .dataset-filter { width: 100%; }
   .dataset-filter .input { flex: 1; max-width: 100%; }
 }
+
+/* Recoverable records are managed from the collapsed Settings section. */
+.trash-list { max-height: 55vh; overflow-y: auto }
+.trash-entry { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line) }
+.trash-entry > div { flex: 1; min-width: 0 }
+.trash-entry strong, .trash-entry small { display: block; overflow-wrap: anywhere; margin-top: 5px }
+.trash-entry .btn { flex-shrink: 0 }

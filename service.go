@@ -70,7 +70,7 @@ func (l *Library) ListPapers() ([]library.Paper, error) {
 	return l.store.ListPapers(context.Background())
 }
 
-// DeletePaper removes a paper and its stored attachments, preserving datasets.
+// DeletePaper moves a paper to the recycle bin, preserving files and links.
 func (l *Library) DeletePaper(id string) error {
 	if l.store == nil {
 		return errors.New("library database is not ready")
@@ -276,7 +276,7 @@ func (l *Library) SaveDatasetEdits(edits []library.DatasetEdit) ([]string, error
 	return l.store.SaveDatasetEdits(context.Background(), edits)
 }
 
-// DeleteDataset removes a dataset with its links and evidence; papers stay.
+// DeleteDataset moves a dataset to the recycle bin, preserving files and links.
 func (l *Library) DeleteDataset(id string) error {
 	if l.store == nil {
 		return errors.New("library database is not ready")
@@ -832,4 +832,20 @@ func (l *Library) AgentChat(ctx context.Context, messages []agent.Message) (agen
 		MaxSteps: agent.Normalize(config).MaxSteps,
 		OnEvent:  l.announceAgent,
 	})
+}
+
+// ListTrash lists recoverable papers and datasets for the settings page.
+func (l *Library) ListTrash() ([]library.TrashEntry, error) {
+	if l.store == nil {
+		return nil, errors.New("library database is not ready")
+	}
+	return l.store.ListTrash(context.Background())
+}
+
+// RestoreTrash makes one record visible again without changing its curation.
+func (l *Library) RestoreTrash(kind, id string) error {
+	if l.store == nil {
+		return errors.New("library database is not ready")
+	}
+	return l.store.RestoreTrash(context.Background(), kind, id)
 }

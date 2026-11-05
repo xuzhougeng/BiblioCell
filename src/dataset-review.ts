@@ -73,7 +73,7 @@ export function renderDatasetReview(app: App): string {
     ? `<button class="btn btn-primary screen-decision" data-action="dataset-review-keep" data-id="${esc(d.id)}">${kbd("Y")} ${t("保留，核查完成")}</button>`
     : `<button class="btn btn-primary screen-decision is-current" data-action="dataset-review-keep" data-id="${esc(d.id)}" aria-pressed="true">${kbd("Y")} ${t("保留（已核查）")}</button>`;
   const actions = `${keep}<button class="btn btn-danger screen-decision" data-action="dataset-review-delete" data-id="${esc(d.id)}">${kbd("D")} ${t("删除")}</button>`;
-  const extra = `<button class="btn btn-secondary" data-action="edit-dataset" data-id="${esc(d.id)}">${kbd("E")} ${t("编辑信息")}</button><button class="btn btn-secondary" data-action="open-dataset" data-id="${esc(d.id)}">${kbd("Enter")} ${t("完整详情")}</button><span class="muted footer-hint">${t("←→ 前后切换 · Y 保留 · D 删除（不可撤销） · 处理后自动跳到下一组")}</span>`;
+  const extra = `<button class="btn btn-secondary" data-action="edit-dataset" data-id="${esc(d.id)}">${kbd("E")} ${t("编辑信息")}</button><button class="btn btn-secondary" data-action="open-dataset" data-id="${esc(d.id)}">${kbd("Enter")} ${t("完整详情")}</button><span class="muted footer-hint">${t("←→ 前后切换 · Y 保留 · D 移入回收站（可恢复） · 处理后自动跳到下一组")}</span>`;
   const queueToggle = `<button class="btn btn-secondary screen-queue-toggle" data-action="screen-queue-toggle" aria-pressed="${app.screenQueueOpen}" title="${t("显示或隐藏核查队列")}">${I("more", 16)} ${t("队列")}</button>`;
 
   return `<section class="panel screen-panel dataset-review-panel" data-dataset-id="${esc(d.id)}" aria-label="${t("逐个核查数据集")}">`

@@ -25,8 +25,6 @@ export interface ScreenState {
   returnTo?: "calibration";
   /** Papers of this run deleted from the library, for the progress line. */
   deleted?: number;
-  /** Papers of this run marked irrelevant, which leave the run like deleted ones. */
-  dismissed?: number;
 }
 
 export interface ScreenAI {
@@ -297,7 +295,7 @@ export function renderScreening(app: App): string {
   const keepGroup = DECISIONS.filter(([, status]) => status !== "excluded").map(([key, status, color]) => decisionButton(key, status, color)).join("");
   const [excludeKey, excludeStatus, excludeColor] = DECISIONS.find(([, status]) => status === "excluded")!;
   const dropGroup = decisionButton(excludeKey, excludeStatus, excludeColor, t("保留记录、笔记与附件"))
-    + `<button class="btn btn-secondary screen-decision screen-dismiss has-note${p.screening === "irrelevant" ? " is-current" : ""}" data-action="screen-dismiss" data-id="${esc(p.id)}" aria-pressed="${p.screening === "irrelevant"}" title="${esc(DECISION_HINTS.irrelevant!)}"><span class="decision-label">${kbd("D")} ${I("trash", 16)} ${esc(SCREEN.irrelevant!)}</span><span class="decision-note">${t("清掉附件，只留记录去重")}</span></button>`;
+    + `<button class="btn btn-danger screen-decision screen-dismiss has-note" data-action="screen-dismiss" data-id="${esc(p.id)}" title="${t("移入回收站，可恢复")}"><span class="decision-label">${kbd("D")} ${I("trash", 16)} ${t("删除")}</span><span class="decision-note">${t("移入回收站，可恢复")}</span></button>`;
   const decisionButtons = `<div class="decision-group" role="group" aria-label="${t("收录判断")}">${keepGroup}</div><div class="decision-group decision-drop" role="group" aria-label="${t("不纳入")}">${dropGroup}</div>`;
   const reason = p.screeningReason ? `<p class="muted small screen-reason">${t("判断依据：{reason}", { reason: esc(p.screeningReason) })}</p>` : "";
   const pdf = pdfPane(app, p);
@@ -308,10 +306,10 @@ export function renderScreening(app: App): string {
   const queueToggle = `<button class="btn btn-secondary screen-queue-toggle" data-action="screen-queue-toggle" aria-pressed="${app.screenQueueOpen}" title="${t("显示或隐藏筛选队列")}">${I("more", 16)} ${t("队列")}</button>`;
 
   return `<section class="panel screen-panel" data-paper-id="${esc(p.id)}" aria-label="${t("逐篇筛选")}">`
-    + `<div class="screen-toolbar"><button class="btn btn-secondary" data-action="exit-screening">${I("x", 16)} ${t("退出筛选")} ${kbd("Esc")}</button><div class="screen-progress"><strong>${t("第 {n} / {total} 篇", { n: screen.index + 1, total })}</strong><span class="muted">${t("已判断 {done} 篇", { done: decided })}${screen.dismissed ? ` · ${t("已标无关 {n} 篇", { n: screen.dismissed })}` : ""}${screen.deleted ? ` · ${t("已删除 {n} 篇", { n: screen.deleted })}` : ""}</span></div><div class="screen-nav">${queueToggle}${pdfToggle}${aiToggle}<button class="btn btn-secondary" data-action="screen-prev" ${screen.index === 0 ? "disabled" : ""} aria-label="${t("上一篇")}">${I("chevron-left", 16)} ${t("上一篇")}</button><button class="btn btn-secondary" data-action="screen-next" ${screen.index >= total - 1 ? "disabled" : ""} aria-label="${t("下一篇")}">${t("下一篇")} ${I("chevron-right", 16)}</button></div></div>`
+    + `<div class="screen-toolbar"><button class="btn btn-secondary" data-action="exit-screening">${I("x", 16)} ${t("退出筛选")} ${kbd("Esc")}</button><div class="screen-progress"><strong>${t("第 {n} / {total} 篇", { n: screen.index + 1, total })}</strong><span class="muted">${t("已判断 {done} 篇", { done: decided })}${screen.deleted ? ` · ${t("已删除 {n} 篇", { n: screen.deleted })}` : ""}</span></div><div class="screen-nav">${queueToggle}${pdfToggle}${aiToggle}<button class="btn btn-secondary" data-action="screen-prev" ${screen.index === 0 ? "disabled" : ""} aria-label="${t("上一篇")}">${I("chevron-left", 16)} ${t("上一篇")}</button><button class="btn btn-secondary" data-action="screen-next" ${screen.index >= total - 1 ? "disabled" : ""} aria-label="${t("下一篇")}">${t("下一篇")} ${I("chevron-right", 16)}</button></div></div>`
     + `<div class="screen-counts">${counts}</div>`
     + `<div class="screen-split${pdf ? " has-pdf" : ""}">${queueRail(app, papers, screen.index)}<div class="screen-body">`
-    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div><div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("翻译整段摘要并原位显示；划选文字可单独翻译")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 相关不纳入 · U 证据不足 · D 无关 / 排除 · 判断后自动跳到下一篇")}</span></div></div>`
+    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div><div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("翻译整段摘要并原位显示；划选文字可单独翻译")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 相关不纳入 · U 证据不足 · D 移入回收站 · 判断后自动跳到下一篇")}</span></div></div>`
     + `<div class="screen-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? t("未读"))}${p.publicationStatus === "preprint" ? badge(t("预印本"), "amber") : ""}${demoBadge(p)}${p.starred ? badge(t("已收藏"), "amber") : ""}<span class="muted screen-id">${esc(p.id)}</span></div>`
     + `<h2 class="screen-title">${esc(p.title)}</h2>`
     + `<p class="paper-meta">${esc(p.authors || t("作者待补"))} · ${esc(p.journal || t("期刊待补"))} · ${esc(p.year || t("年份待补"))}</p>`
@@ -336,7 +334,7 @@ export const screenActions = (app: App): Record<string, (el: HTMLElement, id: st
   "screen-go": (el) => app.goToScreening(Number(el.dataset.index)),
   "screen-queue-toggle": () => app.toggleScreenQueue(),
   "screen-decide": (el, id) => app.decideInScreening(id, el.dataset.status ?? ""),
-  "screen-dismiss": (_el, id) => { void app.dismissPaper(id); },
+  "screen-dismiss": (el, id) => { void app.deletePapers([id], el); },
   "screen-ai-open": () => screenAIModal(app, true),
   "screen-ai-skip": () => app.closeModal(),
   "screen-ai-off": () => app.disableScreeningAI(),

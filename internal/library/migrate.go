@@ -132,6 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE p
 		Run:         rebuildPaperCuration,
 	},
 	{Version: 20, Description: "数据集资源清单、样本与参考版本、存储位置", SQL: datasetAssetsDDL},
+	{Version: 21, Description: "文献与数据集回收站，保留去重标识与可恢复关联", SQL: trashDDL + `DROP VIEW IF EXISTS v_work_queue; DROP VIEW IF EXISTS v_paper_overview; DROP VIEW IF EXISTS v_dataset_overview;`},
 }
 
 // paperCurationDDL is paper_curation as schema.sql defines it, for the rebuild

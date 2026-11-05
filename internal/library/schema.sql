@@ -1,4 +1,4 @@
--- BiblioCell · schema v20
+-- BiblioCell · schema v21
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -531,6 +531,15 @@ CREATE INDEX IF NOT EXISTS idx_datasets_modality ON datasets(modality, curation_
 
 -- 状态由附件和关联计算，避免复制一份 fulltext_status 后与实际附件脱节。
 -- fulltext_url 带出 linked 状态对应的入口链接；ensurePaperView 负责升级旧库的视图。
+CREATE TABLE IF NOT EXISTS trashed_papers (
+ paper_id TEXT PRIMARY KEY NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+ deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS trashed_datasets (
+ dataset_id TEXT PRIMARY KEY NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+ deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE VIEW IF NOT EXISTS v_paper_overview AS
 SELECT p.*, c.screening_status, c.screening_reason, c.screening_method,
        c.screening_reviewed_at, c.proposed_screening, c.proposed_reason, c.awaiting_review,
@@ -552,11 +561,11 @@ SELECT p.*, c.screening_status, c.screening_reason, c.screening_method,
         WHERE pr.paper_id = p.id AND r.resource_type = 'fulltext' AND r.url IS NOT NULL
           AND r.access_status IN ('unknown','available')
         ORDER BY r.local_state <> 'none', r.added_at LIMIT 1) AS fulltext_url,
-       (SELECT count(DISTINCT pd.dataset_id) FROM paper_datasets pd WHERE pd.paper_id = p.id) AS dataset_count,
+       (SELECT count(DISTINCT pd.dataset_id) FROM paper_datasets pd WHERE pd.paper_id = p.id AND pd.dataset_id NOT IN (SELECT dataset_id FROM trashed_datasets)) AS dataset_count,
        CASE
-         WHEN EXISTS (SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id)
+         WHEN EXISTS (SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id AND pd.dataset_id NOT IN (SELECT dataset_id FROM trashed_datasets))
           AND NOT EXISTS (
-            SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id AND (
+            SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id AND pd.dataset_id NOT IN (SELECT dataset_id FROM trashed_datasets) AND (
               pd.verified = 0 OR (
                 NOT EXISTS (SELECT 1 FROM dataset_repositories dr WHERE dr.dataset_id = pd.dataset_id AND dr.verified = 1)
                 AND NOT EXISTS (SELECT 1 FROM dataset_resources dsr JOIN resources r ON r.id = dsr.resource_id
@@ -564,18 +573,19 @@ SELECT p.*, c.screening_status, c.screening_reason, c.screening_method,
               )
             )
           ) THEN 'verified'
-         WHEN EXISTS (SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id AND pd.verified = 1) THEN 'partial'
-         WHEN EXISTS (SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id) THEN 'linked'
+         WHEN EXISTS (SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id AND pd.dataset_id NOT IN (SELECT dataset_id FROM trashed_datasets) AND pd.verified = 1) THEN 'partial'
+         WHEN EXISTS (SELECT 1 FROM paper_datasets pd WHERE pd.paper_id = p.id AND pd.dataset_id NOT IN (SELECT dataset_id FROM trashed_datasets)) THEN 'linked'
          WHEN p.data_checked_at IS NULL THEN 'not_checked'
          ELSE 'missing' END AS data_link_status
-FROM papers p JOIN paper_curation c ON c.paper_id = p.id;
+FROM papers p JOIN paper_curation c ON c.paper_id = p.id
+WHERE p.id NOT IN (SELECT paper_id FROM trashed_papers);
 
 CREATE VIEW IF NOT EXISTS v_dataset_overview AS
 SELECT d.*,
-       (SELECT count(DISTINCT paper_id) FROM paper_datasets pd WHERE pd.dataset_id = d.id) AS paper_count,
+       (SELECT count(DISTINCT paper_id) FROM paper_datasets pd WHERE pd.dataset_id = d.id AND pd.paper_id NOT IN (SELECT paper_id FROM trashed_papers)) AS paper_count,
        (SELECT count(*) FROM dataset_repositories dr WHERE dr.dataset_id = d.id) AS repository_record_count,
        (SELECT count(*) FROM dataset_resources dsr WHERE dsr.dataset_id = d.id) AS resource_count
-FROM datasets d;
+FROM datasets d WHERE d.id NOT IN (SELECT dataset_id FROM trashed_datasets);
 
 -- 同一篇文献可有多条待办；排除的文献默认不进入全文和数据待补队列。
 CREATE VIEW IF NOT EXISTS v_work_queue AS
@@ -618,5 +628,5 @@ CREATE TABLE IF NOT EXISTS dataset_assets (
 );
 CREATE INDEX IF NOT EXISTS idx_dataset_assets_dataset ON dataset_assets(dataset_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_assets_url ON dataset_assets(dataset_id, source_url) WHERE source_url <> '';
-PRAGMA user_version = 20;
+PRAGMA user_version = 21;
 COMMIT;

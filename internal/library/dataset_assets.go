@@ -107,7 +107,7 @@ func (s *Store) ListDatasetManifests(ctx context.Context) ([]DatasetManifest, er
 func (s *Store) listDatasetManifests(ctx context.Context, datasetID string) ([]DatasetManifest, error) {
 	result := []DatasetManifest{}
 	index := map[string]int{}
-	rows, err := s.db.QueryContext(ctx, `SELECT d.id, coalesce(w.allocated,0), coalesce(w.revision,0), coalesce(w.plan_json,'{}') FROM datasets d LEFT JOIN dataset_workspaces w ON w.dataset_id=d.id WHERE (?='' OR d.id=?) ORDER BY d.id`, datasetID, datasetID)
+	rows, err := s.db.QueryContext(ctx, `SELECT d.id, coalesce(w.allocated,0), coalesce(w.revision,0), coalesce(w.plan_json,'{}') FROM datasets d LEFT JOIN dataset_workspaces w ON w.dataset_id=d.id WHERE d.id NOT IN (SELECT dataset_id FROM trashed_datasets) AND (?='' OR d.id=?) ORDER BY d.id`, datasetID, datasetID)
 	if err != nil {
 		return nil, err
 	}

@@ -307,7 +307,7 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 				"add_dataset matches by accession or title the same way and only adds new links",
 				"An empty ID is generated",
 				"DOI values are normalized and must be unique across the library",
-				"delete_paper permanently removes one paper even if reviewed, with notes, evidence and stored copies; datasets and original files remain",
+				"delete_paper moves a paper to the recycle bin; notes, evidence, files and links are retained for restoration from Settings",
 				"undo_import removes one batch and its stored files, except records a person has reviewed, starred, read, or verified",
 				"Record what you extract with add_evidence: a short excerpt and its source, per field, for the person checking it",
 				"Only a person verifies evidence, datasets, repository records, and paper links; list_evidence shows their verdicts",
@@ -403,7 +403,7 @@ func NewMCPServer(store *Store, credentials func() SourceCredentials) (*mcp.Serv
 		return nil, paper, err
 	})
 
-	addWriteTool(server, "delete_paper", "Permanently delete one paper (including reviewed papers), notes, evidence and stored attachment copies; unlink but preserve datasets and original imported files. Cannot be undone. Requires Bearer token write access",
+	addWriteTool(server, "delete_paper", "Move one paper to the recycle bin, hiding it from listings while retaining identifiers for deduplication, notes, evidence, files and links. Restore from Settings. Requires Bearer token write access",
 		func(ctx context.Context, input getPaperInput) (deletePaperOutput, error) {
 			if err := store.DeletePaper(ctx, input.ID); err != nil {
 				return deletePaperOutput{}, err

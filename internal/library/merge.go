@@ -302,7 +302,7 @@ type DuplicatesResult struct {
 // library only; a title that changed on publication needs FindPublishedVersions.
 func (s *Store) FindDuplicates(ctx context.Context, limit, offset int) (DuplicatesResult, error) {
 	result := DuplicatesResult{Groups: []DuplicateGroup{}}
-	const groups = `SELECT title_key FROM papers WHERE title_key <> '' GROUP BY title_key HAVING count(*) > 1`
+	const groups = `SELECT title_key FROM papers WHERE id NOT IN (SELECT paper_id FROM trashed_papers) AND title_key <> '' GROUP BY title_key HAVING count(*) > 1`
 	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM ("+groups+")").Scan(&result.Total); err != nil {
 		return result, fmt.Errorf("count duplicates: %w", err)
 	}
@@ -311,7 +311,7 @@ func (s *Store) FindDuplicates(ctx context.Context, limit, offset int) (Duplicat
 		return result, fmt.Errorf("find duplicates: %w", err)
 	}
 	for _, key := range keys {
-		ids, err := queryStrings(ctx, s.db, "SELECT id FROM papers WHERE title_key = ? ORDER BY first_seen_at, id", key)
+		ids, err := queryStrings(ctx, s.db, "SELECT id FROM papers WHERE id NOT IN (SELECT paper_id FROM trashed_papers) AND title_key = ? ORDER BY first_seen_at, id", key)
 		if err != nil {
 			return result, fmt.Errorf("read duplicates: %w", err)
 		}
@@ -397,7 +397,7 @@ func (s *Store) FindPublishedVersions(ctx context.Context, limit, offset int, cr
 
 func (s *Store) findPublishedVersions(ctx context.Context, limit, offset int, h *remoteHarvester) (PublishedVersionsResult, error) {
 	result := PublishedVersionsResult{Published: []PublishedVersion{}, Errors: []string{}}
-	const preprints = `FROM papers p JOIN paper_identifiers i ON i.paper_id = p.id AND i.namespace = 'doi'
+	const preprints = `FROM v_paper_overview p JOIN paper_identifiers i ON i.paper_id = p.id AND i.namespace = 'doi'
 		WHERE p.publication_state = 'preprint' OR i.value LIKE '10.1101/%'`
 	if err := s.db.QueryRowContext(ctx, "SELECT count(*) "+preprints).Scan(&result.Total); err != nil {
 		return result, fmt.Errorf("count preprints: %w", err)

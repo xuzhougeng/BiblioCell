@@ -1,3 +1,4 @@
+import { archiveDemo, openTrash, restoreTrash } from "./trash.ts";
 import { matchingDatasets, datasetAssetActions, saveDatasetAssetForm, saveDatasetPlanForm } from "./dataset-assets.ts";
 import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } from "./screen-batch.ts";
@@ -142,7 +143,6 @@ export class App {
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private warning: string;
   private deleting = false;
-  private dismissing = false;
   private contextRow: HTMLElement | null = null;
 
   constructor(options: AppOptions) {
@@ -237,71 +237,31 @@ export class App {
     this.contextRow = null;
   }
 
-  /** dismissPaper marks a paper irrelevant and drops its stored attachments. The record
-   * stays, which is what keeps imports and source updates from adding the paper back;
-   * no default view or count shows it afterwards. In screening the run moves on. */
-  async dismissPaper(id: string): Promise<void> {
-    const p = this.paperById(id);
-    if (!p || this.env.readOnly || this.dismissing) return;
-    this.dismissing = true;
-    try {
-      if (this.env.real) await enqueue(() => Library.dismissPaper(id));
-      const next = clone(this.state);
-      const fileIds = new Set(next.resources.filter((r) => r.paperId === id).map((r) => r.id));
-      next.resources = next.resources.filter((r) => r.paperId !== id);
-      next.evidence = (next.evidence ?? []).filter((e) => !fileIds.has(e.fileId));
-      const paper = next.papers.find((x) => x.id === id)!;
-      decideScreening(paper, "irrelevant");
-      paper.fulltext = "missing";
-      paper.fulltextUrl = "";
-      if (!this.env.real) await this.store.save(next, this.saved);
-      this.state = next;
-      this.saved = clone(next);
-      this.edits++;
-      this.selectedPapers.delete(id);
-      if (this.screen?.ids.includes(id)) {
-        // Taken out of the run before rendering, so the paper that followed it is on screen.
-        this.screen.dismissed = (this.screen.dismissed ?? 0) + 1;
-        this.screen.ids = this.screen.ids.filter((x) => x !== id);
-      }
-      if (this.drawer?.type === "paper" && this.drawer.id === id) this.closeDrawer();
-      this.logActivity(t("标为无关：{title}", { title: p.title }));
-      this.render();
-      if (this.screen) window.scrollTo({ top: 0 });
-      if (this.env.real) await this.reload();
-      this.toast(t("已标为无关，保存的附件已清理。"));
-    } catch (error) {
-      this.toast(errorMessage(error, t("操作失败，请重试。")), true);
-    } finally {
-      this.dismissing = false;
-    }
-  }
-
   private requestDeletePaper(id: string): void {
     const paper = this.paperById(id);
     if (!paper) return;
-    this.showModal(t("删除文献"), `<p>${t("确定删除《{title}》？", { title: esc(paper.title) })}</p><p>${t("将删除文献、笔记、相关证据和保存的附件副本，并解除数据集关联。数据集及原始导入文件会保留。此操作无法撤销。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-paper" data-id="${esc(id)}">${t("确认删除")}</button>`);
+    this.showModal(t("删除文献"), `<p>${t("确定删除《{title}》？", { title: esc(paper.title) })}</p><p>${t("文献将移入回收站，附件、笔记和关联保留。来源更新与重新导入不会自动加回，可在设置中的回收站恢复。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-paper" data-id="${esc(id)}">${t("确认删除")}</button>`);
   }
 
   private deletePaper(id: string, button: HTMLElement): Promise<void> {
     return this.deletePapers([id], button);
   }
 
-  /** deletePapers removes papers with their notes, evidence and attachment copies; datasets stay, unlinked. */
+  /** Hide papers from active state; their records, files and links remain recoverable. */
   async deletePapers(ids: string[], button: HTMLElement): Promise<void> {
     ids = ids.filter((id) => this.paperById(id));
-    if (this.deleting || !ids.length) return;
+    if (this.env.readOnly || this.deleting || !ids.length) return;
     this.deleting = true;
     button.setAttribute("disabled", "");
     try {
       if (this.env.real) for (const id of ids) await enqueue(() => Library.deletePaper(id));
       const gone = new Set(ids);
       const next = clone(this.state);
-      const fileIds = new Set(next.resources.filter(r => gone.has(r.paperId ?? "")).map(r => r.id));
+      if (!this.env.real) archiveDemo(next, "paper", gone);
       next.papers = next.papers.filter(p => !gone.has(p.id));
       next.resources = next.resources.filter(r => !gone.has(r.paperId ?? ""));
-      next.evidence = (next.evidence ?? []).filter(e => !gone.has(e.paperId ?? "") && !fileIds.has(e.fileId));
-      next.datasets.forEach(d => { d.paperLinks = d.paperLinks.filter(l => !gone.has(l.paperId)); });
+      next.evidence = (next.evidence ?? []).filter(e => !gone.has(e.paperId ?? ""));
+
       if (!this.env.real) await this.store.save(next, this.saved);
       this.state = next;
       this.saved = clone(next);
@@ -314,8 +274,9 @@ export class App {
       this.render();
       if (this.screen) window.scrollTo({ top: 0 }); // The next paper of the run, from its top.
       if (this.env.real) await this.reload();
-      this.toast(ids.length === 1 ? t("文献已删除。") : t("已删除 {n} 篇文献。", { n: ids.length }));
+      this.toast(ids.length === 1 ? t("文献已移入回收站。") : t("已将 {n} 篇文献移入回收站。", { n: ids.length }));
     } catch (error) {
+      if (this.env.real) await this.reload();
       this.toast(errorMessage(error, t("删除失败，请重试。")), true);
     } finally {
       this.deleting = false;
@@ -326,19 +287,21 @@ export class App {
   private requestDeleteDataset(id: string): void {
     const dataset = this.state.datasets.find((d) => d.id === id);
     if (!dataset) return;
-    this.showModal(t("删除数据集"), `<p>${t("确定删除数据集《{title}》？", { title: esc(dataset.title) })}</p><p>${t("将删除数据集、它与文献的关联、相关证据和只属于它的资料入口。文献会保留。来源更新不会再把同一编号加回来。此操作无法撤销。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-dataset" data-id="${esc(id)}">${t("确认删除")}</button>`);
+    this.showModal(t("删除数据集"), `<p>${t("确定删除数据集《{title}》？", { title: esc(dataset.title) })}</p><p>${t("数据集将移入回收站，资源文件、证据和文献关联保留。来源更新与重新导入不会自动加回，可在设置中的回收站恢复。")}</p>`, `<button class="btn btn-secondary" data-action="close-modal">${t("取消")}</button><button class="btn btn-danger" data-action="confirm-delete-dataset" data-id="${esc(id)}">${t("确认删除")}</button>`);
   }
 
-  /** deleteDatasets removes datasets with their paper links, evidence and resource entries; papers stay. */
+  /** Hide datasets from active state while retaining their data in the recycle bin. */
   async deleteDatasets(ids: string[], button: HTMLElement): Promise<void> {
     ids = ids.filter((id) => this.state.datasets.some((d) => d.id === id));
-    if (this.deleting || !ids.length) return;
+    if (this.env.readOnly || this.deleting || !ids.length) return;
     this.deleting = true;
     button.setAttribute("disabled", "");
     try {
       if (this.env.real) for (const id of ids) await enqueue(() => Library.deleteDataset(id));
       const gone = new Set(ids);
       const next = clone(this.state);
+      if (!this.env.real) archiveDemo(next, "dataset", gone);
+      next.datasetManifests = (next.datasetManifests ?? []).filter(m => !gone.has(m.datasetId));
       next.datasets = next.datasets.filter((d) => !gone.has(d.id));
       next.resources = next.resources.filter((r) => !gone.has(r.datasetId ?? ""));
       next.evidence = (next.evidence ?? []).filter((e) => !gone.has(e.datasetId ?? ""));
@@ -351,8 +314,9 @@ export class App {
       if (this.drawer?.type === "dataset" && gone.has(this.drawer.id)) this.closeDrawer();
       this.render();
       if (this.env.real) await this.reload();
-      this.toast(ids.length === 1 ? t("数据集已删除。") : t("已删除 {n} 组数据集。", { n: ids.length }));
+      this.toast(ids.length === 1 ? t("数据集已移入回收站。") : t("已将 {n} 组数据集移入回收站。", { n: ids.length }));
     } catch (error) {
+      if (this.env.real) await this.reload();
       this.toast(errorMessage(error, t("删除失败，请重试。")), true);
     } finally {
       this.deleting = false;
@@ -384,6 +348,16 @@ export class App {
   }
   tasks(): TaskRow[] {
     return tasksFor(this.state.papers, this.state.datasets, this.state.evidence);
+  }
+
+  /** Commit a demo-only archive/restore after local storage succeeds. */
+  async replaceDemoState(next: LibraryState): Promise<void> {
+    if (this.env.real || this.env.readOnly) return;
+    await this.store.save(next, this.saved);
+    this.state = next;
+    this.saved = clone(next);
+    this.edits++;
+    this.render();
   }
 
   // ---- persistence ----
@@ -1029,6 +1003,8 @@ export class App {
       $$<HTMLElement>(".species-row", rows).at(-1)?.querySelector<HTMLSelectElement>("[data-species-picker]")?.focus();
     },
     "remove-species-row": (el) => el.closest(".species-row")?.remove(),
+    "open-trash": () => { void openTrash(this); },
+    "restore-trash": (el) => { void restoreTrash(this, el); },
     "delete-paper": (_el, id) => this.requestDeletePaper(id),
     "delete-dataset": (_el, id) => this.requestDeleteDataset(id),
     "confirm-delete-dataset": (el, id) => { void this.deleteDatasets([id], el); },
@@ -1552,7 +1528,7 @@ export class App {
       return true;
     }
     if (key === "d" && !this.env.readOnly) {
-      void this.dismissPaper(current.id);
+      void this.deletePapers([current.id], document.createElement("button"));
       return true;
     }
     if (key === "a" && this.screen!.ai) {

@@ -569,6 +569,14 @@ export interface ToolCall {
   arguments: string;
 }
 
+export interface TrashEntry {
+  kind: string;
+  id: string;
+  title: string;
+  identifier: string;
+  deletedAt: string;
+}
+
 /** UpdateState is what the top bar's Update pill shows. */
 export interface UpdateState {
   /**
@@ -637,11 +645,11 @@ export const Library = {
   deleteAgentConversation(id: string): Promise<void> {
     return call("Library.DeleteAgentConversation", id);
   },
-  /** DeleteDataset removes a dataset with its links and evidence; papers stay. */
+  /** DeleteDataset moves a dataset to the recycle bin, preserving files and links. */
   deleteDataset(id: string): Promise<void> {
     return call("Library.DeleteDataset", id);
   },
-  /** DeletePaper removes a paper and its stored attachments, preserving datasets. */
+  /** DeletePaper moves a paper to the recycle bin, preserving files and links. */
   deletePaper(id: string): Promise<void> {
     return call("Library.DeletePaper", id);
   },
@@ -737,6 +745,10 @@ export const Library = {
   listSources(): Promise<SourceStatus[]> {
     return call("Library.ListSources");
   },
+  /** ListTrash lists recoverable papers and datasets for the settings page. */
+  listTrash(): Promise<TrashEntry[]> {
+    return call("Library.ListTrash");
+  },
   /**
    * LocateFulltextPage finds the PDF page a passage sits on, by searching the
    * stored full text; 0 means it was not found. It lets the window jump to a
@@ -788,6 +800,10 @@ export const Library = {
   /** RestartToUpdate relaunches into the downloaded update. */
   restartToUpdate(): Promise<void> {
     return call("Library.RestartToUpdate");
+  },
+  /** RestoreTrash makes one record visible again without changing its curation. */
+  restoreTrash(kind: string, id: string): Promise<void> {
+    return call("Library.RestoreTrash", kind, id);
   },
   /** RetryUpdate checks for an update again after a download failed. */
   retryUpdate(): Promise<void> {
