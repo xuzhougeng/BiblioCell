@@ -19,6 +19,7 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"bibliocell"
 	"bibliocell/internal/agent"
 	"bibliocell/internal/library"
 	"bibliocell/internal/settings"
@@ -565,7 +566,7 @@ func (c *cli) web(args []string) error {
 	if err != nil {
 		return err
 	}
-	frontend, err := webFrontend(*dist, embeddedFrontend())
+	frontend, err := webFrontend(*dist, bibliocell.WebDist)
 	if err != nil {
 		return err
 	}

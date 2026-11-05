@@ -35,12 +35,15 @@ npm run build
 
 ```text
 BiblioCell/
-├── main.go                  # mygo 应用、窗口、SQLite 与 MCP 生命周期
-├── service.go               # 暴露给前端的 Library 服务（service_*.go 按功能拆分）
-├── background.go            # 托盘图标与关窗后后台运行
-├── update.go                # 应用自动更新：检查 Release、后台下载与重启替换
-├── cli.go                   # 命令行子命令：文献、来源、设置、原始 SQL
-├── web.go                   # 网页版：HTTP 调用分发、方法权限表、管理员会话、事件流、静态文件
+├── cmd/bibliocell/          # Go 主包（mygo.config.ts 的 main），go run ./cmd/bibliocell
+│   ├── main.go              # mygo 应用、窗口、SQLite 与 MCP 生命周期
+│   ├── service.go           # 暴露给前端的 Library 服务（service_*.go 按功能拆分）
+│   ├── background.go        # 托盘图标与关窗后后台运行
+│   ├── update.go            # 应用自动更新：检查 Release、后台下载与重启替换
+│   ├── cli.go               # 命令行子命令：文献、来源、设置、原始 SQL
+│   ├── web.go               # 网页版：HTTP 调用分发、方法权限表、管理员会话、事件流、静态文件
+│   └── *_test.go            # 服务、命令行、网页版与自动更新测试
+├── assets.go / assets_webdist.go  # 根包 bibliocell：嵌入托盘图标，-tags webdist 时嵌入 dist/
 ├── internal/library/
 │   ├── store.go             # 数据库打开、基线前的旧库修复与完整性检查
 │   ├── migrate.go           # 版本化迁移：迁移列表、备份、db version / migrate 的实现
@@ -78,7 +81,7 @@ BiblioCell/
 ├── tests/                   # node:test 测试（npm test）：纯逻辑测试与 jsdom 界面交互测试
 ├── public/                  # 图标、设计文档与可下载资料
 ├── resources/               # 应用图标
-├── mygo.config.ts           # mygo 开发、构建和应用元数据
+├── mygo.config.ts           # mygo 开发、构建和应用元数据（main 指向 cmd/bibliocell）
 ├── Dockerfile               # 网页版服务器镜像
 └── package.json             # Vite / TypeScript 前端工具链
 ```

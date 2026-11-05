@@ -62,7 +62,7 @@ flowchart TB
         storeTs -->|Demo 模式| demo
     end
 
-    subgraph binary["BiblioCell 可执行文件（Go）"]
+    subgraph binary["cmd/bibliocell · 可执行文件（Go 主包）"]
         mainGo["main.go<br/>入口与生命周期"]
         desktop["桌面应用<br/>mygo 窗口 · 托盘 · 自动更新"]
         cli["cli.go<br/>命令行子命令"]

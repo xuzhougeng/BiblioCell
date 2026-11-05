@@ -14,7 +14,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /src/dist ./dist
-RUN CGO_ENABLED=0 go build -tags webdist -ldflags="-s -w" -o /bibliocell .
+RUN CGO_ENABLED=0 go build -tags webdist -ldflags="-s -w" -o /bibliocell ./cmd/bibliocell
 
 FROM alpine:3.21
 RUN adduser -D -u 1000 bibliocell && mkdir -p /data && chown bibliocell /data

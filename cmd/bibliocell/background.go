@@ -1,18 +1,15 @@
 package main
 
 import (
-	_ "embed"
 	"log"
 	"runtime"
 	"strings"
 
 	"github.com/egoist/mygo"
 
+	"bibliocell"
 	"bibliocell/internal/settings"
 )
-
-//go:embed resources/tray.png
-var trayIcon []byte
 
 // keepInBackground makes closing the main window hide it instead of quitting,
 // unless the person turned on QuitOnWindowClose. The app keeps running, so
@@ -68,7 +65,7 @@ func addTray(show func()) {
 		mygo.Separator(),
 		{Label: quit, Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
 	})
-	options := mygo.TrayOptions{ID: "bibliocell", Icon: trayIcon, ToolTip: "BiblioCell"}
+	options := mygo.TrayOptions{ID: "bibliocell", Icon: bibliocell.TrayIcon, ToolTip: "BiblioCell"}
 	// AppIndicator (Linux) always shows a menu; on Windows a menu would take
 	// the left click, so it opens only on a right-click.
 	if runtime.GOOS == "linux" {
