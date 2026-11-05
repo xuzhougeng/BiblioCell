@@ -1,3 +1,4 @@
+import { matchingDatasets, datasetAssetActions, saveDatasetAssetForm, saveDatasetPlanForm } from "./dataset-assets.ts";
 import { extractPaperMetadata, saveMetadata } from "./metadata.ts";
 import { batchActions, batchChange, batchSearch, startBatch, type BatchDraft } from "./screen-batch.ts";
 import { calibrationActions, calibrationChange, emptyCalibration, type CalibrationState } from "./calibration.ts";
@@ -19,7 +20,7 @@ import {
   saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
-  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, activePapers, clone, decideScreening, emptyFilters, esc, filterDatasets, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
+  PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, activePapers, clone, decideScreening, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
   tasksFor, toggleSort, uid, type Filters, type ImportStats, type LibraryState, type Page, type Resource, type SortKey, type TaskRow, type TaskType,
 } from "./model.ts";
 import { applyProviderDefault, refreshSources, renderSources, saveAutomation, saveSourceCheck, saveSourceConfig, sourceConfigModal, sourceRecordsModal, syncSource, toggleSource, useSourceQuery, watchSources } from "./sources.ts";
@@ -81,6 +82,7 @@ export class App {
   filters: Filters = emptyFilters();
   taskFilter: TaskType | "all" = "all";
   datasetSearch = "";
+  datasetPreparation = "";
   /** Datasets page: only those a source update added that no person has checked. */
   datasetReview = false;
   /** Papers-table pagination; the stored page is clamped against the filtered total at render time. */
@@ -553,7 +555,7 @@ export class App {
       id = list[list.findIndex((p) => p.id === this.drawer!.id) + delta]?.id ?? "";
     } else {
       const list = this.page === "datasets" && this.datasetView === "table"
-        ? filterDatasets(this.state.datasets, this.datasetSearch, (pid) => this.paperById(pid)?.title ?? "", this.datasetReview)
+        ? matchingDatasets(this)
         : this.state.datasets;
       id = list[list.findIndex((d) => d.id === this.drawer!.id) + delta]?.id ?? "";
     }
@@ -828,7 +830,7 @@ export class App {
   // ---- dataset review mode ----
   /** startDatasetReview snapshots the filtered datasets and opens them one at a time, from the row cursor if any. */
   startDatasetReview(): void {
-    const ids = filterDatasets(this.state.datasets, this.datasetSearch, (id) => this.paperById(id)?.title ?? "", this.datasetReview).map((d) => d.id);
+    const ids = matchingDatasets(this).map((d) => d.id);
     const index = this.datasetView === "table" && this.datasetCursor != null ? (this.datasetPage - 1) * this.datasetPageSize + this.datasetCursor : 0;
     this.datasetScreen = { ids, index: Math.min(Math.max(index, 0), Math.max(ids.length - 1, 0)), deleted: 0 };
     this.screenQueueOpen = wideWindow();
@@ -843,7 +845,7 @@ export class App {
     this.datasetScreen = null;
     this.closeDrawer();
     if (id && this.datasetView === "table") {
-      const index = filterDatasets(this.state.datasets, this.datasetSearch, (pid) => this.paperById(pid)?.title ?? "", this.datasetReview).findIndex((d) => d.id === id);
+      const index = matchingDatasets(this).findIndex((d) => d.id === id);
       if (index >= 0) {
         this.datasetPage = Math.floor(index / this.datasetPageSize) + 1;
         this.datasetCursor = index % this.datasetPageSize;
@@ -1070,6 +1072,9 @@ export class App {
       this.render();
     },
     "clear-filters": () => {
+      this.datasetSearch = "";
+      this.datasetPreparation = "";
+      this.datasetPage = 1;
       this.filters = emptyFilters();
       this.paperPage = 1;
       const search = $<HTMLInputElement>("#global-search");
@@ -1193,6 +1198,7 @@ export class App {
     ...settingsActions(this),
     ...agentActions(this),
     ...fileActions(this),
+    ...datasetAssetActions(this),
     ...doiActions(this),
     ...reviewActions(this),
     ...screenActions(this),
@@ -1239,6 +1245,7 @@ export class App {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
     const handlers: Record<string, (app: App, form: HTMLFormElement) => void> = {
+      "dataset-asset-form": saveDatasetAssetForm, "dataset-sample-form": saveDatasetPlanForm, "dataset-reference-form": saveDatasetPlanForm,
       "batch-screen-form": startBatch, "export-form": runExport,
       "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
       "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
@@ -1260,6 +1267,12 @@ export class App {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
     if (batchChange(this, target)) return;
+    if (target instanceof HTMLSelectElement && target.id === "dataset-preparation-filter") {
+      this.datasetPreparation = target.value;
+      this.datasetPage = 1;
+      this.render();
+      return;
+    }
     if (calibrationChange(this, target)) return;
     if (selectionChange(this, target)) return;
     if (target instanceof HTMLInputElement && target.dataset.paperColumn) {
@@ -1555,7 +1568,7 @@ export class App {
     const cursor = datasets ? this.datasetCursor : this.paperCursor;
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       const items = datasets
-        ? filterDatasets(this.state.datasets, this.datasetSearch, (id) => this.paperById(id)?.title ?? "", this.datasetReview)
+        ? matchingDatasets(this)
         : filterPapers(this.state.papers, this.filters);
       const size = datasets ? this.datasetPageSize : this.paperPageSize;
       const count = Math.max(1, Math.ceil(items.length / size));

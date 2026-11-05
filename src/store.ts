@@ -27,8 +27,8 @@ export function enqueue<T>(operation: () => Promise<T>): Promise<T> {
 export const sqliteStore: LibraryStore = {
   load() {
     return enqueue<LibraryState>(async () => {
-      const [papers, datasets, files, evidence] = await Promise.all([Library.listPapers(), Library.listDatasets(), Library.listPaperFiles(), Library.listEvidence()]);
-      return { schemaVersion: 2, papers, datasets: datasets.map(normalizeDataset), resources: files.map(fileResource), evidence, activities: [] };
+      const [papers, datasets, files, evidence, datasetManifests] = await Promise.all([Library.listPapers(), Library.listDatasets(), Library.listPaperFiles(), Library.listEvidence(), Library.listDatasetManifests()]);
+      return { schemaVersion: 2, papers, datasets: datasets.map(normalizeDataset), resources: files.map(fileResource), evidence, datasetManifests, activities: [] };
     });
   },
   save(next, saved) {

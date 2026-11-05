@@ -1,3 +1,4 @@
+import { matchingDatasets } from "./dataset-assets.ts";
 // Exports: BibTeX, CSV, dataset download lists and the Markdown progress
 // report. The desktop sends the selected records to Go (internal/library/
 // export.go), which renders the file and opens the save dialog, so Demo and
@@ -7,7 +8,7 @@
 import type { App } from "./app.ts";
 import type { Dataset, Paper, SpeciesEntry } from "./mygo.ts";
 import { Library } from "./mygo.ts";
-import { arr, esc, filterDatasets, filterPapers } from "./model.ts";
+import { arr, esc, filterPapers } from "./model.ts";
 import { t } from "./i18n.ts";
 import { I, downloadFile, errorMessage, option } from "./ui.ts";
 
@@ -42,7 +43,7 @@ export function exportModal(app: App, scope: ExportScope, preset: ExportKind | "
     if (app.selectedPapers.size) ranges.unshift(["selected", t("已勾选的文献（{n} 篇）", { n: app.selectedPapers.size })]);
     formats = PAPER_FORMATS;
   } else {
-    const filtered = filterDatasets(app.state.datasets, app.datasetSearch, (id) => app.paperById(id)?.title ?? "", app.datasetReview).length;
+    const filtered = matchingDatasets(app).length;
     ranges = [["filtered", t("当前搜索结果（{n} 组）", { n: filtered })], ["all", t("全部数据集（{n} 组）", { n: app.state.datasets.length })]];
     formats = DATASET_FORMATS;
   }
@@ -72,7 +73,7 @@ export function runExport(app: App, form: HTMLFormElement): void {
     else if (range === "included") papers = papers.filter((p) => p.screening === "included");
     else if (range === "selected") papers = papers.filter((p) => app.selectedPapers.has(p.id));
   } else if (range === "filtered") {
-    datasets = filterDatasets(datasets, app.datasetSearch, (id) => app.paperById(id)?.title ?? "", app.datasetReview);
+    datasets = matchingDatasets(app);
   }
   const count = scope === "papers" ? papers.length : datasets.length;
   if (!count) {

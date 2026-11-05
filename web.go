@@ -54,6 +54,15 @@ const (
 // missing here is not callable from the web (TestWebMethodsAreClassified
 // keeps the list complete).
 var webMethodAccess = map[string]webAccess{
+	"ListDatasetManifests":     webRead,
+	"SaveDatasetPlan":          webAdmin,
+	"SaveDatasetAsset":         webAdmin,
+	"VerifyDatasetAsset":       webAdmin,
+	"RemoveDatasetAsset":       webAdmin,
+	"PrepareDatasetDirectory":  webAdmin,
+	"ExportDatasetManifest":    webAdmin,
+	"DiscoverGEOFiles":         webAdmin,
+	"OpenDatasetDirectory":     webDesktop,
 	"Status":                   webRead,
 	"ListPapers":               webRead,
 	"ListDatasets":             webRead,

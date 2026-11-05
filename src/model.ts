@@ -1,7 +1,7 @@
 // Pure data logic shared by the UI and the node:test suite. No DOM access here.
 import { listSeparator, locale, t, tv } from "./i18n.ts";
 import { speciesText } from "./species.ts";
-import type { Dataset, DatasetPaperLink, DatasetRepository, Evidence, Paper, PaperFile, SourceAutomation, SpeciesEntry } from "./mygo.ts";
+import type { Dataset, DatasetManifest, DatasetPaperLink, DatasetRepository, Evidence, Paper, PaperFile, SourceAutomation, SpeciesEntry } from "./mygo.ts";
 
 export interface Resource {
   id: string;
@@ -36,6 +36,7 @@ export interface LibraryState {
   datasets: Dataset[];
   resources: Resource[];
   evidence?: Evidence[];
+  datasetManifests?: DatasetManifest[];
   activities: Activity[];
 }
 

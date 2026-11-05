@@ -1,12 +1,14 @@
 // Datasets list in a real DOM: the table names its columns so narrow windows
 // can fold the modality column into the title cell without the accession
 // column losing its width (it used to overlap the status column at 1024px).
-import { $, $$, keydown, resetDom } from "./dom.ts";
+import { $, $$, change, keydown, resetDom } from "./dom.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { App, type Env } from "../src/app.ts";
 import { demoState } from "../src/demo-data.ts";
+import { Library, type DatasetManifest } from "../src/mygo.ts";
+import { matchesPreparation, referenceComplete } from "../src/dataset-assets.ts";
 
 const previewEnv = (): Env => ({
   desktop: false, backend: false, readOnly: false, web: null, real: false,
@@ -75,4 +77,61 @@ test("review mode walks the datasets one at a time: Y keeps, D deletes, Esc retu
   keydown("Escape");
   assert.equal(document.querySelector(".dataset-review-panel"), null);
   assert.ok($(".dataset-table"));
+});
+
+function manifestFixture(id: string): DatasetManifest {
+  return {datasetId:id,directory:`datasets/${id}`,allocated:false,revision:0,plan:{samples:[],references:[],notes:""},assets:[]};
+}
+
+test("dataset preparation filters distinguish directory allocation, local verification and reference matching", () => {
+  const { app, state }=datasetsApp();app.env.real=true;
+  const m=manifestFixture(state.datasets[0]!.id);state.datasetManifests=[m];app.render();
+  m.allocated=true;
+  assert.equal(matchesPreparation(m,"unallocated"),false);
+  assert.equal(matchesPreparation(m,"verified"),false);
+  m.plan.references=[{key:"ath",species:"Arabidopsis thaliana",assembly:"TAIR10",annotation:"Araport11",status:"matched",evidence:"Feature IDs checked"}];
+  assert.equal(referenceComplete(m),false,"a reference claim alone is not a sequence bundle");
+  m.assets=["pep","cds","gene_map"].map(kind=>({id:kind,datasetId:m.datasetId,title:kind,kind,url:"",sampleIds:[],matrixKind:"unknown",referenceKey:"ath",notes:"",localPath:`references/ath/${kind}`,sizeBytes:1,sha256:"a".repeat(64),checkedAt:"2026-11-05",localState:"verified"}));
+  assert.equal(referenceComplete(m),true);
+  m.assets[0]!.localState="changed";assert.equal(referenceComplete(m),false);
+  change($<HTMLSelectElement>("#dataset-preparation-filter"),"verified");
+  assert.equal($$("tbody tr[data-action=open-dataset]").length,1);
+  app.openDataset(m.datasetId);
+  assert.match($(".dataset-workspace").textContent??"",/不代表矩阵、注释和序列已通过分析验证/);
+  assert.ok(!$(".drawer").textContent?.includes("分析已就绪"));
+  app.closeDrawer();
+  $<HTMLButtonElement>("[data-action=start-dataset-review]").click();
+  assert.deepEqual(app.datasetScreen?.ids,[m.datasetId],"the review queue must use the preparation filter too");
+  app.exitDatasetReview();
+  change($<HTMLSelectElement>("#dataset-preparation-filter"),"reference_matched");
+  assert.equal($$("tbody tr[data-action=open-dataset]").length,0);
+  $<HTMLButtonElement>("[data-action=clear-filters]").click();
+  assert.equal(app.datasetPreparation,"");
+  assert.equal($$("tbody tr[data-action=open-dataset]").length,state.datasets.length);
+});
+
+test("dataset file form saves scope, matrix type and relative path through the real backend",async()=>{
+  const {app,state}=datasetsApp();app.env.real=true;app.env.backend=true;
+  const m=manifestFixture(state.datasets[0]!.id);m.plan.samples=[{id:"GSM1",title:"root",species:"",tissue:"",condition:"",replicate:"",notes:""}];state.datasetManifests=[m];
+  const original=Library.saveDatasetAsset;let saved:Parameters<typeof Library.saveDatasetAsset>[0]|undefined;
+  Library.saveDatasetAsset=async a=>{saved=a;return {...a,id:"DA-test"};};
+  try{
+    app.openDataset(m.datasetId);$<HTMLButtonElement>('[data-action="dataset-asset-edit"]').click();
+    $<HTMLInputElement>('#dataset-asset-form [name="title"]').value='counts <script>.mtx';
+    $<HTMLInputElement>('#dataset-asset-form [name="localPath"]').value=m.directory+'/original/counts.mtx';
+    $<HTMLSelectElement>('#dataset-asset-form [name="kind"]').value='matrix';
+    $<HTMLSelectElement>('#dataset-asset-form [name="matrixKind"]').value='counts';
+    $<HTMLInputElement>('#dataset-asset-form [name="sampleIds"]').checked=true;
+    $("#dataset-asset-form").dispatchEvent(new SubmitEvent("submit",{bubbles:true,cancelable:true}));
+    await new Promise(r=>setTimeout(r,0));
+    assert.equal(saved?.matrixKind,"counts");assert.deepEqual(saved?.sampleIds,["GSM1"]);assert.equal(saved?.localState,"none");
+    assert.equal(saved?.localPath,m.directory+'/original/counts.mtx');
+  }finally{Library.saveDatasetAsset=original;}
+});
+
+test("viewers can read dataset manifests without write controls or executable source markup",()=>{
+  const {app,state}=datasetsApp();app.env.real=true;app.env.readOnly=true;
+  const m=manifestFixture(state.datasets[0]!.id);m.plan.samples=[{id:'<img src=x onerror=alert(1)>',title:'unsafe',species:'',tissue:'',condition:'',replicate:'',notes:''}];state.datasetManifests=[m];
+  app.openDataset(m.datasetId);
+  assert.ok($(".dataset-workspace"));assert.equal(document.querySelector('[data-action="dataset-prepare"]'),null);assert.equal(document.querySelector('[data-action="dataset-asset-edit"]'),null);assert.equal(document.querySelector('.drawer img'),null);
 });

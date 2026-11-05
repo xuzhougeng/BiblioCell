@@ -135,9 +135,42 @@ export interface Dataset {
   isDemo: boolean;
 }
 
+export interface DatasetAsset {
+  id: string;
+  datasetId: string;
+  title: string;
+  kind: string;
+  url: string;
+  sampleIds: string[];
+  matrixKind: string;
+  referenceKey: string;
+  notes: string;
+  localPath: string;
+  sizeBytes: number;
+  sha256: string;
+  checkedAt: string;
+  localState: string;
+}
+
+export interface DatasetDiscovery {
+  filesFound: number;
+  filesAdded: number;
+  samplesFound: number;
+  sourceUrl: string;
+}
+
 export interface DatasetEdit {
   before: Dataset | null;
   after: Dataset;
+}
+
+export interface DatasetManifest {
+  datasetId: string;
+  directory: string;
+  allocated: boolean;
+  revision: number;
+  plan: DatasetPlan;
+  assets: DatasetAsset[];
 }
 
 export interface DatasetPaperLink {
@@ -146,6 +179,21 @@ export interface DatasetPaperLink {
   evidenceUrl: string;
   evidenceText: string;
   verified: boolean;
+}
+
+export interface DatasetPlan {
+  samples: DatasetSample[];
+  references: DatasetReference[];
+  notes: string;
+}
+
+export interface DatasetReference {
+  key: string;
+  species: string;
+  assembly: string;
+  annotation: string;
+  status: string;
+  evidence: string;
 }
 
 export interface DatasetRepository {
@@ -159,6 +207,16 @@ export interface DatasetRepository {
   evidenceUrl: string;
   evidenceText: string;
   verified: boolean;
+}
+
+export interface DatasetSample {
+  id: string;
+  title: string;
+  species: string;
+  tissue: string;
+  condition: string;
+  replicate: string;
+  notes: string;
 }
 
 export interface Event {
@@ -587,12 +645,18 @@ export const Library = {
   deletePaper(id: string): Promise<void> {
     return call("Library.DeletePaper", id);
   },
+  discoverGEOFiles(id: string, accession: string): Promise<DatasetDiscovery> {
+    return call("Library.DiscoverGEOFiles", id, accession);
+  },
   /**
    * DismissPaper marks a paper irrelevant and removes its stored attachments; the
    * record stays so that source updates and imports skip it.
    */
   dismissPaper(id: string): Promise<void> {
     return call("Library.DismissPaper", id);
+  },
+  exportDatasetManifest(id: string): Promise<string> {
+    return call("Library.ExportDatasetManifest", id);
   },
   /**
    * ExportLibrary renders the records the window sends (the current filter in
@@ -642,6 +706,9 @@ export const Library = {
   /** ListAgentConversations lists saved conversations, newest first. */
   listAgentConversations(): Promise<ConversationSummary[]> {
     return call("Library.ListAgentConversations");
+  },
+  listDatasetManifests(): Promise<DatasetManifest[]> {
+    return call("Library.ListDatasetManifests");
   },
   /** ListDatasets returns real datasets with repository and paper associations. */
   listDatasets(): Promise<Dataset[]> {
@@ -694,9 +761,18 @@ export const Library = {
   markPaperReviewed(id: string): Promise<void> {
     return call("Library.MarkPaperReviewed", id);
   },
+  openDatasetDirectory(id: string): Promise<void> {
+    return call("Library.OpenDatasetDirectory", id);
+  },
   /** OpenPaperFile opens a stored file with its default application. */
   openPaperFile(id: string): Promise<void> {
     return call("Library.OpenPaperFile", id);
+  },
+  prepareDatasetDirectory(id: string): Promise<string> {
+    return call("Library.PrepareDatasetDirectory", id);
+  },
+  removeDatasetAsset(datasetID: string, id: string): Promise<void> {
+    return call("Library.RemoveDatasetAsset", datasetID, id);
   },
   /**
    * RemovePaperFile moves a stored file to the trash and deletes its record. A
@@ -725,12 +801,18 @@ export const Library = {
   saveAgentConversation(id: string, title: string, messages: Message[]): Promise<AgentConversation> {
     return call("Library.SaveAgentConversation", id, title, messages);
   },
+  saveDatasetAsset(asset: DatasetAsset): Promise<DatasetAsset> {
+    return call("Library.SaveDatasetAsset", asset);
+  },
   /**
    * SaveDatasetEdits stores what a person changed and returns the titles of
    * datasets left unsaved because another writer changed the same fields.
    */
   saveDatasetEdits(edits: DatasetEdit[]): Promise<string[]> {
     return call("Library.SaveDatasetEdits", edits);
+  },
+  saveDatasetPlan(id: string, revision: number, plan: DatasetPlan): Promise<void> {
+    return call("Library.SaveDatasetPlan", id, revision, plan);
   },
   /**
    * SavePaperEdits stores what a person changed and returns the titles of papers
@@ -813,6 +895,9 @@ export const Library = {
   /** UpdateStatus returns the state of the app's own update. */
   updateStatus(): Promise<UpdateState> {
     return call("Library.UpdateStatus");
+  },
+  verifyDatasetAsset(datasetID: string, id: string): Promise<DatasetAsset> {
+    return call("Library.VerifyDatasetAsset", datasetID, id);
   },
   /** VerifyDatasetLink records a person's check of a paper-dataset link. */
   verifyDatasetLink(paperID: string, datasetID: string, role: string, verified: boolean): Promise<void> {
