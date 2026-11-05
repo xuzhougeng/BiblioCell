@@ -1690,3 +1690,11 @@ select.input { appearance: auto }
 .dataset-file-list > summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 #dataset-asset-form fieldset { max-height: 200px; overflow-y: auto; }
 #dataset-preparation-filter { width: auto; max-width: 100%; }
+.dataset-filter { display: flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
+.dataset-filter > span { white-space: nowrap; color: var(--muted); font-size: 12px; }
+.dataset-filter .input { width: auto; max-width: 260px; min-width: 0; }
+.dataset-filters { margin-top: 10px; }
+@media (max-width: 600px) {
+  .dataset-filter { width: 100%; }
+  .dataset-filter .input { flex: 1; max-width: 100%; }
+}

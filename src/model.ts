@@ -327,9 +327,33 @@ export const paperDatasets = (datasets: Dataset[], paperId: string): Dataset[] =
  * filterDatasets matches the dataset search box: a dataset's own fields plus its linked paper titles.
  * reviewOnly keeps the datasets a source update added that no person has checked yet.
  */
-export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (id: string) => string, reviewOnly = false): Dataset[] {
+export const datasetFilterKey = (value: string): string => value.trim().toLowerCase();
+
+/** Repository associations are authoritative; older records may have only the primary field. */
+export function datasetRepositories(d: Dataset): string[] {
+  const repositories = arr(d.repositories).map(r => datasetFilterKey(r.repository || "")).filter(Boolean);
+  return [...new Set(repositories.length ? repositories : [datasetFilterKey(d.repository || "")].filter(Boolean))];
+}
+
+export function datasetFilterChoices(datasets: Dataset[]) {
+  const species = new Map<string, SpeciesEntry>();
+  for (const d of datasets) for (const s of arr(d.species)) {
+    const key = datasetFilterKey(s?.name || "");
+    if (key && (!species.has(key) || (!species.get(key)?.label && s.label))) species.set(key, s);
+  }
+  return {
+    species: [...species].map(([value, s]) => ({ value, label: speciesText(s, true) })).sort((a, b) => a.label.localeCompare(b.label)),
+    repositories: [...new Set(datasets.flatMap(datasetRepositories))].map(value => ({ value, label: repositoryLabel(value) })).sort((a, b) => a.label.localeCompare(b.label)),
+  };
+}
+
+export function filterDatasets(datasets: Dataset[], query: string, paperTitle: (id: string) => string, reviewOnly = false, filters: { species?: string; repository?: string } = {}): Dataset[] {
   const q = query.trim().toLocaleLowerCase();
-  const pool = reviewOnly ? datasets.filter((d) => d.awaitingReview) : datasets;
+  const species = datasetFilterKey(filters.species || "");
+  const repository = datasetFilterKey(filters.repository || "");
+  const pool = datasets.filter(d => (!reviewOnly || d.awaitingReview)
+    && (!species || speciesNames(d).some(name => datasetFilterKey(name) === species))
+    && (!repository || datasetRepositories(d).includes(repository)));
   if (!q) return pool;
   return pool.filter((d) => [
     d.title, d.id, speciesNames(d).join(" "), speciesDisplay(d), arr(d.species).map(s => s?.label).join(" "), joinList(d.organs, " "), joinList(d.modalities, " "), joinList(d.platforms, " "),

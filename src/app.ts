@@ -82,6 +82,8 @@ export class App {
   filters: Filters = emptyFilters();
   taskFilter: TaskType | "all" = "all";
   datasetSearch = "";
+  datasetSpecies = "";
+  datasetRepository = "";
   datasetPreparation = "";
   /** Datasets page: only those a source update added that no person has checked. */
   datasetReview = false;
@@ -1073,8 +1075,11 @@ export class App {
     },
     "clear-filters": () => {
       this.datasetSearch = "";
+      this.datasetSpecies = "";
+      this.datasetRepository = "";
       this.datasetPreparation = "";
       this.datasetPage = 1;
+      this.datasetCursor = null;
       this.filters = emptyFilters();
       this.paperPage = 1;
       const search = $<HTMLInputElement>("#global-search");
@@ -1267,9 +1272,12 @@ export class App {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
     if (batchChange(this, target)) return;
-    if (target instanceof HTMLSelectElement && target.id === "dataset-preparation-filter") {
-      this.datasetPreparation = target.value;
+    if (target instanceof HTMLSelectElement && ["dataset-species-filter", "dataset-repository-filter", "dataset-preparation-filter"].includes(target.id)) {
+      if (target.id === "dataset-species-filter") this.datasetSpecies = target.value;
+      else if (target.id === "dataset-repository-filter") this.datasetRepository = target.value;
+      else this.datasetPreparation = target.value;
       this.datasetPage = 1;
+      this.datasetCursor = null;
       this.render();
       return;
     }

@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { App, type Env } from "../src/app.ts";
 import { demoState } from "../src/demo-data.ts";
 import { Library, type DatasetManifest } from "../src/mygo.ts";
-import { matchesPreparation, referenceComplete } from "../src/dataset-assets.ts";
+import { matchingDatasets, matchesPreparation, referenceComplete } from "../src/dataset-assets.ts";
 
 const previewEnv = (): Env => ({
   desktop: false, backend: false, readOnly: false, web: null, real: false,
@@ -134,4 +134,42 @@ test("viewers can read dataset manifests without write controls or executable so
   const m=manifestFixture(state.datasets[0]!.id);m.plan.samples=[{id:'<img src=x onerror=alert(1)>',title:'unsafe',species:'',tissue:'',condition:'',replicate:'',notes:''}];state.datasetManifests=[m];
   app.openDataset(m.datasetId);
   assert.ok($(".dataset-workspace"));assert.equal(document.querySelector('[data-action="dataset-prepare"]'),null);assert.equal(document.querySelector('[data-action="dataset-asset-edit"]'),null);assert.equal(document.querySelector('.drawer img'),null);
+});
+
+test("species and repository filters combine across all associations, review, export and card views", () => {
+  const {app,state}=datasetsApp();
+  const template=state.datasets[0]!;
+  const repo=template.repositories[0]!;
+  state.datasets=[
+    {...template,id:"multi",title:"Root atlas",awaitingReview:true,species:[{name:"Arabidopsis thaliana",label:"拟南芥"},{name:"Oryza sativa",label:"水稻"}],repository:"geo",repositories:[{...repo,repository:"geo"},{...repo,repository:" ENA "}]},
+    {...template,id:"rice",title:"Rice leaves",awaitingReview:false,species:[{name:"Oryza sativa",label:"水稻"}],repository:"geo",repositories:[{...repo,repository:"GEO"}]},
+    {...template,id:"custom",title:"Custom atlas",awaitingReview:true,species:[{name:" Oryza sativa ",label:"水稻"}],repository:"Plant Archive",repositories:[]},
+  ];
+  app.render();
+  assert.deepEqual($$<HTMLOptionElement>("#dataset-repository-filter option").map(v=>v.value).sort(),["","ena","geo","plant archive"]);
+  assert.equal($$("#dataset-species-filter option").length,3,"species are deduplicated by trimmed scientific name");
+  assert.match($("#dataset-species-filter").textContent??"",/水稻 · Oryza sativa/);
+  app.datasetPage=5;app.datasetCursor=2;
+  change($<HTMLSelectElement>("#dataset-species-filter"),"oryza sativa");
+  change($<HTMLSelectElement>("#dataset-repository-filter"),"ena");
+  assert.equal(app.datasetPage,1);assert.equal(app.datasetCursor,null);
+  assert.deepEqual(matchingDatasets(app).map(d=>d.id),["multi"]);
+  assert.equal($$("tbody tr[data-action=open-dataset]").length,1);
+  assert.match($('[data-action="all-datasets"]').textContent??"",/1/);
+  $<HTMLButtonElement>('[data-action="export-datasets"]').click();
+  assert.match($("#export-form").textContent??"",/当前搜索结果（1 组）/);
+  app.closeModal();
+  $<HTMLButtonElement>('[data-action="start-dataset-review"]').click();
+  assert.deepEqual(app.datasetScreen?.ids,["multi"]);app.exitDatasetReview();
+  $<HTMLButtonElement>('[data-action="datasets-view"][data-view="cards"]').click();
+  assert.equal($$(".dataset-card").length,1);
+  change($<HTMLSelectElement>("#dataset-repository-filter"),"plant archive");
+  assert.deepEqual(matchingDatasets(app).map(d=>d.id),["custom"]);
+  change($<HTMLSelectElement>("#dataset-species-filter"),"arabidopsis thaliana");
+  assert.equal($$(".dataset-card").length,0);
+  $<HTMLButtonElement>('[data-action="clear-filters"]').click();
+  assert.equal(app.datasetSpecies,"");assert.equal(app.datasetRepository,"");assert.equal($$(".dataset-card").length,3);
+  app.env.readOnly=true;app.render();
+  change($<HTMLSelectElement>("#dataset-repository-filter"),"geo");
+  assert.equal($$(".dataset-card").length,2,"read-only viewers can filter");
 });

@@ -1,5 +1,9 @@
 // English strings for views.
 export const views: Record<string, string> = {
+  "物种筛选": "Filter by species",
+  "全部物种": "All species",
+  "数据来源筛选": "Filter by repository",
+  "全部数据来源": "All repositories",
   "样本说明与处理记录": "Sample notes and processing records",
   "文件清单": "File manifest",
   "打开目录": "Open directory",

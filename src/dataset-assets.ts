@@ -27,9 +27,9 @@ export function matchesPreparation(m: DatasetManifest | undefined, filter: strin
 }
 
 /** The table, keyboard navigation, review queue and export share one filtered set. */
-export function matchingDatasets(app: App) {
+export function matchingDatasets(app: App, reviewOnly = app.datasetReview) {
   const manifests = new Map(app.state.datasetManifests?.map(m => [m.datasetId, m]));
-  return filterDatasets(app.state.datasets, app.datasetSearch, id => app.paperById(id)?.title ?? "", app.datasetReview)
+  return filterDatasets(app.state.datasets, app.datasetSearch, id => app.paperById(id)?.title ?? "", reviewOnly, { species: app.datasetSpecies, repository: app.datasetRepository })
     .filter(d => matchesPreparation(manifests.get(d.id), app.datasetPreparation));
 }
 
