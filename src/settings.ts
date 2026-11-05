@@ -9,6 +9,7 @@ import { enqueue } from "./store.ts";
 import { $, I, badge, errorMessage, option, setFormError, text } from "./ui.ts";
 import { isAdmin } from "./env.ts";
 import { webViewerNotice } from "./web.ts";
+import { versionLabel } from "./version.ts";
 
 export function renderSettings(app: App): string {
   const { env } = app;
@@ -51,7 +52,7 @@ export function renderSettings(app: App): string {
     + localeSection()
     + (env.readOnly ? "" : `<section class="settings-section"><details><summary>${t("记录管理")}</summary><p class="form-hint">${t("查看和恢复已删除的文献与数据集。")}</p><button type="button" class="text-link" data-action="open-trash">${t("打开回收站")}</button></details></section>`)
     + `<footer class="settings-footer"><p id="settings-save-status" role="status">${saveStatus}</p><button class="btn btn-primary" type="submit" ${disabled}>${I("check", 16)} ${t("保存设置")}</button></footer></form>`
-    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>${t("安静、清晰，<br>适合自己的阅读节奏。")}</h2><p>${t("字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。")}</p><div class="settings-aside-rule"></div><dl><div><dt>${t("当前模式")}</dt><dd>${env.real ? t("真实数据库") : "Demo"}</dd></div><div><dt>${t("正式数据")}</dt><dd>${web ? t("服务器 SQLite") : t("本地 SQLite")}</dd></div><div><dt>${t("配置方式")}</dt><dd>${t("自动持久化")}</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p>${web ? t("<strong>存放文件夹在服务器上修改</strong><br>用 settings set -storage 改好后重启服务；字号保存后立即应用。") : t("<strong>切换存放文件夹会自动重启</strong><br>MCP Token 在下次启动时生效；字体大小无需重启，保存前即可预览。")}</p></div></aside></div>`;
+    + `<aside class="settings-aside"><section class="panel settings-aside-card"><span class="eyebrow">YOUR WORKSPACE</span><h2>${t("安静、清晰，<br>适合自己的阅读节奏。")}</h2><p>${t("字号会同时应用到文献表格、详情抽屉、导航与笔记，并在下次启动时保留。")}</p><div class="settings-aside-rule"></div><dl><div><dt>${t("当前版本")}</dt><dd id="app-version">${esc(versionLabel(env))}</dd></div><div><dt>${t("当前模式")}</dt><dd>${env.real ? t("真实数据库") : "Demo"}</dd></div><div><dt>${t("正式数据")}</dt><dd>${web ? t("服务器 SQLite") : t("本地 SQLite")}</dd></div><div><dt>${t("配置方式")}</dt><dd>${t("自动持久化")}</dd></div></dl></section><div class="settings-restart-note">${I("clock", 17)}<p>${web ? t("<strong>存放文件夹在服务器上修改</strong><br>用 settings set -storage 改好后重启服务；字号保存后立即应用。") : t("<strong>切换存放文件夹会自动重启</strong><br>MCP Token 在下次启动时生效；字体大小无需重启，保存前即可预览。")}</p></div></aside></div>`;
 }
 
 /** localeSection picks the interface language; it works in browser preview too, so it is never disabled. */

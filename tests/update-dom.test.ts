@@ -35,7 +35,9 @@ test("the browser preview has no update pill", async (t) => {
 });
 
 test("a downloaded update shows the pill, whose dialog restarts into it", async (t) => {
-  await startApp(t, true, update({ notes: "- 更快的筛选" }));
+  const app = await startApp(t, true, update({ notes: "- 更快的筛选" }));
+  app.navigate("settings");
+  assert.equal(text("#app-version"), "v0.2.0", "show the running version, not the staged update");
   assert.equal(wrap()!.hidden, false);
   assert.equal(wrap(), $(".topbar-right").firstElementChild, "the pill leads the top bar");
   assert.equal(text("#update-pill"), "更新");

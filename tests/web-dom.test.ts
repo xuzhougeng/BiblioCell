@@ -85,6 +85,7 @@ test("an admin on the web edits, sees the AI configuration, and keeps the native
   assert.ok(!document.body.classList.contains("read-only"));
   assert.equal($("#web-auth").dataset.action, "web-logout");
   assert.ok($("#settings-ai-section"), "AI models can be configured");
+  assert.equal(text("#app-version"), "test", "show the server-reported version");
   assert.equal(document.querySelector('[data-action="choose-storage"]'), null, "no folder dialog on the web");
   assert.equal(document.querySelector("#demo-mode"), null, "the web is always the real database");
   assert.equal(document.querySelector("#settings-mcp-token"), null, "the web server runs no MCP endpoint");

@@ -45,6 +45,8 @@ import { initWebAuth, submitWebLogin, webActions } from "./web.ts";
 
 /** Env describes the runtime: desktop window, web server or static preview; real vs demo data; and backend-provided info. See env.ts for what each allows. */
 export interface Env {
+  /** Version of the running desktop binary, supplied by the update status. */
+  appVersion?: string;
   /** desktop: inside the mygo window, where native dialogs, the system shell and the app's updater exist. */
   desktop: boolean;
   /** backend: a Go backend answers calls, in the desktop app or from the web server. */

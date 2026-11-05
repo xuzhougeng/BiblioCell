@@ -294,4 +294,7 @@ export const settings: Record<string, string> = {
   "数据集已移入回收站。": "Dataset moved to the recycle bin.",
   "已将 {n} 篇文献移入回收站。": "Moved {n} papers to the recycle bin.",
   "已将 {n} 组数据集移入回收站。": "Moved {n} datasets to the recycle bin.",
+  "当前版本": "Current version",
+  "版本信息暂不可用": "Version unavailable",
+  "开发预览": "Development preview",
 };
