@@ -8,6 +8,7 @@ import { renderMarkdown } from "./markdown.ts";
 import { esc } from "./model.ts";
 import { I, errorMessage } from "./ui.ts";
 import { t } from "./i18n.ts";
+import { versionLabel } from "./version.ts";
 
 export const UPDATE_SKIP_KEY = "bibliocell-update-skip";
 const RELEASE_PAGE = "https://github.com/xuzhougeng/BiblioCell/releases/tag/v";
@@ -66,8 +67,15 @@ export function initUpdate(app: App): void {
   wrap.innerHTML = `<button type="button" class="update-pill" id="update-pill" data-action="update-pill">${I("arrowUp", 12)}<span></span></button>`
     + `<button type="button" class="update-hide" data-action="update-skip" title="${t("隐藏，直到有更新的版本")}" aria-label="${t("隐藏，直到有更新的版本")}">${I("x", 9)}</button>`;
   topbar.prepend(wrap);
-  events.updateChanged.on(showUpdate);
-  void Library.updateStatus().then(showUpdate, () => {});
+  const receive = (status: UpdateState): void => {
+    app.env.appVersion = status.current;
+    // Update only the label if Settings is open; preserve any unsaved fields.
+    const label = document.getElementById("app-version");
+    if (label) label.textContent = versionLabel(app.env);
+    showUpdate(status);
+  };
+  events.updateChanged.on(receive);
+  void Library.updateStatus().then(receive, () => {});
 }
 
 function confirmUpdate(app: App, u: UpdateState): void {
