@@ -27,6 +27,39 @@ const rowIds = (): string[] => $$("tbody tr[data-action=open-paper]").map((tr) =
 const years = (state: LibraryState): number[] => rowIds().map((id) => Number(state.papers.find((p) => p.id === id)!.year));
 const sortedAsc = (values: number[]) => values.every((v, i) => i === 0 || values[i - 1]! <= v);
 
+test("switching drawer records and tabs keeps the panel and backdrop mounted", () => {
+  const {app,state}=papersApp();
+  const ids=rowIds();
+  const origin=$<HTMLElement>('tbody tr[data-action="open-paper"]');
+  origin.focus();
+  app.openPaper(ids[0]!);
+  const panel=$(".drawer"),backdrop=$(".drawer-backdrop");
+  $(".drawer-body").scrollTop=120;
+  app.renderDrawer();
+  assert.equal($(".drawer-body").scrollTop,120,"refresh preserves reading position");
+  keydown("ArrowDown",$('#drawer-root [data-action="close-drawer"]'));
+  assert.equal(app.drawer?.id,ids[1]);
+  assert.equal($(".drawer-body").scrollTop,0,"a different record starts at the top");
+  assert.equal($(".drawer"),panel,"the animated panel must not be recreated");
+  assert.equal($(".drawer-backdrop"),backdrop,"the blurred overlay must not be recreated");
+  assert.equal($("#drawer-title").textContent,app.paperById(ids[1]!)!.title);
+  $('[data-action="drawer-tab"][data-tab="resources"]').click();
+  assert.equal($(".drawer"),panel);
+  assert.equal($(".drawer-backdrop"),backdrop);
+  app.openDataset(state.datasets[0]!.id);
+  app.openDataset(state.datasets[1]!.id);
+  assert.equal($(".drawer"),panel);
+  assert.equal($(".drawer-backdrop"),backdrop);
+  assert.equal($("#drawer-title").textContent,state.datasets[1]!.title);
+  app.openPaperResources(ids[0]!);
+  assert.equal($(".drawer"),panel);
+  app.closeDrawer();
+  assert.equal(document.querySelector(".drawer"),null);
+  assert.equal(document.activeElement,origin,"closing returns focus to the original list row");
+  app.openPaper(ids[0]!);
+  assert.notEqual($(".drawer"),panel,"opening a closed drawer creates a fresh entrance");
+});
+
 test("AI calibration and paper export remain reachable from the library", () => {
   const { app } = papersApp();
   $('[data-action="export-papers"]').click();
