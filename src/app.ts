@@ -504,21 +504,21 @@ export class App {
   // ---- drawer ----
   openPaper(id: string): void {
     if (!this.paperById(id)) return;
-    this.lastFocus = document.activeElement;
+    if (!this.drawer) this.lastFocus = document.activeElement;
     this.drawer = { type: "paper", id };
     this.drawerTab = "overview";
     this.renderDrawer(true);
   }
   openPaperResources(id: string): void {
     if (!this.paperById(id)) return;
-    this.lastFocus = document.activeElement;
+    if (!this.drawer) this.lastFocus = document.activeElement;
     this.drawer = { type: "paper", id };
     this.drawerTab = "resources";
     this.renderDrawer(true);
   }
   openDataset(id: string): void {
     if (!this.state.datasets.some((d) => d.id === id)) return;
-    this.lastFocus = document.activeElement;
+    if (!this.drawer) this.lastFocus = document.activeElement;
     this.drawer = { type: "dataset", id };
     this.drawerTab = "overview";
     this.renderDrawer(true);
@@ -530,7 +530,7 @@ export class App {
     document.body.classList.remove("drawer-open");
     if (this.lastFocus instanceof HTMLElement && document.contains(this.lastFocus)) this.lastFocus.focus();
   }
-  /** renderDrawer keeps the reading position unless fresh, so reviewing item after item stays in place. */
+  /** Keep the drawer and backdrop mounted so switching records cannot replay the entrance animation. */
   renderDrawer(fresh = false): void {
     if (!this.drawer) return;
     const root = $("#drawer-root");
@@ -541,7 +541,15 @@ export class App {
       return;
     }
     const scrollTop = fresh ? 0 : $(".drawer-body", root)?.scrollTop ?? 0;
-    root.innerHTML = html;
+    const drawer = $(".drawer", root);
+    if (drawer) {
+      const template = document.createElement("template");
+      template.innerHTML = html;
+      const next = template.content.querySelector(".drawer")!;
+      drawer.replaceChildren(...next.childNodes);
+    } else {
+      root.innerHTML = html;
+    }
     const body = $(".drawer-body", root);
     if (body) body.scrollTop = scrollTop;
     document.body.classList.add("drawer-open");
