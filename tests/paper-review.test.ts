@@ -100,3 +100,26 @@ test("datasets page has its own review tab for what a source update added", () =
   added.awaitingReview = false;
   assert.match(renderDatasets(app), /没有需核对的数据集/);
 });
+
+test("the active tab counts the filtered list, not the whole library", () => {
+  const seed = demoState().papers[0]!;
+  const papers = [
+    { ...seed, id: "a", screening: "included", starred: true },
+    { ...seed, id: "b", screening: "included", starred: false },
+    { ...seed, id: "c", screening: "pending", starred: true },
+    { ...seed, id: "d", screening: "irrelevant", starred: false },
+  ];
+  const app = {
+    state: { ...demoState(), papers }, filters: emptyFilters(),
+    paperPage: 1, paperPageSize: 10, paperColumns: defaultPaperColumns(),
+    paperDatasets: () => [], paperResources: () => [], selectedPapers: new Set<string>(),
+  } as unknown as App;
+  // Irrelevant papers count nowhere, so the unfiltered total is three.
+  assert.match(renderPapers(app), /data-action="all-papers">全部文献 <span>3<\/span>/);
+  app.filters = { ...emptyFilters(), screening: "included" };
+  assert.match(renderPapers(app), /data-action="all-papers" title="筛选后 2 篇，共 3 篇">全部文献 <span>2<\/span>/);
+  app.filters = { ...emptyFilters(), screening: "included", starred: true };
+  const html = renderPapers(app);
+  assert.match(html, /全部文献 <span>3<\/span>/); // Inactive tabs keep their totals.
+  assert.match(html, /我的收藏 <span>1<\/span>/);
+});
