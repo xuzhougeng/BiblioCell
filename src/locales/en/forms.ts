@@ -113,15 +113,20 @@ export const forms: Record<string, string> = {
   "这个 DOI 已在文献库中，请直接整理已有条目。": "This DOI is already in the library. Edit the existing entry instead.",
   "请填写 1800–2100 之间的年份，或留空。": "Enter a year between 1800 and 2100, or leave it blank.",
   "请选择有效的发表状态。": "Choose a valid publication status.",
-  "相关不纳入的条目需要保留判断理由。": "Related, not included entries need a screening reason.",
   "更新文献信息：{title}": "Updated paper details: {title}",
   "添加文献：{title}": "Added paper: {title}",
   "文献信息已更新，笔记与关联保持不变。": "Paper details updated. Notes and links are unchanged.",
   "已收录，全文与数据可以之后补充。": "Paper added. You can add full text and data later.",
 
-  // Exclusion reason
+  // Screening reason
   "补充理由": "Add a reason",
-  "请记录做出“{label}”这个判断的理由，以便日后回看筛选依据。": "Note why you decided “{label}”, so the screening record can be looked up later.",
+  "编辑理由": "Edit reason",
+  "当前判断：{label}。所有判断都可选填理由，也可以留空。": "Current decision: {label}. Reasons are optional for every decision and can be left blank.",
+  "判断理由（可选）": "Reason (optional)",
+  "可选，适用于所有判断": "Optional for every decision",
+  "例如：符合主题；可能有用，保留备查；或与主题无关": "e.g. on topic; may be useful for reference; or unrelated to the topic",
+  "保存理由": "Save reason",
+  "判断理由已保存。": "Reason saved.",
   "判断理由": "Reason",
   "例如：仅包含空间转录组，没有实际分析单细胞或单核测序数据": "e.g. spatial transcriptomics only; no single-cell or single-nucleus data analysed",
   "保存判断": "Save decision",

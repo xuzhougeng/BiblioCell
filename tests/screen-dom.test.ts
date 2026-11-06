@@ -2,7 +2,7 @@
 // of the paper beside it (AI suggestion, decisions, metadata edits, refresh),
 // and edits made there must show in the list afterwards. Both regressions
 // were fixed in d66573a and 9d307d5; these tests keep them fixed.
-import { $, $$, keydown, resetDom, text } from "./dom.ts";
+import { $, $$, change, keydown, resetDom, text } from "./dom.ts";
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { setImmediate } from "node:timers/promises";
@@ -358,6 +358,8 @@ test("D moves the paper to the recycle bin without asking, and the run moves on"
   const ids = state.papers.slice(0, 3).map((p) => p.id);
   app.screen!.ids = [...ids];
   app.render();
+  assert.match(text('[data-action="screen-dismiss"] .decision-label'), /D 不相关/);
+  assert.equal(text('[data-action="screen-dismiss"] .decision-note'), "移入回收站，可恢复");
   const dismissed: string[] = [];
   t.mock.method(Library, "deletePaper", async (id: string) => {
     dismissed.push(id);
@@ -386,4 +388,81 @@ test("D moves the paper to the recycle bin without asking, and the run moves on"
   assert.equal($(".screen-panel").dataset.paperId, ids[1]);
   assert.match(text(".screen-progress"), /第 1 \/ 1 篇/);
   assert.match(text(".screen-progress"), /已删除 2 篇/);
+});
+
+test("related is saved without a reason or modal, retains the PDF, and advances", async () => {
+  const { app, state, ids, saved } = screeningApp();
+  const p = state.papers[0]!;
+  p.screeningReason = "";
+  p.proposedScreening = "included";
+  p.proposedReason = "An older suggestion";
+  $("#app-content").focus();
+  keydown("n");
+  await setImmediate();
+  assert.equal(p.screening, "excluded");
+  assert.equal(p.screeningReason, "");
+  assert.ok(p.reviewedAt);
+  assert.equal(p.proposedScreening, "");
+  assert.equal(document.querySelector("#modal-root .modal"), null);
+  assert.equal(app.screen!.index, 1);
+  assert.ok(state.resources.some(r => r.paperId === p.id));
+  assert.equal(saved.at(-1)?.papers[0]?.screening, "excluded");
+  app.goToScreening(0);
+  assert.equal(text('[data-status="excluded"] .decision-label'), "N 相关");
+  assert.match(text('[data-status="excluded"] .decision-note'), /^保留备查/);
+  assert.equal($(".screen-panel").dataset.paperId, ids[0]);
+
+  app.openPaper(p.id);
+  change($<HTMLSelectElement>('[data-paper-setting="screening"]'), "included");
+  p.screeningReason = "";
+  change($<HTMLSelectElement>('[data-paper-setting="screening"]'), "excluded");
+  assert.equal(p.screening, "excluded");
+  assert.equal(document.querySelector("#screening-reason-form"), null);
+  $('[data-action="edit-paper"]').click();
+  const reason = $<HTMLTextAreaElement>('#paper-form [name="screeningReason"]');
+  assert.equal(reason.required, false);
+  reason.value = "";
+  $("#paper-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  assert.equal(document.querySelector("#paper-form"), null, "paper edits also accept a blank reason");
+});
+
+for (const status of ["pending", "included", "excluded", "uncertain"]) {
+  test(`optional reasons can be added, edited and cleared for ${status} without changing the decision or PDF`, () => {
+    const { app, state, ids } = screeningApp();
+    const p = state.papers[0]!;
+    Object.assign(p, { screening: status, screeningReason: "", reviewedAt: status === "pending" ? "" : "2026-11-01T00:00:00Z", proposedScreening: "uncertain", proposedReason: "Keep this suggestion", awaitingReview: true });
+    app.render();
+    const checkReader = reader($(".screen-pdf-frame"));
+    const before = { status: p.screening, reviewedAt: p.reviewedAt, proposal: p.proposedScreening, awaitingReview: p.awaitingReview };
+    for (const value of ["Evidence <quoted>", "Revised reason", ""]) {
+      $('.screen-actionbar [data-action="screening-reason"]').click();
+      const reason = $<HTMLTextAreaElement>('#screening-reason-form [name="reason"]');
+      assert.equal(reason.value, p.screeningReason);
+      assert.equal(reason.required, false);
+      reason.value = value;
+      $("#screening-reason-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      assert.equal(p.screeningReason, value);
+      assert.equal(document.querySelector("#screening-reason-form"), null);
+      assert.deepEqual({ status: p.screening, reviewedAt: p.reviewedAt, proposal: p.proposedScreening, awaitingReview: p.awaitingReview }, before);
+      assert.equal(app.screen!.index, 0);
+      assert.equal($(".screen-panel").dataset.paperId, ids[0]);
+      checkReader("after saving a reason");
+    }
+    app.openPaper(p.id);
+    $('#drawer-root [data-action="screening-reason"]').click();
+    assert.ok($("#screening-reason-form"));
+  });
+}
+
+test("the unrelated option in paper details uses the recycle bin too", async (t: TestContext) => {
+  const { app, state, ids } = screeningApp();
+  const deleted = t.mock.method(Library, "deletePaper", async (id: string) => {
+    state.papers = state.papers.filter(p => p.id !== id);
+  });
+  app.openPaper(ids[0]!);
+  change($<HTMLSelectElement>('[data-paper-setting="screening"]'), "irrelevant");
+  for (let i = 0; i < 5; i++) await setImmediate();
+  assert.equal(deleted.mock.calls[0]?.arguments[0], ids[0]);
+  assert.equal(app.paperById(ids[0]!), undefined);
+  assert.equal(document.querySelector("#drawer-root .drawer"), null);
 });

@@ -35,7 +35,7 @@ test("list exposes the proposal reason safely and explains why the total stays u
   assert.match(html, /需核对 <span>1<\/span>/);
   assert.match(html, /全部文献 <span>1<\/span>/);
   assert.doesNotMatch(html, /class="review-summary"/); // No banner: the tab count and the row carry the state.
-  assert.match(html, /建议不纳入 · 待你确认/);
+  assert.match(html, /建议标为相关 · 待你确认/);
   assert.match(html, /&lt;img src=x onerror=&quot;bad\(\)&quot;&gt;/);
   assert.doesNotMatch(html, /<img src=x/);
   // The reason sits on the status cell as a tooltip, and the title cell stays one block tall.
@@ -43,7 +43,7 @@ test("list exposes the proposal reason safely and explains why the total stays u
   assert.doesNotMatch(html, /class="paper-review-note/);
   // Warnings remain discoverable when the user hides the status column.
   app.paperColumns = ["title"];
-  assert.match(paperTable([paper], app), /class="paper-review-note excluded"[^]*建议不纳入 · 待你确认/);
+  assert.match(paperTable([paper], app), /class="paper-review-note excluded"[^]*建议标为相关 · 待你确认/);
   paper.proposedScreening = "";
   const dismissed = renderPapers(app);
   assert.match(dismissed, /需核对 <span>0<\/span>/);

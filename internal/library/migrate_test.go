@@ -562,3 +562,82 @@ func TestMigration19RebuildsPaperCurationWithItsRows(t *testing.T) {
 		t.Fatalf("views = %d, %v", views, err)
 	}
 }
+
+func TestMigration22MakesReasonsOptionalWithoutLosingCuration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v21.sqlite")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reconstruct v21's reason constraint while retaining the current tables and views.
+	oldSchema := strings.Replace(schemaSQL, "screening_reason TEXT,", "screening_reason TEXT CHECK (screening_status <> 'excluded' OR length(trim(coalesce(screening_reason,''))) > 0),", 1)
+	oldSchema = strings.Replace(oldSchema, "PRAGMA user_version = 22;", "PRAGMA user_version = 21;", 1)
+	for _, statement := range []string{oldSchema,
+		`INSERT INTO papers(id, title) VALUES ('P-related', 'Useful background')`,
+		`UPDATE paper_curation SET screening_status = 'excluded', screening_reason = 'Useful methods',
+		 screening_method = 'human', screening_reviewed_at = '2026-11-01T00:00:00Z',
+		 proposed_screening = 'uncertain', proposed_reason = 'Check methods', awaiting_review = 1,
+		 reading_status = 'read', priority = 'high', starred = 1, tags_json = '["methods"]',
+		 organs_override_json = '["root"]', modalities_override_json = '["snRNA-seq"]',
+		 conditions_override_text = 'stress', notes = 'Keep the details', updated_at = '2026-11-02T00:00:00Z'
+		 WHERE paper_id = 'P-related'`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`UPDATE paper_curation SET screening_reason = '' WHERE paper_id = 'P-related'`); err == nil {
+		t.Fatal("v21 fixture does not enforce its reason constraint")
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if store.Upgraded == nil || store.Upgraded.From != 21 || store.Upgraded.To != 22 {
+		t.Fatalf("upgrade = %+v", store.Upgraded)
+	}
+	if _, err := os.Stat(store.Upgraded.Backup); err != nil {
+		t.Fatalf("migration backup: %v", err)
+	}
+	// Every curation column, including overrides not exposed by Paper, survives the rebuild.
+	var row []any
+	rows, err := store.db.Query("SELECT " + paperCurationColumns + " FROM paper_curation WHERE paper_id = 'P-related'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows.Next() {
+		columns, _ := rows.Columns()
+		row = make([]any, len(columns))
+		pointers := make([]any, len(columns))
+		for i := range row {
+			pointers[i] = &row[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{"P-related", "excluded", "Useful methods", "human", "2026-11-01T00:00:00Z", "uncertain", "Check methods", int64(1), "read", "high", int64(1), `["methods"]`, `["root"]`, `["snRNA-seq"]`, "stress", "Keep the details", "2026-11-02T00:00:00Z"}
+	if !reflect.DeepEqual(row, want) {
+		t.Fatalf("curation after migration = %#v, want %#v", row, want)
+	}
+	if _, err := store.db.Exec(`UPDATE paper_curation SET screening_reason = '' WHERE paper_id = 'P-related'`); err != nil {
+		t.Fatalf("blank reason rejected after migration: %v", err)
+	}
+	if _, err := store.AddPaper(context.Background(), Paper{Title: "Trigger still creates new curation"}); err != nil {
+		t.Fatal(err)
+	}
+	var violations int
+	if err := store.db.QueryRow("SELECT count(*) FROM pragma_foreign_key_check").Scan(&violations); err != nil || violations != 0 {
+		t.Fatalf("foreign key violations = %d, %v", violations, err)
+	}
+	if _, err := store.db.Exec(`UPDATE paper_curation SET screening_status = 'invalid' WHERE paper_id = 'P-related'`); err == nil {
+		t.Fatal("migration removed the valid-status constraint")
+	}
+}

@@ -226,7 +226,7 @@ export function updateScreenAI(app: App, id: string): void {
 /** Decision keys: the letter a person presses, the status it records and the button colour. */
 export const DECISIONS: [key: string, status: string, color: string][] = [
   ["y", "included", "btn-primary"],
-  ["n", "excluded", "btn-danger"],
+  ["n", "excluded", "btn-secondary"],
   ["u", "uncertain", "btn-secondary"],
   ["p", "pending", "btn-secondary"],
 ];
@@ -288,16 +288,15 @@ export function renderScreening(app: App): string {
   const doi = p.doi
     ? `<a class="text-link" href="https://doi.org/${esc(encodeURI(p.doi))}" target="_blank" rel="noopener noreferrer">${esc(p.doi)}${I("arrow-up-right", 13)}</a>`
     : `<span class="muted">${t("尚未记录")}</span>`;
-  // Statuses that keep the paper in play sit together; the two negative ones form their own group,
-  // each saying on the button what it keeps, because the labels alone read alike.
+  // Each outcome explains whether the paper is a primary source, a related reference, or archived.
   const decisionButton = (key: string, status: string, color: string, note = "") =>
     `<button class="btn ${color} screen-decision${note ? " has-note" : ""}${p.screening === status ? " is-current" : ""}" data-action="screen-decide" data-id="${esc(p.id)}" data-status="${status}" aria-pressed="${p.screening === status}" title="${esc(DECISION_HINTS[status] ?? "")}"><span class="decision-label">${kbd(key.toUpperCase())} ${esc(SCREEN[status]!)}</span>${note ? `<span class="decision-note">${esc(note)}</span>` : ""}</button>`;
   const keepGroup = DECISIONS.filter(([, status]) => status !== "excluded").map(([key, status, color]) => decisionButton(key, status, color)).join("");
   const [excludeKey, excludeStatus, excludeColor] = DECISIONS.find(([, status]) => status === "excluded")!;
-  const dropGroup = decisionButton(excludeKey, excludeStatus, excludeColor, t("保留记录、笔记与附件"))
-    + `<button class="btn btn-danger screen-decision screen-dismiss has-note" data-action="screen-dismiss" data-id="${esc(p.id)}" title="${t("移入回收站，可恢复")}"><span class="decision-label">${kbd("D")} ${I("trash", 16)} ${t("删除")}</span><span class="decision-note">${t("移入回收站，可恢复")}</span></button>`;
-  const decisionButtons = `<div class="decision-group" role="group" aria-label="${t("收录判断")}">${keepGroup}</div><div class="decision-group decision-drop" role="group" aria-label="${t("不纳入")}">${dropGroup}</div>`;
-  const reason = p.screeningReason ? `<p class="muted small screen-reason">${t("判断依据：{reason}", { reason: esc(p.screeningReason) })}</p>` : "";
+  const dropGroup = decisionButton(excludeKey, excludeStatus, excludeColor, t("保留备查，非主要检索对象"))
+    + `<button class="btn btn-danger screen-decision screen-dismiss has-note" data-action="screen-dismiss" data-id="${esc(p.id)}" title="${esc(DECISION_HINTS.irrelevant!)}"><span class="decision-label">${kbd("D")} ${I("trash", 16)} ${t("不相关")}</span><span class="decision-note">${t("移入回收站，可恢复")}</span></button>`;
+  const decisionButtons = `<div class="decision-group" role="group" aria-label="${t("收录判断")}">${keepGroup}</div><div class="decision-group decision-drop" role="group" aria-label="${t("相关性判断")}">${dropGroup}</div>`;
+  const reason = `<div class="screen-reason-row">${p.screeningReason ? `<p class="muted small screen-reason">${t("判断依据：{reason}", { reason: esc(p.screeningReason) })}</p>` : ""}<button class="text-link" data-action="screening-reason" data-id="${esc(p.id)}">${p.screeningReason ? t("编辑理由") : t("补充理由")}</button><span class="muted small">${t("可选，适用于所有判断")}</span></div>`;
   const pdf = pdfPane(app, p);
   const pdfToggle = hasPdf(app, p) && !app.screenPdf ? `<button class="btn btn-secondary" data-action="screen-pdf-toggle">${I("file", 16)} ${t("显示 PDF")}</button>` : "";
   const aiToggle = screen.ai
@@ -309,7 +308,7 @@ export function renderScreening(app: App): string {
     + `<div class="screen-toolbar"><button class="btn btn-secondary" data-action="exit-screening">${I("x", 16)} ${t("退出筛选")} ${kbd("Esc")}</button><div class="screen-progress"><strong>${t("第 {n} / {total} 篇", { n: screen.index + 1, total })}</strong><span class="muted">${t("已判断 {done} 篇", { done: decided })}${screen.deleted ? ` · ${t("已删除 {n} 篇", { n: screen.deleted })}` : ""}</span></div><div class="screen-nav">${queueToggle}${pdfToggle}${aiToggle}<button class="btn btn-secondary" data-action="screen-prev" ${screen.index === 0 ? "disabled" : ""} aria-label="${t("上一篇")}">${I("chevron-left", 16)} ${t("上一篇")}</button><button class="btn btn-secondary" data-action="screen-next" ${screen.index >= total - 1 ? "disabled" : ""} aria-label="${t("下一篇")}">${t("下一篇")} ${I("chevron-right", 16)}</button></div></div>`
     + `<div class="screen-counts">${counts}</div>`
     + `<div class="screen-split${pdf ? " has-pdf" : ""}">${queueRail(app, papers, screen.index)}<div class="screen-body">`
-    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div><div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("翻译整段摘要并原位显示；划选文字可单独翻译")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 相关不纳入 · U 证据不足 · D 移入回收站 · 判断后自动跳到下一篇")}</span></div></div>`
+    + `<div class="screen-actionbar"><div class="screen-decisions">${decisionButtons}</div><div id="screen-ai" data-paper-id="${esc(p.id)}" aria-live="polite">${aiBox(app, p)}</div>${reason}<div class="screen-extra"><button class="btn ${p.starred ? "btn-primary" : "btn-secondary"}" data-action="toggle-star" data-id="${esc(p.id)}">${kbd("S")} ${I("star", 16)} ${p.starred ? t("已收藏") : t("收藏")}</button><button class="btn btn-secondary" data-action="open-paper" data-id="${esc(p.id)}">${kbd("Enter")} ${t("完整详情")}</button>${app.canTranslate() ? `<button class="btn btn-secondary" data-action="screen-translate" data-id="${esc(p.id)}" title="${t("翻译整段摘要并原位显示；划选文字可单独翻译")}">${kbd("T")} ${t("翻译摘要")}</button>` : ""}<span class="muted footer-hint">${t("←→ 前后切换 · Y 纳入 · N 相关 · U 证据不足 · D 不相关（移入回收站）· 判断后自动跳到下一篇")}</span></div></div>`
     + `<div class="screen-status-row">${screenBadge(p.screening)}${badge(READING[p.reading] ?? t("未读"))}${p.publicationStatus === "preprint" ? badge(t("预印本"), "amber") : ""}${demoBadge(p)}${p.starred ? badge(t("已收藏"), "amber") : ""}<span class="muted screen-id">${esc(p.id)}</span></div>`
     + `<h2 class="screen-title">${esc(p.title)}</h2>`
     + `<p class="paper-meta">${esc(p.authors || t("作者待补"))} · ${esc(p.journal || t("期刊待补"))} · ${esc(p.year || t("年份待补"))}</p>`
@@ -354,13 +353,9 @@ export const screenModelReady = (app: App): boolean => canWrite(app.env) && conf
 export const translateModelReady = (app: App): boolean => canWrite(app.env) && configured(modelFor(app.env.settings, "translate"));
 
 
-/** applyDecision records the status and reports whether it was applied (an exclusion may first need a reason). */
-export function applyDecision(app: App, p: Paper, status: string, askReason: (p: Paper) => void, reason = p.screeningReason): boolean {
-  if (!Object.hasOwn(SCREEN, status)) return false;
-  if (status === "excluded" && !String(reason || "").trim()) {
-    askReason(p);
-    return false;
-  }
+/** applyDecision records a retained paper's status; reasons are optional for every decision. */
+export function applyDecision(app: App, p: Paper, status: string, reason = p.screeningReason): boolean {
+  if (!Object.hasOwn(SCREEN, status) || status === "irrelevant") return false;
   decideScreening(p, status, reason);
   app.logActivity(t("更新收录判断：{title}", { title: p.title }));
   app.persist();

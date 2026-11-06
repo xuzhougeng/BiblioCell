@@ -1,4 +1,4 @@
--- BiblioCell · schema v21
+-- BiblioCell · schema v22
 -- SQLite 3.38+。每个数据库连接都必须启用 PRAGMA foreign_keys = ON。
 -- 首先保存文献；全文、数据编号和样本信息均可后补。未知数量使用 NULL。
 PRAGMA foreign_keys = ON;
@@ -107,8 +107,8 @@ CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE p
 
 CREATE TABLE IF NOT EXISTS paper_curation (
     paper_id TEXT PRIMARY KEY NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
-    -- excluded 是相关但不收录；irrelevant（无关）是清理：文献留在库中只为去重，
-    -- 来源更新与导入不会再把它加回来，默认视图与统计都不显示它。
+    -- excluded 表示相关、保留备查；irrelevant 兼容旧版无关标记。
+    -- 新的“不相关”操作使用回收站，保留可恢复的附件、笔记与关联。
     screening_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (screening_status IN ('pending','included','excluded','uncertain','irrelevant')),
     screening_reason TEXT,
@@ -135,8 +135,7 @@ CREATE TABLE IF NOT EXISTS paper_curation (
         (json_valid(modalities_override_json) AND json_type(modalities_override_json) = 'array')),
     conditions_override_text TEXT,
     notes TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    CHECK (screening_status <> 'excluded' OR length(trim(coalesce(screening_reason,''))) > 0)
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TRIGGER IF NOT EXISTS tr_paper_curation_init
 AFTER INSERT ON papers BEGIN
@@ -628,5 +627,5 @@ CREATE TABLE IF NOT EXISTS dataset_assets (
 );
 CREATE INDEX IF NOT EXISTS idx_dataset_assets_dataset ON dataset_assets(dataset_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_assets_url ON dataset_assets(dataset_id, source_url) WHERE source_url <> '';
-PRAGMA user_version = 21;
+PRAGMA user_version = 22;
 COMMIT;

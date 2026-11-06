@@ -646,9 +646,6 @@ func savePaper(ctx context.Context, tx *sql.Tx, p *Paper) error {
 	if p.Screening != "pending" && p.ReviewedAt == "" {
 		return fmt.Errorf("screening %q is a person's decision; send proposedScreening instead", p.Screening)
 	}
-	if p.Screening == "excluded" && p.ScreeningReason == "" {
-		return errors.New("an excluded paper needs a screening reason")
-	}
 	if !oneOf(p.ProposedScreening, "", "included", "excluded", "uncertain") {
 		return fmt.Errorf("invalid proposed screening %q", p.ProposedScreening)
 	}

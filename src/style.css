@@ -65,7 +65,7 @@
 .real-mode [data-action="import-json"], .real-mode [data-action="add-resource"], .real-mode [data-action="reset-demo"] { display: none !important }
 /* 网页版只读访问：隐藏会修改记录或设置的控件，以及只有管理员才能看到的页面；收藏星号保留显示但不可点。 */
 .read-only [data-page="sources"], .read-only [data-page="agent"], .read-only [data-action="agent-open"], .read-only [data-action="new-paper"],
-.read-only [data-action="edit-paper"], .read-only [data-action="edit-paper-field"], .read-only [data-action="delete-paper"], .read-only [data-action="save-notes"], .read-only [data-action="save-tags"],
+.read-only [data-action="edit-paper"], .read-only [data-action="edit-paper-field"], .read-only [data-action="delete-paper"], .read-only [data-action="screening-reason"], .read-only [data-action="save-notes"], .read-only [data-action="save-tags"],
 .read-only [data-action="link-dataset"], .read-only [data-action="edit-dataset"], .read-only [data-action="new-dataset"], .read-only [data-action="new-dataset-for-paper"],
 .read-only [data-action="import-file"], .read-only [data-action="remove-file"], .read-only [data-action="fetch-fulltext"], .read-only [data-action="extract-paper-metadata"], .read-only [data-action="lookup-doi"], .read-only [data-action="fetch-doi"],
 .read-only [data-action="accept-proposal"], .read-only [data-action="dismiss-proposal"], .read-only [data-action="finish-review"], .read-only [data-action="review-evidence"], .read-only [data-action="verify-link"], .read-only [data-action="verify-repository"],
@@ -1533,13 +1533,15 @@ select.input { appearance: auto }
 .screen-decision.has-note { flex-direction: column; gap: 1px; padding-top: 6px; padding-bottom: 6px }
 .decision-label { display: inline-flex; align-items: center; gap: 8px }
 .decision-note { font-size: calc(11.5px * var(--font-scale, 1)); font-weight: 450; line-height: 1.3; opacity: 0.82; white-space: normal; text-align: center }
-/* Deleting is not a status: it takes the danger colour without the weight of Exclude. */
-.screen-dismiss { color: #8c3a2b; border-color: #d8b4a8 }
-.screen-dismiss:hover { color: #73301f; border-color: #8c3a2b; background: #f6e7e1 }
+/* Keep the archive label and its shortcut legible against the danger background. */
+.screen-dismiss { background: #8c3a2b; border-color: #73301f; color: #fffaf0 }
+.screen-dismiss:hover { background: #73301f; border-color: #73301f; color: #fffaf0 }
 .screen-key { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; margin-right: 2px; border: 1px solid currentColor; border-radius: 4px; font-family: var(--mono); font-size: calc(11px * var(--font-scale, 1)); line-height: 1; opacity: 0.75 }
 .screen-extra { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: calc(12.5px * var(--font-scale, 1)); color: #78725e }
 .screen-extra .footer-hint { margin-left: auto }
 .screen-reason { margin: 0 }
+.screen-reason-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px }
+.screen-reason-row .screen-reason { flex-basis: 100%; overflow-wrap: anywhere }
 @media (max-width: 760px) {
   .screen-toolbar { padding: 12px 16px }
   .screen-progress { align-items: flex-start }

@@ -90,9 +90,9 @@ export function paperTable(items: Paper[], app: App, compact = false, sort = "")
   const sortKeys: Partial<Record<PaperColumn, SortKey>> = { title: "title", year: "year", species: "species", modality: "modality" };
   const rows = items.map((p) => {
     const concern = reviewConcern(p);
-    const concernLabel = concern === "excluded" ? t("建议不纳入") : concern === "source" ? t("来源新增") : t("建议核对");
+    const concernLabel = concern === "excluded" ? t("建议标为相关") : concern === "source" ? t("来源新增") : t("建议核对");
     const concernReason = concern === "source" ? t("来自 {source} 的更新，尚未人工核查。", { source: p.source ? tv(p.source) : t("来源") })
-      : p.proposedReason || (concern === "excluded" ? t("可能不符合收录范围，请查看详情确认。") : t("收录依据仍有疑问，请查看详情确认。"));
+      : p.proposedReason || (concern === "excluded" ? t("可能有参考价值，请查看详情确认。") : t("收录依据仍有疑问，请查看详情确认。"));
     const concernHint = concern === "source" ? t("查看详情，确认收录范围") : t("查看详情，核对依据");
     // The review state lives in the status column; the note under the title only appears when that column is hidden.
     const warning = concern && !columns.includes("screening") ? `<div class="paper-review-note ${concern}"><span class="paper-review-label">${I("alert", 14)}${t("{label} · 待你确认", { label: concernLabel })}</span><span class="paper-review-reason" title="${esc(concernReason)}">${esc(concernReason)}</span><span class="paper-review-hint">${concernHint} ${I("arrow-right", 12)}</span></div>` : "";
@@ -253,7 +253,7 @@ export function renderPapers(app: App): string {
   const fromSource = count("source");
   const excluded = count("excluded");
   const uncertain = count("uncertain");
-  const concernSummary = [fromSource ? t("{n} 篇由来源更新新增", { n: fromSource }) : "", excluded ? t("{n} 篇建议不纳入", { n: excluded }) : "", uncertain ? t("{n} 篇建议核对", { n: uncertain }) : ""].filter(Boolean).join(locale === "en" ? "; " : "，");
+  const concernSummary = [fromSource ? t("{n} 篇由来源更新新增", { n: fromSource }) : "", excluded ? t("{n} 篇建议标为相关", { n: excluded }) : "", uncertain ? t("{n} 篇建议核对", { n: uncertain }) : ""].filter(Boolean).join(locale === "en" ? "; " : "，");
   // Writing the clamped page back keeps state valid as filters or edits shrink the list.
   const info = paperPage(items.length, app.paperPageSize, app.paperPage);
   app.paperPage = info.page;

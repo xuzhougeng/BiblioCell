@@ -17,8 +17,8 @@ import type { Evidence } from "./mygo.ts";
 import { doiActions } from "./doi.ts";
 import { fileActions } from "./files.ts";
 import {
-  datasetModal, exclusionReasonModal, importSummaryModal, paperModal, resetDemoModal, resourceModal,
-  saveDataset, saveDatasetLink, saveExclusionReason, savePaper, saveResource,
+  datasetModal, screeningReasonModal, importSummaryModal, paperModal, resetDemoModal, resourceModal,
+  saveDataset, saveDatasetLink, saveScreeningReason, savePaper, saveResource,
 } from "./forms.ts";
 import {
   PAGES, PAGE_SIZES, READING, SCREEN, SORT_KEYS, activePapers, clone, decideScreening, emptyFilters, esc, filterPapers, isPage, nowISO, paperDatasets, prepareImport,
@@ -749,7 +749,7 @@ export class App {
     const p = this.paperById(id);
     if (!p || !result || result.state !== "done" || result.judgement.skipped) return;
     const { verdict, reason } = result.judgement;
-    if (!applyDecision(this, p, verdict, (paper) => exclusionReasonModal(this, paper), reason || p.screeningReason)) return;
+    if (!applyDecision(this, p, verdict, reason || p.screeningReason)) return;
     this.toast(t("已采纳 AI 建议：{label}", { label: SCREEN[verdict] ?? verdict }));
     this.screeningDecided();
   }
@@ -798,11 +798,11 @@ export class App {
     this.screenQueueOpen = !this.screenQueueOpen;
     this.render();
   }
-  /** decideInScreening records the decision and moves on; an exclusion without a reason asks for one first. */
+  /** Record the decision and move on; reasons can be added separately. */
   decideInScreening(id: string, status: string): void {
     const p = this.paperById(id);
     if (!p || !this.screen) return;
-    if (!applyDecision(this, p, status, (paper) => exclusionReasonModal(this, paper))) return;
+    if (!applyDecision(this, p, status)) return;
     this.toast(t("已记为：{label}", { label: SCREEN[status] ?? status }));
     this.screeningDecided();
   }
@@ -988,6 +988,10 @@ export class App {
   private readonly actions: Record<string, Action> = {
     "new-paper": () => paperModal(this),
     "edit-paper": (_el, id) => paperModal(this, id),
+    "screening-reason": (_el, id) => {
+      const p = this.paperById(id);
+      if (p) screeningReasonModal(this, p);
+    },
     "edit-paper-field": (el, id) => paperFieldModal(this, id, el.dataset.field),
     "select-paper-field": (el) => selectPaperField(el.dataset.field ?? "species"),
     "step-paper-field": (el) => stepPaperField(Number(el.dataset.step) || 1),
@@ -1239,7 +1243,7 @@ export class App {
       "dataset-asset-form": saveDatasetAssetForm, "dataset-sample-form": saveDatasetPlanForm, "dataset-reference-form": saveDatasetPlanForm,
       "batch-screen-form": startBatch, "export-form": runExport,
       "metadata-apply-form": saveMetadata, "paper-form": savePaper, "paper-fields-form": savePaperFields, "source-config-form": saveSourceConfig, "settings-form": saveSettings, "agent-form": sendAgentMessage,
-      "exclusion-reason-form": saveExclusionReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
+      "screening-reason-form": saveScreeningReason, "screen-ai-form": saveScreenAI, "model-profile-form": saveModelProfile, "dataset-form": saveDataset, "resource-form": saveResource, "link-dataset-form": saveDatasetLink,
       "web-login-form": submitWebLogin, "source-check-form": (app) => saveSourceCheck(app),
     };
     // getAttribute: an <input name="id"> inside the form shadows form.id.
@@ -1362,9 +1366,9 @@ export class App {
         return;
       }
       if (key === "screening" && Object.hasOwn(SCREEN, value)) {
-        if (value === "excluded" && !String(p.screeningReason || "").trim()) {
+        if (value === "irrelevant") {
           target.value = p.screening;
-          exclusionReasonModal(this, p);
+          void this.deletePapers([p.id], target);
           return;
         }
         decideScreening(p, value);
