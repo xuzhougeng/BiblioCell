@@ -133,14 +133,15 @@ CREATE INDEX IF NOT EXISTS idx_merged_papers_pmid ON merged_papers(pmid) WHERE p
 	},
 	{Version: 20, Description: "数据集资源清单、样本与参考版本、存储位置", SQL: datasetAssetsDDL},
 	{Version: 21, Description: "文献与数据集回收站，保留去重标识与可恢复关联", SQL: trashDDL + `DROP VIEW IF EXISTS v_work_queue; DROP VIEW IF EXISTS v_paper_overview; DROP VIEW IF EXISTS v_dataset_overview;`},
+	{Version: 22, Description: "所有人工收录判断的理由均为可选，相关文献保留备查", Run: optionalScreeningReasons},
 }
 
 // paperCurationDDL is paper_curation as schema.sql defines it, for the rebuild
 // below. SQLite cannot change a CHECK constraint in place.
 const paperCurationDDL = `CREATE TABLE IF NOT EXISTS paper_curation (
     paper_id TEXT PRIMARY KEY NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
-    -- excluded 是相关但不收录；irrelevant（无关）是清理：文献留在库中只为去重，
-    -- 来源更新与导入不会再把它加回来，默认视图与统计都不显示它。
+    -- excluded 表示相关、保留备查；irrelevant 兼容旧版无关标记。
+    -- 新的“不相关”操作使用回收站，保留可恢复的附件、笔记与关联。
     screening_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (screening_status IN ('pending','included','excluded','uncertain','irrelevant')),
     screening_reason TEXT,
@@ -167,8 +168,7 @@ const paperCurationDDL = `CREATE TABLE IF NOT EXISTS paper_curation (
         (json_valid(modalities_override_json) AND json_type(modalities_override_json) = 'array')),
     conditions_override_text TEXT,
     notes TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    CHECK (screening_status <> 'excluded' OR length(trim(coalesce(screening_reason,''))) > 0)
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 )`
 
 // paperCurationColumns lists the columns copied across the rebuild, by name:
@@ -195,6 +195,27 @@ func rebuildPaperCuration(tx *sql.Tx) error {
 	if strings.Contains(ddl, "'irrelevant'") {
 		return nil
 	}
+	return replacePaperCuration(tx)
+}
+
+// optionalScreeningReasons also upgrades v19-v21 databases whose table already
+// accepts irrelevant, but still requires a reason for related papers.
+func optionalScreeningReasons(tx *sql.Tx) error {
+	var ddl string
+	err := tx.QueryRow("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'paper_curation'").Scan(&ddl)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read paper_curation: %w", err)
+	}
+	if !strings.Contains(ddl, "screening_status <> 'excluded'") {
+		return nil
+	}
+	return replacePaperCuration(tx)
+}
+
+func replacePaperCuration(tx *sql.Tx) error {
 	steps := []string{
 		"DROP VIEW IF EXISTS v_work_queue",
 		"DROP VIEW IF EXISTS v_paper_overview",

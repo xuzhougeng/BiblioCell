@@ -98,7 +98,7 @@
       <tr><td>时间</td><td><code>online_date</code> / <code>issue_year</code><br><code>first_seen_at</code> / <code>source_updated_at</code></td><td>在线发表、卷期、本库发现和来源更新分别保存。</td></tr>
       <tr><td>摘要级背景</td><td><code>papers.organs_json</code><br><code>modalities_json</code> / <code>conditions_text</code></td><td>即使尚未识别数据集，也能保存组织、技术和实验条件。</td></tr>
       <tr><td>标识符</td><td><code>paper_identifiers.namespace</code><br><code>value</code> / <code>raw_value</code></td><td>命名空间与规范值组合唯一；保留原始值，DOI 存为小写裸标识符。</td></tr>
-      <tr><td>个人整理</td><td><code>screening_status</code> / <code>reading_status</code><br><code>priority</code> / <code>starred</code> / <code>notes</code> / <code>tags_json</code></td><td>收录、阅读和优先级相互独立；排除文献必须填写理由。</td></tr>
+      <tr><td>个人整理</td><td><code>screening_status</code> / <code>reading_status</code><br><code>priority</code> / <code>starred</code> / <code>notes</code> / <code>tags_json</code></td><td>收录、阅读和优先级相互独立；已纳入是主要检索对象，相关文献保留备查，不相关文献移入回收站。所有人工判断均可选填理由。</td></tr>
       <tr><td>人工覆盖</td><td><code>organs_override_json</code><br><code>modalities_override_json</code><br><code>conditions_override_text</code></td><td>NULL 表示使用来源值；人工修订独立保存。检索使用视图中的 effective 字段。</td></tr>
       <tr><td>数据类型</td><td><code>datasets.dataset_kind</code><br><code>modality</code> / <code>tissue_text</code> / <code>conditions_text</code></td><td>区分原始、派生和集合；科学背景先保留可追溯的文本概要。</td></tr>
       <tr><td>数据谱系</td><td><code>dataset_relations</code><br><code>source_dataset_id</code> / <code>target_dataset_id</code></td><td>多对多保存派生、子集、组成和重叠关系。A derived_from B 表示 A 派生自 B。</td></tr>

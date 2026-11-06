@@ -7,6 +7,33 @@ import (
 	"testing"
 )
 
+func TestRelatedPaperReasonIsOptionalAndEditable(t *testing.T) {
+	store, ctx := mergeStore(t)
+	paper, err := store.AddPaper(ctx, Paper{Title: "Related methods", Notes: "Keep for reference"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paper = decide(t, store, paper, "excluded", "")
+	if paper.Screening != "excluded" || paper.ReviewedAt == "" || paper.ScreeningReason != "" {
+		t.Fatalf("blank reason decision = %+v", paper)
+	}
+	reviewedAt := paper.ReviewedAt
+	for _, reason := range []string{"Useful background", ""} {
+		after := paper
+		after.ScreeningReason = reason
+		if conflicts, err := store.SavePaperEdits(ctx, []PaperEdit{{Before: &paper, After: after}}); err != nil || len(conflicts) != 0 {
+			t.Fatalf("save reason %q: conflicts=%v, err=%v", reason, conflicts, err)
+		}
+		paper, err = store.GetPaper(ctx, paper.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if paper.ScreeningReason != reason || paper.Screening != "excluded" || paper.ReviewedAt != reviewedAt || paper.Notes != "Keep for reference" {
+			t.Fatalf("reason edit changed the decision or notes: %+v", paper)
+		}
+	}
+}
+
 func TestPaperAddEditAndPreserveMCPRecords(t *testing.T) {
 	store, err := Open(t.TempDir() + "/bibliocell.sqlite")
 	if err != nil {

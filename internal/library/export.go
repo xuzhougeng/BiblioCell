@@ -773,7 +773,7 @@ func Report(papers []Paper, datasets []Dataset, title string, now time.Time) str
 	}
 	b.WriteString("## Screening\n\n| Status | Papers |\n|---|---:|\n")
 	fmt.Fprintf(&b, "| Included | %d |\n", count["included"])
-	fmt.Fprintf(&b, "| Excluded | %d |\n", count["excluded"])
+	fmt.Fprintf(&b, "| Related (kept for reference) | %d |\n", count["excluded"])
 	fmt.Fprintf(&b, "| Uncertain | %d |\n", count["uncertain"])
 	fmt.Fprintf(&b, "| Pending | %d |\n", count["pending"])
 	if count["irrelevant"] > 0 {

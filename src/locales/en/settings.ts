@@ -276,7 +276,6 @@ export const settings: Record<string, string> = {
   "本机或内网的模型服务可选直连。": "Choose direct for a model service on this machine or your local network.",
   "跟随设置页的网络代理；选直连则访问这个来源时不走代理。": "Follows the network proxy on the Settings page; choose direct to reach this source without a proxy.",
   "移入回收站，可恢复": "Move to recycle bin; can be restored",
-  "←→ 前后切换 · Y 纳入 · N 相关不纳入 · U 证据不足 · D 移入回收站 · 判断后自动跳到下一篇": "←→ previous/next · Y include · N related, not included · U uncertain · D move to recycle bin · advances after each decision",
   "恢复": "Restore",
   "回收站": "Recycle bin",
   "已删除的记录不会出现在日常列表中，来源更新和重新导入也不会自动加回。附件与关联保留，可在这里恢复。": "Deleted records stay hidden from normal lists and will not be added again by source updates or imports. Files and links are kept and can be restored here.",

@@ -1,10 +1,10 @@
-// Modal forms: paper, dataset, dataset link, resource link, exclusion reason,
+// Modal forms: paper, dataset, dataset link, resource link, screening reason,
 // demo reset and import confirmation.
 import { plantChoices, researchChoices } from "./research-options.ts";
 import type { App } from "./app.ts";
 import type { Dataset, DatasetRepository, Paper } from "./mygo.ts";
 import {
-  ARTICLE_TYPES, AVAILABILITY, RESOURCE_TYPES, ROLE, SCREEN, arr, clone, decideScreening, emptyFilters, emptyRepository, esc, joinList,
+  ARTICLE_TYPES, AVAILABILITY, RESOURCE_TYPES, ROLE, SCREEN, arr, clone, emptyFilters, emptyRepository, esc, joinList,
   normalizeDOI, normalizeDataset, nowISO, safeURL, splitList, uid, validDOI, type ImportStats,
 } from "./model.ts";
 import { t } from "./i18n.ts";
@@ -32,7 +32,7 @@ export function paperModal(app: App, id = ""): void {
     + `<div class="form-field full-width"><span>${t("测序类型（可多选）")}</span>${checkboxGroup("modalities", researchChoices(app.state, "modalities"), p.modalities, customField("modalitiesCustom", t("其他类型，逗号分隔")))}</div>`
     + `<div class="form-field full-width"><span>${t("测序平台（可多选）")}</span>${checkboxGroup("platforms", researchChoices(app.state, "platforms"), p.platforms, customField("platformsCustom", t("其他平台，逗号分隔")))}</div>`
     + `<label class="form-field full-width"><span>${t("摘要")}</span><textarea class="textarea" name="abstract" rows="4" maxlength="50000" placeholder="${t("可粘贴摘要，暂时没有也可以留空")}">${esc(p.abstract ?? "")}</textarea></label>`
-    + `<label class="form-field full-width"><span>${t("收录判断依据")}${p.screening === "excluded" ? ' <b class="required">*</b>' : ""}</span><textarea class="textarea" name="screeningReason" rows="2" maxlength="3000" placeholder="${t("例如：实际分析了植物单核数据；或仅包含空间转录组")}">${esc(p.screeningReason ?? "")}</textarea></label>`
+    + `<label class="form-field full-width"><span>${t("判断理由（可选）")}</span><textarea class="textarea" name="screeningReason" rows="2" maxlength="3000" placeholder="${t("例如：实际分析了植物单核数据；或仅包含空间转录组")}">${esc(p.screeningReason ?? "")}</textarea></label>`
     + '</div><p id="form-error" class="form-error" role="alert"></p></form>';
   app.showModal(existing ? t("编辑文献信息") : t("添加文献"), form, `${cancelButton}<button class="btn btn-primary" type="submit" form="paper-form">${I(existing ? "check" : "plus", 16)} ${existing ? t("保存修改") : t("添加到文献库")}</button>`, true);
 }
@@ -56,7 +56,6 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   else if (pmid && !/^\d{1,10}$/.test(pmid)) error = t("PMID 应为纯数字。");
   else if (year !== null && (!Number.isInteger(year) || year < 1800 || year > 2100)) error = t("请填写 1800–2100 之间的年份，或留空。");
   else if (!Object.hasOwn(PUBLICATION_STATUSES, publicationStatus)) error = t("请选择有效的发表状态。");
-  else if (existing && existing.screening === "excluded" && !reason) error = t("相关不纳入的条目需要保留判断理由。");
   if (error) {
     setFormError(error);
     return;
@@ -90,26 +89,23 @@ export function savePaper(app: App, form: HTMLFormElement): void {
   }
 }
 
-export function exclusionReasonModal(app: App, p: Paper): void {
-  app.showModal(t("补充理由"), `<form id="exclusion-reason-form"><input type="hidden" name="paperId" value="${esc(p.id)}"><p class="muted">${t("请记录做出“{label}”这个判断的理由，以便日后回看筛选依据。", { label: SCREEN.excluded! })}</p><label class="form-field"><span>${t("判断理由")} <b class="required">*</b></span><textarea class="textarea" name="reason" rows="4" maxlength="3000" required placeholder="${t("例如：仅包含空间转录组，没有实际分析单细胞或单核测序数据")}"></textarea></label><p id="form-error" class="form-error" role="alert"></p></form>`, `${cancelButton}<button class="btn btn-primary" type="submit" form="exclusion-reason-form">${t("保存判断")}</button>`);
+export function screeningReasonModal(app: App, p: Paper): void {
+  app.showModal(t("补充理由"), `<form id="screening-reason-form"><input type="hidden" name="paperId" value="${esc(p.id)}"><p class="muted">${t("当前判断：{label}。所有判断都可选填理由，也可以留空。", { label: SCREEN[p.screening] ?? p.screening })}</p><label class="form-field"><span>${t("判断理由（可选）")}</span><textarea class="textarea" name="reason" rows="4" maxlength="3000" placeholder="${t("例如：符合主题；可能有用，保留备查；或与主题无关")}">${esc(p.screeningReason)}</textarea></label><p id="form-error" class="form-error" role="alert"></p></form>`, `${cancelButton}<button class="btn btn-primary" type="submit" form="screening-reason-form">${t("保存理由")}</button>`);
 }
 
-export function saveExclusionReason(app: App, form: HTMLFormElement): void {
+export function saveScreeningReason(app: App, form: HTMLFormElement): void {
   const f = new FormData(form);
   const p = app.paperById(text(f, "paperId"));
   const reason = text(f, "reason");
-  if (!p || !reason) {
-    setFormError(t("请填写判断理由。"));
-    return;
-  }
-  decideScreening(p, "excluded", reason);
+  if (!p) return;
+  p.screeningReason = reason;
+  p.updatedAt = nowISO();
   app.logActivity(t("保存判断理由：{title}", { title: p.title }));
   app.persist();
   app.closeModal();
   app.render();
   app.renderDrawer();
-  app.toast(t("判断与理由已保存。"));
-  app.screeningDecided();
+  app.toast(t("判断理由已保存。"));
 }
 
 export function datasetModal(app: App, id = "", paperId = ""): void {

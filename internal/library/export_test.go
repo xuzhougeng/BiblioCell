@@ -284,7 +284,7 @@ func TestReport(t *testing.T) {
 	for _, want := range []string{
 		"# BiblioCell screening progress",
 		"Generated 2026-11-02 09:30 · 4 papers · 3 datasets",
-		"| Included | 1 |", "| Excluded | 1 |", "| Uncertain | 1 |", "| Pending | 1 |",
+		"| Included | 1 |", "| Related (kept for reference) | 1 |", "| Uncertain | 1 |", "| Pending | 1 |",
 		"| **Needs a decision** (pending + uncertain) | **2** |",
 		"| Open agent proposals | 1 |", "| Added by source updates, unchecked | 1 |",
 		"| Included with stored full text | 1 / 1 |",
